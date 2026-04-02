@@ -50,4 +50,4 @@ androidApp/release/
 
 # Generated files
 *.hprof
-.ai/
+/.ai/
