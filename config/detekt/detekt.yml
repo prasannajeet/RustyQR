@@ -20,5 +20,7 @@ style:
     maxLineLength: 120
 
 naming:
+  MatchingDeclarationName:
+    active: false
   FunctionNaming:
     functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
