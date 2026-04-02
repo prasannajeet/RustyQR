@@ -113,23 +113,25 @@ ktlint {
 
 val rootDir = rootProject.projectDir.absolutePath
 
-tasks.register("installGitHooks") {
+tasks.register<Exec>("installGitHooks") {
     group = "git hooks"
     description = "Installs git hooks for conventional commits and pre-commit checks"
-    doLast {
-        val hooksDir = File(rootDir, ".husky")
-        val gitHooksDir = File(rootDir, ".git/hooks")
-        if (!gitHooksDir.exists()) gitHooksDir.mkdirs()
-        listOf("commit-msg", "pre-commit").forEach { hookName ->
-            val source = File(hooksDir, hookName)
-            val target = File(gitHooksDir, hookName)
-            if (source.exists()) {
-                source.copyTo(target, overwrite = true)
-                target.setExecutable(true)
-                logger.lifecycle("Git hook '$hookName' installed successfully!")
-            }
-        }
-    }
+    commandLine(
+        "sh",
+        "-c",
+        """
+        mkdir -p "$rootDir/.git/hooks"
+        for hook in commit-msg pre-commit; do
+            src="$rootDir/.husky/${'$'}hook"
+            dst="$rootDir/.git/hooks/${'$'}hook"
+            if [ -f "${'$'}src" ]; then
+                cp "${'$'}src" "${'$'}dst"
+                chmod +x "${'$'}dst"
+                echo "Git hook '${'$'}hook' installed successfully!"
+            fi
+        done
+        """.trimIndent(),
+    )
 }
 
 tasks.register<Exec>("swiftlint") {
