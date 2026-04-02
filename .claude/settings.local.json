@@ -23,7 +23,12 @@
       "Bash(rustup --version)",
       "Bash(grep -E '\\(aarch64-linux-android29|armv7a-linux-androideabi29|x86_64-linux-android29\\).*clang$')",
       "Bash(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)",
-      "Bash(sh -s -- -y)"
+      "Bash(sh -s -- -y)",
+      "Bash(cargo search:*)",
+      "WebFetch(domain:crates.io)",
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:lib.rs)",
+      "Bash(cargo fmt:*)"
     ]
   }
 }

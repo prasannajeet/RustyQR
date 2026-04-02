@@ -1,0 +1,9 @@
+[package]
+name = "rusty-qr-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+thiserror = { version = "2", default-features = false }
+qrcode = { version = "0.14", default-features = false, features = ["image"] }
+image = { version = "0.25", default-features = false, features = ["png"] }

@@ -51,3 +51,6 @@ androidApp/release/
 # Generated files
 *.hprof
 /.ai/
+
+# Rust
+rustSDK/target/
