@@ -1,0 +1,31 @@
+#!/bin/sh
+
+# Get the commit message
+commit_msg_file=$1
+commit_msg=$(cat "$commit_msg_file")
+
+# Define the expected format using regex
+# Format: type(scope): message
+# E.g., feat(auth): add login functionality
+commit_pattern="^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z]+\))?: [a-z ]+$"
+
+# Skip validation for merge commits
+if echo "$commit_msg" | grep -qE "^Merge branch"; then
+  exit 0
+fi
+
+# Validate the commit message
+if ! echo "$commit_msg" | grep -qE "$commit_pattern"; then
+  echo "❌ Invalid commit message format."
+  echo "The commit message should match the pattern: type(scope): message"
+  echo "Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+  echo "Example: feat(auth): add login functionality"
+  echo "Requirements:"
+  echo "- Lowercase letters only"
+  echo "- No special characters or numbers in the message part"
+  echo "- Scope should only contain lowercase letters (no numbers or special chars)"
+  exit 1
+fi
+
+echo "✅ Commit message validation passed!"
+exit 0 

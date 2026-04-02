@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :composeApp:installGitHooks:*)",
+      "Bash(swiftlint version:*)",
+      "Bash(./gradlew :composeApp:lintAll:*)",
+      "Bash(./gradlew :composeApp:detektBaseline)",
+      "Bash(./gradlew :composeApp:tasks --group verification)",
+      "Bash(./gradlew :composeApp:detektBaselineMetadataCommonMain :composeApp:detektBaselineAndroidDebug :composeApp:detektBaselineIosArm64Main :composeApp:detektBaselineIosSimulatorArm64Main)",
+      "Bash(./gradlew :composeApp:detektMetadataCommonMain)"
+    ]
+  }
+}
