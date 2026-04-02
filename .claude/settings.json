@@ -1,0 +1,5 @@
+{
+  "enabledPlugins": {
+    "discover@claude-code-discover": true
+  }
+}

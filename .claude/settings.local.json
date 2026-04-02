@@ -8,7 +8,22 @@
       "Bash(./gradlew :composeApp:tasks --group verification)",
       "Bash(./gradlew :composeApp:detektBaselineMetadataCommonMain :composeApp:detektBaselineAndroidDebug :composeApp:detektBaselineIosArm64Main :composeApp:detektBaselineIosSimulatorArm64Main)",
       "Bash(./gradlew :composeApp:detektMetadataCommonMain)",
-      "Bash(./gradlew clean:*)"
+      "Bash(./gradlew clean:*)",
+      "Bash(git:*)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(rustup target:*)",
+      "WebSearch",
+      "WebFetch(domain:mozilla.github.io)",
+      "WebFetch(domain:arrow-kt.io)",
+      "WebFetch(domain:theswiftdev.com)",
+      "WebFetch(domain:fline.dev)",
+      "Bash(grep -E '\\(aarch64|armv7a|x86_64\\).*clang$')",
+      "Bash(xcrun:*)",
+      "Bash(rustup --version)",
+      "Bash(grep -E '\\(aarch64-linux-android29|armv7a-linux-androideabi29|x86_64-linux-android29\\).*clang$')",
+      "Bash(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)",
+      "Bash(sh -s -- -y)"
     ]
   }
 }
