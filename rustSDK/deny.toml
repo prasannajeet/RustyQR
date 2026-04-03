@@ -1,0 +1,54 @@
+# cargo-deny configuration — supply chain auditing (PRD 5.4)
+# Run: cargo deny check
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# UniFFI 0.28 transitively depends on `bincode` and `paste`, both flagged as
+# unmaintained but carrying no security vulnerability. These are build-time /
+# macro-expansion crates that don't ship in the final binary. Ignore until
+# UniFFI upgrades its dependency tree.
+ignore = [
+    "RUSTSEC-2025-0141", # bincode — unmaintained, used by uniffi_macros
+    "RUSTSEC-2024-0436", # paste — unmaintained, used by uniffi_core/uniffi_bindgen
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "MPL-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+]
+confidence-threshold = 0.8
+
+# Our own workspace crates are unlicensed (portfolio project, not published).
+[[licenses.clarify]]
+name = "rusty-qr-core"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+name = "rusty-qr-ffi"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
+name = "uniffi-bindgen"
+expression = "MIT"
+license-files = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"  # path deps don't need version specifiers
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

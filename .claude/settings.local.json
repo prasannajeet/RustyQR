@@ -38,7 +38,9 @@
       "Bash(cargo install:*)",
       "Bash(cargo run:*)",
       "Read(//private/tmp/rusty-qr-kotlin-bindings/**)",
-      "Read(//private/tmp/rusty-qr-swift-bindings/**)"
+      "Read(//private/tmp/rusty-qr-swift-bindings/**)",
+      "Bash(cargo bench:*)",
+      "Bash(cargo deny:*)"
     ]
   }
 }

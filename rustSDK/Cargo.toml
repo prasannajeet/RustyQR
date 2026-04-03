@@ -1,3 +1,3 @@
 [workspace]
-members = ["crates/core", "crates/ffi"]
+members = ["crates/core", "crates/ffi", "crates/uniffi-bindgen"]
 resolver = "2"

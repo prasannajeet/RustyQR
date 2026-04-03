@@ -2,3 +2,15 @@
 name = "rusty-qr-ffi"
 version = "0.1.0"
 edition = "2021"
+
+[lib]
+name = "rusty_qr_ffi"
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+rusty-qr-core = { path = "../core" }
+thiserror = "2"
+uniffi = { version = "0.28", features = ["cli"] }
+
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png"] }

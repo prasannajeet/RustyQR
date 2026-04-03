@@ -16,8 +16,7 @@ pub enum QrError {
     #[error("Encoding failed: {reason}")]
     EncodingFailed { reason: String },
 
-    /// Decoding a QR image failed. Reserved for Phase 2 (decoder).
-    #[allow(dead_code)] // Used in Phase 2 (decoder)
+    /// Decoding a QR image failed (e.g. no QR code found, corrupt image data).
     #[error("Decoding failed: {reason}")]
     DecodingFailed { reason: String },
 
