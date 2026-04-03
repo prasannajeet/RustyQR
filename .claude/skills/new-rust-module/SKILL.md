@@ -90,7 +90,7 @@ fn <integration_test_name>() {
 Add variants to `QrError` in `rustSDK/crates/core/src/error.rs`:
 
 ```rust
-#[derive(Debug, thiserror::Error, uniffi::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum QrError {
     // ... existing variants ...
 
@@ -101,6 +101,8 @@ pub enum QrError {
 ```
 
 **Critical**: All variants MUST use named fields (`{ reason: String }` not `(String)`).
+**Critical**: Do NOT add `uniffi::Error` derive in the core crate — UniFFI derives are added only in
+`crates/ffi/`. The core crate uses `thiserror` only.
 
 ### 5. Update types.rs if new types needed
 
@@ -108,7 +110,7 @@ Add types to `rustSDK/crates/core/src/types.rs`:
 
 ```rust
 /// <Type description>.
-#[derive(Debug, Clone, uniffi::Record)]
+#[derive(Debug, Clone)]
 pub struct <TypeName> {
     /// <Field description>.
     pub <field>: <type>,
@@ -116,12 +118,14 @@ pub struct <TypeName> {
 ```
 
 **Critical**: All fields must be owned types — no references, no lifetimes, no generics.
+**Critical**: Do NOT add `uniffi::Record` derive in the core crate — UniFFI derives are added only
+in `crates/ffi/`. But design the struct to be UniFFI-compatible (all owned types, all fields pub).
 
-Supported field types for UniFFI Records:
+Supported field types (must be FFI-compatible even without the derive):
 
 - `String`, `bool`, `i8`-`i64`, `u8`-`u64`, `f32`, `f64`
 - `Vec<T>`, `HashMap<String, T>`, `Option<T>` (where T is also supported)
-- Other `#[derive(uniffi::Record)]` types
+- Other structs that also follow these rules
 - NOT: `&str`, `&[u8]`, `Box<dyn T>`, generics, type aliases wrapping references
 
 ## Conventions

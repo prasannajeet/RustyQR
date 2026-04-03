@@ -5,8 +5,9 @@ tools:
   - Read
   - Grep
   - Glob
-  - Bash(grep:*,find:*,wc:*,cat:*,head:*,tail:*)
-model: haiku
+  - Bash(wc *)
+  - Bash(git *)
+model: sonnet
 maxTurns: 10
 skills:
   - kmp-architect
