@@ -575,6 +575,83 @@ pub struct FfiQrConfig { pub size: u32, pub error_correction: FfiQrErrorCorrecti
 impl From<FfiQrConfig> for rusty_qr_core::QrConfig { ... }
 ```
 
+### Class Relationship Diagram
+
+```mermaid
+classDiagram
+    direction LR
+
+    namespace core ["rusty-qr-core"] {
+        class QrErrorCorrection {
+            <<enum>>
+            Low
+            Medium
+            Quartile
+            High
+            +to_ec_level() EcLevel
+        }
+
+        class QrConfig {
+            <<struct>>
+            +size: u32
+            +error_correction: QrErrorCorrection
+        }
+
+        class ScanResult {
+            <<struct>>
+            +content: String
+        }
+
+        class QrError {
+            <<enum>>
+            InvalidInput‹reason: String›
+            EncodingFailed‹reason: String›
+            DecodingFailed‹reason: String›
+            ImageError‹reason: String›
+        }
+    }
+
+    namespace ffi ["rusty-qr-ffi"] {
+        class FfiQrErrorCorrection {
+            <<uniffi::Enum>>
+            Low
+            Medium
+            Quartile
+            High
+        }
+
+        class FfiQrConfig {
+            <<uniffi::Record>>
+            +size: u32
+            +error_correction: FfiQrErrorCorrection
+        }
+
+        class FfiScanResult {
+            <<uniffi::Record>>
+            +content: String
+        }
+
+        class FfiQrError {
+            <<uniffi::Error>>
+            InvalidInput‹reason: String›
+            EncodingFailed‹reason: String›
+            DecodingFailed‹reason: String›
+            ImageError‹reason: String›
+        }
+    }
+
+    QrConfig *-- QrErrorCorrection : contains
+    FfiQrConfig *-- FfiQrErrorCorrection : contains
+
+    FfiQrErrorCorrection ..> QrErrorCorrection : "From (→ core)"
+    FfiQrConfig ..> QrConfig : "From (→ core)"
+    QrError ..> FfiQrError : "From (→ ffi)"
+    ScanResult ..> FfiScanResult : "From (→ ffi)"
+```
+
+The `From` conversion direction follows the data flow: inputs (config, error correction) convert
+**from FFI → core**, while outputs (scan results, errors) convert **from core → FFI**.
+
 ### One-Liner Delegation
 
 Every FFI function is a single line that calls into core:

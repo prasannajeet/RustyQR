@@ -41,7 +41,8 @@
       "Read(//private/tmp/rusty-qr-swift-bindings/**)",
       "Bash(cargo bench:*)",
       "Bash(cargo deny:*)",
-      "Bash(cargo doc:*)"
+      "Bash(cargo doc:*)",
+      "Skill(update-config)"
     ]
   }
 }
