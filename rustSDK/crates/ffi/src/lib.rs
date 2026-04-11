@@ -1,7 +1,25 @@
-//! FFI bindings for rusty-qr-core via UniFFI.
+//! FFI bindings for `rusty-qr-core` via [UniFFI](https://mozilla.github.io/uniffi-rs/).
 //!
-//! This crate is a thin wrapper — every exported function is a one-liner
+//! This crate is a **thin wrapper** — every exported function is a one-liner
 //! delegating to `rusty_qr_core`. No business logic lives here.
+//!
+//! # Why mirror types?
+//!
+//! The core crate is intentionally free of UniFFI annotations so it can be
+//! used as a plain Rust library. This FFI crate re-declares each public type
+//! with `uniffi::` derives (e.g. `FfiQrConfig`, `FfiQrError`) and provides
+//! `From` conversions in both directions. The UniFFI code generator reads
+//! these derives to produce Kotlin and Swift bindings.
+//!
+//! # Exported functions
+//!
+//! | Function                | Maps to |
+//! |-------------------------|---------|
+//! | `generate_png`          | `rusty_qr_core::encoder::generate_png` |
+//! | `generate_with_config`  | `rusty_qr_core::encoder::generate_with_config` |
+//! | `decode_qr`             | `rusty_qr_core::decoder::decode` |
+//! | `decode_qr_from_raw`    | `rusty_qr_core::decoder::decode_from_raw` |
+//! | `get_library_version`   | `rusty_qr_core::encoder::get_library_version` |
 
 uniffi::setup_scaffolding!();
 
@@ -80,6 +98,11 @@ pub enum FfiQrError {
 
 // ---------------------------------------------------------------------------
 // From / Into conversions between FFI ↔ core types
+//
+// These conversions allow the exported functions to accept FFI wrapper types
+// from foreign callers, convert them to core types for processing, and
+// convert the results back to FFI types for the return trip across the
+// language boundary.
 // ---------------------------------------------------------------------------
 
 impl From<FfiQrErrorCorrection> for rusty_qr_core::QrErrorCorrection {

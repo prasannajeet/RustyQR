@@ -4,6 +4,9 @@
 //! - [`decode`] — loads PNG or JPEG image bytes and scans for a QR code.
 //! - [`decode_from_raw`] — accepts a raw grayscale pixel buffer directly,
 //!   which is the low-overhead path for camera frames on mobile.
+//!
+//! Both paths converge on the private `decode_grayscale` helper, which uses
+//! the `rqrr` crate's grid detection and decoding pipeline.
 
 use crate::error::QrError;
 use crate::types::ScanResult;

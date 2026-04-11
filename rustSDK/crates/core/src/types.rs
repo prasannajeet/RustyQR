@@ -1,7 +1,9 @@
 //! Shared types for QR code generation and scanning.
 //!
 //! This module defines the configuration and result types used across
-//! the encoder and decoder modules.
+//! the encoder and decoder modules. All types are plain Rust structs/enums
+//! with no UniFFI annotations — the FFI crate mirrors them with its own
+//! `Ffi`-prefixed wrappers and `From` conversions.
 
 /// Error correction level for QR code generation.
 ///
@@ -32,6 +34,19 @@ impl QrErrorCorrection {
 }
 
 /// Configuration for QR code generation with custom options.
+///
+/// # Example
+///
+/// ```rust
+/// use rusty_qr_core::types::{QrConfig, QrErrorCorrection};
+/// use rusty_qr_core::encoder;
+///
+/// let config = QrConfig {
+///     size: 512,
+///     error_correction: QrErrorCorrection::High,
+/// };
+/// let png = encoder::generate_with_config("hello", config).unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub struct QrConfig {
@@ -42,9 +57,13 @@ pub struct QrConfig {
 }
 
 /// Result of scanning/decoding a QR code from an image.
+///
+/// Currently contains only the decoded text. Future versions may add
+/// metadata such as the QR version, error-correction level detected,
+/// or bounding-box coordinates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[must_use]
 pub struct ScanResult {
-    /// The decoded text content.
+    /// The decoded text content extracted from the QR code.
     pub content: String,
 }

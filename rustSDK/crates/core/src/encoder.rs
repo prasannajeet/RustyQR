@@ -4,6 +4,15 @@
 //! image containing a QR code, [`generate_with_config`] for configurable
 //! generation, and [`get_library_version`] for querying the crate version at
 //! runtime.
+//!
+//! # Pipeline
+//!
+//! 1. **Validate** inputs (content non-empty, size in range).
+//! 2. **Encode** content into a QR matrix via the `qrcode` crate.
+//! 3. **Render** the matrix to a grayscale `image::GrayImage`.
+//! 4. **Resize** to the caller-requested dimensions (nearest-neighbour to keep
+//!    cells sharp).
+//! 5. **Serialise** to PNG bytes via `image::codecs::png::PngEncoder`.
 
 use image::codecs::png::PngEncoder;
 use image::{imageops::FilterType, ExtendedColorType, ImageEncoder};
