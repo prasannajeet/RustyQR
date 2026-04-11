@@ -146,6 +146,31 @@ tasks.register<Exec>("buildRustAndroid") {
     commandLine("make", "android")
 }
 
+tasks.register<Exec>("buildRustIos") {
+    group = "rust"
+    description = "Cross-compiles Rust FFI for iOS, creates XCFramework, and regenerates Xcode project (runs make ios)"
+    workingDir = File(rootDir, "rustySDK")
+    commandLine("make", "ios")
+}
+
+tasks.register<Exec>("cleanBuildIos") {
+    group = "rust"
+    description = "Cleans all Rust/iOS artifacts, then rebuilds from scratch (make clean + make ios)"
+    workingDir = File(rootDir, "rustySDK")
+    commandLine("make", "clean")
+    finalizedBy("buildRustIos")
+}
+
+tasks.register<Exec>("generateXcodeProject") {
+    group = "xcode"
+    description = "Regenerates iosApp.xcodeproj from project.yml via XcodeGen"
+    workingDir = File(rootDir, "iosApp")
+    commandLine("xcodegen", "generate")
+    doLast {
+        logger.lifecycle("\n⚠️  If the iOS run configuration is missing in Android Studio, run: File > Sync Project with Gradle Files")
+    }
+}
+
 tasks.register<Exec>("swiftlint") {
     group = "verification"
     description = "Runs SwiftLint on iOS source files"

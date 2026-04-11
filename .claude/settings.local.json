@@ -52,7 +52,11 @@
       "Bash(./gradlew :composeApp:buildRustAndroid)",
       "Bash(ls -lh /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/androidMain/jniLibs/*/librusty_qr_ffi.so)",
       "Bash(llvm-objdump -p /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/androidMain/jniLibs/arm64-v8a/librusty_qr_ffi.so)",
-      "Bash(objdump -p /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/androidMain/jniLibs/arm64-v8a/librusty_qr_ffi.so)"
+      "Bash(objdump -p /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/androidMain/jniLibs/arm64-v8a/librusty_qr_ffi.so)",
+      "Bash(xcodegen --version)",
+      "Bash(xcodegen generate:*)",
+      "Bash(chmod +x:*)",
+      "Bash(make ios:*)"
     ]
   }
 }

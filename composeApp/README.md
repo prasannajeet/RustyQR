@@ -11,13 +11,11 @@ The QR code logic is written in **Rust**, but Android apps are written in **Kotl
 1. **A compiled Rust library** (`.so` file) that Android can load at runtime
 2. **Generated Kotlin code** that knows how to call the functions inside that library
 
-The build pipeline automates both steps. You have two ways to run it:
+The build pipeline automates both steps.
 
 ---
 
 ## Building the App
-
-### Option A: Gradle all the way (recommended)
 
 ```bash
 # Compile Rust + generate Kotlin bindings
@@ -29,17 +27,6 @@ The build pipeline automates both steps. You have two ways to run it:
 # Or chain both in one line:
 ./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
 ```
-
-`buildRustAndroid` is a Gradle task that calls `make android` under the hood. You stay in Gradle-land and don't need to `cd` anywhere.
-
-### Option B: Make directly
-
-```bash
-cd rustySDK && make android
-./gradlew :composeApp:assembleDebug
-```
-
-Same result, just invokes `make` yourself. Useful when you want to see the raw Rust build output.
 
 ### When do I need to rebuild Rust?
 
@@ -248,7 +235,7 @@ graph LR
     D --> E
 ```
 
-This means the generated Kotlin is always in sync with the Rust code — if you change a function signature in Rust, re-running `make android` regenerates the Kotlin to match.
+This means the generated Kotlin is always in sync with the Rust code — if you change a function signature in Rust, re-running `./gradlew :composeApp:buildRustAndroid` regenerates the Kotlin to match.
 
 ---
 
@@ -289,12 +276,12 @@ After that, every build is:
 ## Cleaning Up
 
 ```bash
-cd rustySDK && make clean
+./gradlew :composeApp:cleanBuildIos
 ```
 
-This removes:
+This cleans all Rust artifacts (both platforms) and rebuilds from scratch, removing:
 - `rustySDK/target/` — all Rust compiled objects
 - `composeApp/src/androidMain/jniLibs/` — the `.so` files
 - `composeApp/src/androidMain/kotlin/generated/` — the generated Kotlin binding
 
-After `make clean`, the next `./gradlew buildRustAndroid` (or `make android`) rebuilds everything from scratch.
+After cleaning, rebuild Android with `./gradlew :composeApp:buildRustAndroid`.

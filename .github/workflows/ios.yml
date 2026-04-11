@@ -1,0 +1,90 @@
+name: iOS Build
+
+on:
+  workflow_dispatch:
+    
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust-checks:
+    name: Rust tests & lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rustySDK
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      # Cache Rust build artifacts — keyed on Cargo.lock so it busts on dependency changes
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            rustySDK/target/
+          key: rust-check-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+          restore-keys: rust-check-${{ runner.os }}-
+
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo test --workspace
+
+  ios-build:
+    name: iOS App
+    runs-on: macos-latest
+    needs: rust-checks
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Rust toolchain ---
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+
+      # --- Install XcodeGen ---
+      - run: brew install xcodegen
+
+      # Cache Rust cross-compilation artifacts — keyed on Cargo.lock + targets
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            rustySDK/target/
+          key: rust-ios-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+          restore-keys: rust-ios-${{ runner.os }}-
+
+      # --- Build Rust for iOS + generate Swift bindings + create XCFramework ---
+      - run: cd rustySDK && make ios
+
+      # --- Verify outputs ---
+      - run: test -d iosApp/Frameworks/RustyQR.xcframework
+      - run: test -d iosApp/iosApp.xcodeproj
+
+      # --- Gradle caching ---
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/
+            ~/.gradle/wrapper/
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      # --- Build iOS app for simulator (skip Kotlin framework via OVERRIDE flag) ---
+      - run: |
+          xcodebuild build \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES
+
+      # --- SwiftLint ---
+      - run: ./gradlew :composeApp:swiftlint

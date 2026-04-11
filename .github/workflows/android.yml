@@ -1,0 +1,113 @@
+name: Android Build
+
+on:
+  workflow_dispatch:
+    
+
+env:
+  CARGO_TERM_COLOR: always
+  NDK_VERSION: "30.0.14904198"
+
+jobs:
+  rust-checks:
+    name: Rust tests & lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: rustySDK
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      # Cache Rust build artifacts — keyed on Cargo.lock so it busts on dependency changes
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            rustySDK/target/
+          key: rust-check-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+          restore-keys: rust-check-${{ runner.os }}-
+
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace -- -D warnings
+      - run: cargo test --workspace
+
+  android-build:
+    name: Android APK
+    runs-on: ubuntu-latest
+    needs: rust-checks
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Rust toolchain ---
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+
+      # Cache cargo-ndk binary and Rust build artifacts separately
+      # cargo-ndk changes rarely — key on its version
+      - uses: actions/cache@v4
+        id: cache-cargo-ndk
+        with:
+          path: ~/.cargo/bin/cargo-ndk
+          key: cargo-ndk-${{ runner.os }}-4.1.2
+
+      - if: steps.cache-cargo-ndk.outputs.cache-hit != 'true'
+        run: cargo install cargo-ndk --version 4.1.2
+
+      # Cache Rust cross-compilation artifacts — keyed on Cargo.lock + targets
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            rustySDK/target/
+          key: rust-android-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+          restore-keys: rust-android-${{ runner.os }}-
+
+      # --- Android SDK + NDK ---
+      - uses: android-actions/setup-android@v3
+
+      - uses: actions/cache@v4
+        id: cache-ndk
+        with:
+          path: /usr/local/lib/android/sdk/ndk/${{ env.NDK_VERSION }}
+          key: ndk-${{ runner.os }}-${{ env.NDK_VERSION }}
+
+      - if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: sdkmanager "ndk;${{ env.NDK_VERSION }}"
+
+      - run: echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+
+      # --- Build Rust for Android + generate Kotlin bindings ---
+      - run: ./gradlew :composeApp:buildRustAndroid
+
+      # --- Gradle caching ---
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/
+            ~/.gradle/wrapper/
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      # --- Build Android app ---
+      - run: ./gradlew :composeApp:assembleDebug
+
+      # --- Kotlin/Swift lint ---
+      - run: ./gradlew :composeApp:ktlintCheck :composeApp:detekt
+
+      # --- Upload APK as artifact ---
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: app-debug
+          path: composeApp/build/outputs/apk/debug/composeApp-debug.apk
+          retention-days: 7

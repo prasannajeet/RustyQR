@@ -10,12 +10,15 @@ android:
 	./scripts/build_android.sh
 
 ios:
-	@echo "iOS build not yet implemented (Phase 6)"
+	./scripts/build_ios.sh
 
 clean:
 	cargo clean
 	rm -rf ../composeApp/src/androidMain/jniLibs
 	rm -rf ../composeApp/src/androidMain/kotlin/generated
+	rm -rf ../iosApp/Frameworks/
+	rm -rf ../iosApp/generated/
+	rm -rf ../iosApp/iosApp.xcodeproj/
 	@echo "Cleaned Rust build artifacts and generated bindings"
 
-all: test android
+all: test android ios
