@@ -581,9 +581,9 @@ impl From<FfiQrConfig> for rusty_qr_core::QrConfig { ... }
 classDiagram
     direction LR
 
-    namespace core ["rusty-qr-core"] {
+    namespace core {
         class QrErrorCorrection {
-            <<enum>>
+            &lt;&lt;enum&gt;&gt;
             Low
             Medium
             Quartile
@@ -592,28 +592,28 @@ classDiagram
         }
 
         class QrConfig {
-            <<struct>>
-            +size: u32
-            +error_correction: QrErrorCorrection
+            &lt;&lt;struct&gt;&gt;
+            +size u32
+            +error_correction QrErrorCorrection
         }
 
         class ScanResult {
-            <<struct>>
-            +content: String
+            &lt;&lt;struct&gt;&gt;
+            +content String
         }
 
         class QrError {
-            <<enum>>
-            InvalidInput‹reason: String›
-            EncodingFailed‹reason: String›
-            DecodingFailed‹reason: String›
-            ImageError‹reason: String›
+            &lt;&lt;enum&gt;&gt;
+            InvalidInput~reason String~
+            EncodingFailed~reason String~
+            DecodingFailed~reason String~
+            ImageError~reason String~
         }
     }
 
-    namespace ffi ["rusty-qr-ffi"] {
+    namespace ffi {
         class FfiQrErrorCorrection {
-            <<uniffi::Enum>>
+            &lt;&lt;uniffi Enum&gt;&gt;
             Low
             Medium
             Quartile
@@ -621,32 +621,32 @@ classDiagram
         }
 
         class FfiQrConfig {
-            <<uniffi::Record>>
-            +size: u32
-            +error_correction: FfiQrErrorCorrection
+            &lt;&lt;uniffi Record&gt;&gt;
+            +size u32
+            +error_correction FfiQrErrorCorrection
         }
 
         class FfiScanResult {
-            <<uniffi::Record>>
-            +content: String
+            &lt;&lt;uniffi Record&gt;&gt;
+            +content String
         }
 
         class FfiQrError {
-            <<uniffi::Error>>
-            InvalidInput‹reason: String›
-            EncodingFailed‹reason: String›
-            DecodingFailed‹reason: String›
-            ImageError‹reason: String›
+            &lt;&lt;uniffi Error&gt;&gt;
+            InvalidInput~reason String~
+            EncodingFailed~reason String~
+            DecodingFailed~reason String~
+            ImageError~reason String~
         }
     }
 
     QrConfig *-- QrErrorCorrection : contains
     FfiQrConfig *-- FfiQrErrorCorrection : contains
 
-    FfiQrErrorCorrection ..> QrErrorCorrection : "From (→ core)"
-    FfiQrConfig ..> QrConfig : "From (→ core)"
-    QrError ..> FfiQrError : "From (→ ffi)"
-    ScanResult ..> FfiScanResult : "From (→ ffi)"
+    FfiQrErrorCorrection ..> QrErrorCorrection : From into core
+    FfiQrConfig ..> QrConfig : From into core
+    QrError ..> FfiQrError : From into ffi
+    ScanResult ..> FfiScanResult : From into ffi
 ```
 
 The `From` conversion direction follows the data flow: inputs (config, error correction) convert
