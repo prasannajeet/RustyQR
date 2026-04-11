@@ -54,5 +54,6 @@ androidApp/release/
 
 # Rust
 rustySDK/target/
-/iosApp/generated
-/composeApp/src/androidMain/kotlin/generated
+/iosApp/generated/
+/composeApp/src/androidMain/kotlin/generated/
+/composeApp/src/androidMain/jniLibs/

@@ -43,7 +43,16 @@
       "Bash(cargo deny:*)",
       "Bash(cargo doc:*)",
       "Skill(update-config)",
-      "Bash(rustfmt:*)"
+      "Bash(rustfmt:*)",
+      "Bash(make clean:*)",
+      "Bash(python3:*)",
+      "Bash(cargo ndk:*)",
+      "Bash(./gradlew :composeApp:compileDebugKotlinAndroid)",
+      "Bash(grep \"jna\" git -C /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR diff HEAD~1 HEAD -- gradle/libs.versions.toml)",
+      "Bash(./gradlew :composeApp:buildRustAndroid)",
+      "Bash(ls -lh /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/androidMain/jniLibs/*/librusty_qr_ffi.so)",
+      "Bash(llvm-objdump -p /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/androidMain/jniLibs/arm64-v8a/librusty_qr_ffi.so)",
+      "Bash(objdump -p /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/androidMain/jniLibs/arm64-v8a/librusty_qr_ffi.so)"
     ]
   }
 }

@@ -86,6 +86,11 @@ android {
 dependencies {
     debugImplementation(libs.compose.uiTooling)
     detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:${libs.versions.detekt.get()}")
+    // artifact { type = "aar" } requires the standard DependencyHandlerScope, which is available here.
+    // Do NOT move this into kotlin { sourceSets { androidMain.dependencies { } } } — the KMP
+    // sourceSets DSL uses KotlinDependencyHandler which lacks the artifact{} closure overload.
+    // Moving it there silently drops the @aar specifier and causes runtime class-not-found errors.
+    "androidMainImplementation"(libs.jna) { artifact { type = "aar" } }
 }
 
 detekt {
@@ -132,6 +137,13 @@ tasks.register<Exec>("installGitHooks") {
         done
         """.trimIndent(),
     )
+}
+
+tasks.register<Exec>("buildRustAndroid") {
+    group = "rust"
+    description = "Cross-compiles Rust FFI for Android and generates Kotlin bindings (runs make android)"
+    workingDir = File(rootDir, "rustySDK")
+    commandLine("make", "android")
 }
 
 tasks.register<Exec>("swiftlint") {
