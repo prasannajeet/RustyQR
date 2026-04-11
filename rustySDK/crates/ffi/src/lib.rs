@@ -1,7 +1,25 @@
-//! FFI bindings for rusty-qr-core via UniFFI.
+//! FFI bindings for `rusty-qr-core` via [UniFFI](https://mozilla.github.io/uniffi-rs/).
 //!
-//! This crate is a thin wrapper — every exported function is a one-liner
+//! This crate is a **thin wrapper** — every exported function is a one-liner
 //! delegating to `rusty_qr_core`. No business logic lives here.
+//!
+//! # Why mirror types?
+//!
+//! The core crate is intentionally free of UniFFI annotations so it can be
+//! used as a plain Rust library. This FFI crate re-declares each public type
+//! with `uniffi::` derives (e.g. `FfiQrConfig`, `FfiQrError`) and provides
+//! `From` conversions in both directions. The UniFFI code generator reads
+//! these derives to produce Kotlin and Swift bindings.
+//!
+//! # Exported functions
+//!
+//! | Function                | Maps to |
+//! |-------------------------|---------|
+//! | `generate_png`          | `rusty_qr_core::encoder::generate_png` |
+//! | `generate_with_config`  | `rusty_qr_core::encoder::generate_with_config` |
+//! | `decode_qr`             | `rusty_qr_core::decoder::decode` |
+//! | `decode_qr_from_raw`    | `rusty_qr_core::decoder::decode_from_raw` |
+//! | `get_library_version`   | `rusty_qr_core::encoder::get_library_version` |
 
 uniffi::setup_scaffolding!();
 
@@ -80,6 +98,11 @@ pub enum FfiQrError {
 
 // ---------------------------------------------------------------------------
 // From / Into conversions between FFI ↔ core types
+//
+// These conversions allow the exported functions to accept FFI wrapper types
+// from foreign callers, convert them to core types for processing, and
+// convert the results back to FFI types for the return trip across the
+// language boundary.
 // ---------------------------------------------------------------------------
 
 impl From<FfiQrErrorCorrection> for rusty_qr_core::QrErrorCorrection {
@@ -104,9 +127,7 @@ impl From<FfiQrConfig> for rusty_qr_core::QrConfig {
 
 impl From<rusty_qr_core::ScanResult> for FfiScanResult {
     fn from(value: rusty_qr_core::ScanResult) -> Self {
-        Self {
-            content: value.content,
-        }
+        Self { content: value.content }
     }
 }
 
@@ -153,11 +174,7 @@ fn decode_qr(image_data: Vec<u8>) -> Result<FfiScanResult, FfiQrError> {
 /// This is the camera-frame path — the caller provides the Y (luma) plane
 /// directly so no PNG round-trip is needed.
 #[uniffi::export]
-fn decode_qr_from_raw(
-    pixels: Vec<u8>,
-    width: u32,
-    height: u32,
-) -> Result<FfiScanResult, FfiQrError> {
+fn decode_qr_from_raw(pixels: Vec<u8>, width: u32, height: u32) -> Result<FfiScanResult, FfiQrError> {
     rusty_qr_core::decoder::decode_from_raw(&pixels, width, height)
         .map(FfiScanResult::from)
         .map_err(FfiQrError::from)
@@ -180,29 +197,17 @@ mod tests {
     #[test]
     fn ffi_error_correction_converts_all_variants() {
         let pairs = [
-            (
-                FfiQrErrorCorrection::Low,
-                rusty_qr_core::QrErrorCorrection::Low,
-            ),
-            (
-                FfiQrErrorCorrection::Medium,
-                rusty_qr_core::QrErrorCorrection::Medium,
-            ),
+            (FfiQrErrorCorrection::Low, rusty_qr_core::QrErrorCorrection::Low),
+            (FfiQrErrorCorrection::Medium, rusty_qr_core::QrErrorCorrection::Medium),
             (
                 FfiQrErrorCorrection::Quartile,
                 rusty_qr_core::QrErrorCorrection::Quartile,
             ),
-            (
-                FfiQrErrorCorrection::High,
-                rusty_qr_core::QrErrorCorrection::High,
-            ),
+            (FfiQrErrorCorrection::High, rusty_qr_core::QrErrorCorrection::High),
         ];
         for (ffi, expected) in pairs {
             let converted: rusty_qr_core::QrErrorCorrection = ffi.into();
-            assert_eq!(
-                converted, expected,
-                "FfiQrErrorCorrection::{ffi:?} must map correctly"
-            );
+            assert_eq!(converted, expected, "FfiQrErrorCorrection::{ffi:?} must map correctly");
         }
     }
 
@@ -214,17 +219,12 @@ mod tests {
         };
         let core_config: rusty_qr_core::QrConfig = ffi_config.into();
         assert_eq!(core_config.size, 256);
-        assert_eq!(
-            core_config.error_correction,
-            rusty_qr_core::QrErrorCorrection::High
-        );
+        assert_eq!(core_config.error_correction, rusty_qr_core::QrErrorCorrection::High);
     }
 
     #[test]
     fn core_scan_result_converts_to_ffi() {
-        let core_result = rusty_qr_core::ScanResult {
-            content: "test".into(),
-        };
+        let core_result = rusty_qr_core::ScanResult { content: "test".into() };
         let ffi_result: FfiScanResult = core_result.into();
         assert_eq!(ffi_result.content, "test");
     }
@@ -297,12 +297,8 @@ mod tests {
     #[test]
     fn generate_png_delegates_to_core() -> Result<(), FfiQrError> {
         let ffi_result = generate_png("hello".into(), 256)?;
-        let core_result =
-            rusty_qr_core::encoder::generate_png("hello", 256).map_err(FfiQrError::from)?;
-        assert_eq!(
-            ffi_result, core_result,
-            "FFI and core must produce identical bytes"
-        );
+        let core_result = rusty_qr_core::encoder::generate_png("hello", 256).map_err(FfiQrError::from)?;
+        assert_eq!(ffi_result, core_result, "FFI and core must produce identical bytes");
         Ok(())
     }
 
@@ -318,19 +314,15 @@ mod tests {
         };
 
         let ffi_result = generate_with_config("hello".into(), ffi_config)?;
-        let core_result = rusty_qr_core::encoder::generate_with_config("hello", core_config)
-            .map_err(FfiQrError::from)?;
-        assert_eq!(
-            ffi_result, core_result,
-            "FFI and core must produce identical bytes"
-        );
+        let core_result =
+            rusty_qr_core::encoder::generate_with_config("hello", core_config).map_err(FfiQrError::from)?;
+        assert_eq!(ffi_result, core_result, "FFI and core must produce identical bytes");
         Ok(())
     }
 
     #[test]
     fn decode_qr_delegates_to_core() -> Result<(), FfiQrError> {
-        let png = rusty_qr_core::encoder::generate_png("delegation test", 256)
-            .map_err(FfiQrError::from)?;
+        let png = rusty_qr_core::encoder::generate_png("delegation test", 256).map_err(FfiQrError::from)?;
         let ffi_result = decode_qr(png)?;
         assert_eq!(ffi_result.content, "delegation test");
         Ok(())
@@ -338,8 +330,7 @@ mod tests {
 
     #[test]
     fn decode_qr_from_raw_delegates_to_core() -> Result<(), FfiQrError> {
-        let png = rusty_qr_core::encoder::generate_png("raw delegation", 256)
-            .map_err(FfiQrError::from)?;
+        let png = rusty_qr_core::encoder::generate_png("raw delegation", 256).map_err(FfiQrError::from)?;
 
         // Convert PNG to raw grayscale pixels via the image crate (dev-dependency).
         let img = image::load_from_memory(&png).expect("PNG must be loadable");

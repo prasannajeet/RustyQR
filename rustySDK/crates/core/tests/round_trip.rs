@@ -4,9 +4,7 @@
 //! These tests treat `rusty_qr_core` as an external consumer (no access to
 //! private internals), validating the full public API surface.
 
-use rusty_qr_core::{
-    decoder, encoder, process, QrCommand, QrConfig, QrErrorCorrection, QrResponse,
-};
+use rusty_qr_core::{decoder, encoder, process, QrCommand, QrConfig, QrErrorCorrection, QrResponse};
 
 #[test]
 fn round_trip_preserves_content() {
@@ -63,19 +61,14 @@ fn round_trip_through_process_dispatcher() {
 #[test]
 fn round_trip_long_content() {
     // PRD 6.6: encode and decode a 2000+ character string.
-    let content: String = (0..2100)
-        .map(|i| char::from(b'A' + (i % 26) as u8))
-        .collect();
+    let content: String = (0..2100).map(|i| char::from(b'A' + (i % 26) as u8)).collect();
     let config = QrConfig {
         size: 1024,
         error_correction: QrErrorCorrection::Low,
     };
     let png = encoder::generate_with_config(&content, config).unwrap();
     let result = decoder::decode(&png).unwrap();
-    assert_eq!(
-        result.content, content,
-        "long content must survive round-trip"
-    );
+    assert_eq!(result.content, content, "long content must survive round-trip");
 }
 
 #[test]

@@ -4,6 +4,15 @@
 //! image containing a QR code, [`generate_with_config`] for configurable
 //! generation, and [`get_library_version`] for querying the crate version at
 //! runtime.
+//!
+//! # Pipeline
+//!
+//! 1. **Validate** inputs (content non-empty, size in range).
+//! 2. **Encode** content into a QR matrix via the `qrcode` crate.
+//! 3. **Render** the matrix to a grayscale `image::GrayImage`.
+//! 4. **Resize** to the caller-requested dimensions (nearest-neighbour to keep
+//!    cells sharp).
+//! 5. **Serialise** to PNG bytes via `image::codecs::png::PngEncoder`.
 
 use image::codecs::png::PngEncoder;
 use image::{imageops::FilterType, ExtendedColorType, ImageEncoder};
@@ -56,9 +65,8 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 pub fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, QrError> {
     validate_generate_inputs(content, size)?;
 
-    let code = qrcode::QrCode::new(content.as_bytes()).map_err(|e| QrError::EncodingFailed {
-        reason: e.to_string(),
-    })?;
+    let code =
+        qrcode::QrCode::new(content.as_bytes()).map_err(|e| QrError::EncodingFailed { reason: e.to_string() })?;
 
     render_qr_to_png(&code, size)
 }
@@ -85,13 +93,8 @@ pub fn generate_with_config(content: &str, config: QrConfig) -> Result<Vec<u8>, 
     validate_generate_inputs(content, config.size)?;
 
     // --- QR encoding with specified error correction level ---
-    let code = qrcode::QrCode::with_error_correction_level(
-        content.as_bytes(),
-        config.error_correction.to_ec_level(),
-    )
-    .map_err(|e| QrError::EncodingFailed {
-        reason: e.to_string(),
-    })?;
+    let code = qrcode::QrCode::with_error_correction_level(content.as_bytes(), config.error_correction.to_ec_level())
+        .map_err(|e| QrError::EncodingFailed { reason: e.to_string() })?;
 
     render_qr_to_png(&code, config.size)
 }
@@ -123,9 +126,7 @@ fn render_qr_to_png(code: &qrcode::QrCode, size: u32) -> Result<Vec<u8>, QrError
             resized.height(),
             ExtendedColorType::L8,
         )
-        .map_err(|e| QrError::ImageError {
-            reason: e.to_string(),
-        })?;
+        .map_err(|e| QrError::ImageError { reason: e.to_string() })?;
 
     Ok(buf)
 }
@@ -142,32 +143,20 @@ mod tests {
     #[test]
     fn encode_simple_text_produces_valid_png() {
         let result = generate_png("hello", 256).unwrap();
-        assert_eq!(
-            &result[..8],
-            PNG_MAGIC,
-            "output must start with PNG magic bytes"
-        );
+        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
         assert!(result.len() > 100, "PNG should have meaningful content");
     }
 
     #[test]
     fn encode_url_produces_valid_png() {
         let result = generate_png("https://example.com?foo=bar", 256).unwrap();
-        assert_eq!(
-            &result[..8],
-            PNG_MAGIC,
-            "output must start with PNG magic bytes"
-        );
+        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
     }
 
     #[test]
     fn encode_unicode_content_succeeds() {
         let result = generate_png("Hello 世界 🌍", 256).unwrap();
-        assert_eq!(
-            &result[..8],
-            PNG_MAGIC,
-            "output must start with PNG magic bytes"
-        );
+        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
     }
 
     #[test]
@@ -202,21 +191,13 @@ mod tests {
     #[test]
     fn encode_size_one_succeeds() {
         let result = generate_png("hello", 1).unwrap();
-        assert_eq!(
-            &result[..8],
-            PNG_MAGIC,
-            "output must start with PNG magic bytes"
-        );
+        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
     }
 
     #[test]
     fn encode_size_max_succeeds() {
         let result = generate_png("hello", 4096).unwrap();
-        assert_eq!(
-            &result[..8],
-            PNG_MAGIC,
-            "output must start with PNG magic bytes"
-        );
+        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
     }
 
     #[test]
@@ -231,11 +212,7 @@ mod tests {
             error_correction: QrErrorCorrection::Medium,
         };
         let result = generate_with_config("hello", config).unwrap();
-        assert_eq!(
-            &result[..8],
-            PNG_MAGIC,
-            "output must start with PNG magic bytes"
-        );
+        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
         assert!(result.len() > 100, "PNG should have meaningful content");
     }
 
@@ -246,15 +223,8 @@ mod tests {
             error_correction: QrErrorCorrection::High,
         };
         let result_high = generate_with_config("hello", config_high).unwrap();
-        assert_eq!(
-            &result_high[..8],
-            PNG_MAGIC,
-            "output must start with PNG magic bytes"
-        );
-        assert!(
-            result_high.len() > 100,
-            "High EC PNG should have meaningful content"
-        );
+        assert_eq!(&result_high[..8], PNG_MAGIC, "output must start with PNG magic bytes");
+        assert!(result_high.len() > 100, "High EC PNG should have meaningful content");
     }
 
     #[test]
@@ -291,11 +261,7 @@ mod tests {
                 error_correction: level,
             };
             let result = generate_with_config("hello", config).unwrap();
-            assert_eq!(
-                &result[..8],
-                PNG_MAGIC,
-                "EC level {level:?} must produce valid PNG"
-            );
+            assert_eq!(&result[..8], PNG_MAGIC, "EC level {level:?} must produce valid PNG");
         }
     }
 

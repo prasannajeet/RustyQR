@@ -40,7 +40,10 @@
       "Read(//private/tmp/rusty-qr-kotlin-bindings/**)",
       "Read(//private/tmp/rusty-qr-swift-bindings/**)",
       "Bash(cargo bench:*)",
-      "Bash(cargo deny:*)"
+      "Bash(cargo deny:*)",
+      "Bash(cargo doc:*)",
+      "Skill(update-config)",
+      "Bash(rustfmt:*)"
     ]
   }
 }

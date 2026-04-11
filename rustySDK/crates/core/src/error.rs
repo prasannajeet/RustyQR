@@ -1,6 +1,9 @@
 //! Error types for the `rusty-qr-core` crate.
 //!
 //! All fallible operations in this crate return [`QrError`].
+//! The variants use named fields (not tuple variants) to stay compatible
+//! with UniFFI, which maps named fields to foreign-language record types
+//! in the FFI crate.
 
 /// Errors that can occur during QR code operations.
 ///

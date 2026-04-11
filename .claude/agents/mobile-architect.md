@@ -47,7 +47,7 @@ You do NOT write implementation code. You have two core responsibilities:
 ## Project Context
 
 - **Package**: `com.p2.apps.rustyqr`
-- **Rust workspace**: `rustSDK/` — `crates/core` (logic) + `crates/ffi` (UniFFI wrappers)
+- **Rust workspace**: `rustySDK/` — `crates/core` (logic) + `crates/ffi` (UniFFI wrappers)
 - **KMM app**: `composeApp/` — `commonMain`, `androidMain`, `iosMain` source sets
 - **iOS app**: `iosApp/` — Swift entry point consuming KMM framework + Rust XCFramework
 - **Plan**: `docs/rusty-qr-implementation-plan.md`

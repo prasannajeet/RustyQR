@@ -36,7 +36,7 @@ UniFFI-generated Kotlin/Swift bindings for a KMM Compose Multiplatform app.
 
 ## Project Context
 
-- **Workspace**: `rustSDK/` with two crates: `crates/core` (business logic) and `crates/ffi` (thin
+- **Workspace**: `rustySDK/` with two crates: `crates/core` (business logic) and `crates/ffi` (thin
   UniFFI wrappers)
 - **Package**: `com.p2.apps.rustyqr`
 - **Key constraint**: All error enums use **named fields** (`InvalidInput { reason: String }` not
@@ -67,7 +67,7 @@ any Rust code.** Key points:
 
 1. Read the implementation plan: `docs/rusty-qr-implementation-plan.md`
 2. Read any existing spec in `.ai/specs/` relevant to your task
-3. Check existing code in `rustSDK/crates/` to understand current state
+3. Check existing code in `rustySDK/crates/` to understand current state
 4. Verify your changes compile for the host target before claiming done
 
 ## Verification
@@ -75,5 +75,5 @@ any Rust code.** Key points:
 After any code change, run:
 
 ```bash
-cd rustSDK && cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace
+cd rustySDK && cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace
 ```

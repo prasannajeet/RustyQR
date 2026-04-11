@@ -18,31 +18,31 @@ rustc --version | grep -E '1\.(7[0-9]|[89][0-9]|[0-9]{3})'
 cargo ndk --version
 rustup target list --installed | grep -c -E 'android|ios' | grep -q 5
 echo $ANDROID_NDK_HOME | grep -q 'ndk'
-test -f rustSDK/.cargo/config.toml
-cd rustSDK && cargo check --workspace
-grep -q 'rustSDK/target' .gitignore
+test -f rustySDK/.cargo/config.toml
+cd rustySDK && cargo check --workspace
+grep -q 'rustySDK/target' .gitignore
 ```
 
 ### Phase 1: Rust Core — Encoder
 
 ```bash
-cd rustSDK && cargo test -p rusty-qr-core -- encoder
-cd rustSDK && cargo clippy --workspace -- -D warnings
+cd rustySDK && cargo test -p rusty-qr-core -- encoder
+cd rustySDK && cargo clippy --workspace -- -D warnings
 ```
 
 ### Phase 2: Rust Core — Decoder + Round-Trip
 
 ```bash
-cd rustSDK && cargo test -p rusty-qr-core
-cd rustSDK && cargo test -p rusty-qr-core -- round_trip
+cd rustySDK && cargo test -p rusty-qr-core
+cd rustySDK && cargo test -p rusty-qr-core -- round_trip
 ```
 
 ### Phase 3: FFI Crate + UniFFI Bindings
 
 ```bash
-cd rustSDK && cargo build -p rusty-qr-ffi
-cd rustSDK && cargo run -p uniffi-bindgen generate --library target/debug/librusty_qr_ffi.dylib --language kotlin --out-dir /tmp/uniffi-check-kt
-cd rustSDK && cargo run -p uniffi-bindgen generate --library target/debug/librusty_qr_ffi.dylib --language swift --out-dir /tmp/uniffi-check-swift
+cd rustySDK && cargo build -p rusty-qr-ffi
+cd rustySDK && cargo run -p uniffi-bindgen generate --library target/debug/librusty_qr_ffi.dylib --language kotlin --out-dir /tmp/uniffi-check-kt
+cd rustySDK && cargo run -p uniffi-bindgen generate --library target/debug/librusty_qr_ffi.dylib --language swift --out-dir /tmp/uniffi-check-swift
 test -f /tmp/uniffi-check-kt/rusty_qr_ffi.kt
 test -f /tmp/uniffi-check-swift/rusty_qr_ffi.swift
 ```
@@ -80,12 +80,12 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -sdk iphonesimulator 
 ### Phase 8: Polish & Documentation
 
 ```bash
-cd rustSDK && cargo test --workspace
-cd rustSDK && cargo clippy --workspace -- -D warnings
-make -C rustSDK android
+cd rustySDK && cargo test --workspace
+cd rustySDK && cargo clippy --workspace -- -D warnings
+make -C rustySDK android
 ./gradlew :composeApp:assembleDebug
-make -C rustSDK ios
-ls -la rustSDK/target/aarch64-linux-android/release/librusty_qr_ffi.so | awk '{print $5}' # should be < 3MB
+make -C rustySDK ios
+ls -la rustySDK/target/aarch64-linux-android/release/librusty_qr_ffi.so | awk '{print $5}' # should be < 3MB
 ```
 
 ## Instructions

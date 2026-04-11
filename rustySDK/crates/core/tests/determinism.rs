@@ -8,10 +8,7 @@ use rusty_qr_core::{encoder, QrConfig, QrErrorCorrection};
 fn generate_is_deterministic() {
     let a = encoder::generate_png("test", 256).unwrap();
     let b = encoder::generate_png("test", 256).unwrap();
-    assert_eq!(
-        a, b,
-        "generate_png must be deterministic for identical inputs"
-    );
+    assert_eq!(a, b, "generate_png must be deterministic for identical inputs");
 }
 
 #[test]
@@ -26,8 +23,5 @@ fn generate_with_config_is_deterministic() {
     };
     let a = encoder::generate_with_config("determinism check", config_a).unwrap();
     let b = encoder::generate_with_config("determinism check", config_b).unwrap();
-    assert_eq!(
-        a, b,
-        "generate_with_config must be deterministic for identical inputs"
-    );
+    assert_eq!(a, b, "generate_with_config must be deterministic for identical inputs");
 }

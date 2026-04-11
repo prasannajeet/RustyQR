@@ -4,6 +4,9 @@
 //! - [`decode`] — loads PNG or JPEG image bytes and scans for a QR code.
 //! - [`decode_from_raw`] — accepts a raw grayscale pixel buffer directly,
 //!   which is the low-overhead path for camera frames on mobile.
+//!
+//! Both paths converge on the private `decode_grayscale` helper, which uses
+//! the `rqrr` crate's grid detection and decoding pipeline.
 
 use crate::error::QrError;
 use crate::types::ScanResult;
@@ -30,9 +33,7 @@ pub fn decode(image_data: &[u8]) -> Result<ScanResult, QrError> {
         });
     }
 
-    let img = image::load_from_memory(image_data).map_err(|e| QrError::ImageError {
-        reason: e.to_string(),
-    })?;
+    let img = image::load_from_memory(image_data).map_err(|e| QrError::ImageError { reason: e.to_string() })?;
 
     let luma = img.to_luma8();
     decode_grayscale(luma.width(), luma.height(), luma.as_raw())
@@ -98,10 +99,9 @@ pub fn decode_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<ScanRes
 /// camera frame (~307 K pixels) the overhead is sub-millisecond on modern
 /// hardware, well within the PRD's 20 ms target for the camera decode path.
 fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult, QrError> {
-    let mut prepared =
-        rqrr::PreparedImage::prepare_from_greyscale(width as usize, height as usize, |x, y| {
-            pixels[y * width as usize + x]
-        });
+    let mut prepared = rqrr::PreparedImage::prepare_from_greyscale(width as usize, height as usize, |x, y| {
+        pixels[y * width as usize + x]
+    });
 
     let grids = prepared.detect_grids();
     if grids.is_empty() {
@@ -110,9 +110,9 @@ fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult
         });
     }
 
-    let (_, content) = grids[0].decode().map_err(|e| QrError::DecodingFailed {
-        reason: e.to_string(),
-    })?;
+    let (_, content) = grids[0]
+        .decode()
+        .map_err(|e| QrError::DecodingFailed { reason: e.to_string() })?;
 
     Ok(ScanResult { content })
 }

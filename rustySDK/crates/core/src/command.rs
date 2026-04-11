@@ -107,11 +107,7 @@ pub fn process(command: QrCommand) -> Result<QrResponse, QrError> {
             let result = decoder::decode(&image_data)?;
             Ok(QrResponse::Decoded { result })
         }
-        QrCommand::DecodeFromRaw {
-            pixels,
-            width,
-            height,
-        } => {
+        QrCommand::DecodeFromRaw { pixels, width, height } => {
             let result = decoder::decode_from_raw(&pixels, width, height)?;
             Ok(QrResponse::Decoded { result })
         }

@@ -18,8 +18,5 @@ fn decode_jpeg_encoded_qr() {
 
     // Decode the JPEG bytes through the public API.
     let result = decoder::decode(&jpeg_buf).unwrap();
-    assert_eq!(
-        result.content, "jpeg test",
-        "JPEG decode must preserve QR content"
-    );
+    assert_eq!(result.content, "jpeg test", "JPEG decode must preserve QR content");
 }

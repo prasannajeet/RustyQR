@@ -53,4 +53,6 @@ androidApp/release/
 /.ai/
 
 # Rust
-rustSDK/target/
+rustySDK/target/
+/iosApp/generated
+/composeApp/src/androidMain/kotlin/generated

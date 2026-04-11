@@ -6,7 +6,7 @@ user-invocable: false
 
 # Check FFI Compatibility
 
-Validate that types in `rustSDK/crates/core/` are compatible with UniFFI proc-macro bindings before
+Validate that types in `rustySDK/crates/core/` are compatible with UniFFI proc-macro bindings before
 the FFI crate is built.
 
 ## When to Invoke
@@ -20,7 +20,7 @@ the FFI crate is built.
 
 ### 1. Error Enum Validation
 
-Read `rustSDK/crates/core/src/error.rs` and verify:
+Read `rustySDK/crates/core/src/error.rs` and verify:
 
 | Rule                     | Valid                                | Invalid                            |
 |--------------------------|--------------------------------------|------------------------------------|
@@ -35,7 +35,7 @@ be compatible NOW.
 
 ### 2. Record (Struct) Validation
 
-Read `rustSDK/crates/core/src/types.rs` and verify:
+Read `rustySDK/crates/core/src/types.rs` and verify:
 
 | Rule                 | Valid                                        | Invalid                              |
 |----------------------|----------------------------------------------|--------------------------------------|

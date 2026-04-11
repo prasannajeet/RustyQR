@@ -8,22 +8,37 @@ fi
 
 echo "Running pre-commit quality checks..."
 
-# Check if any lintable files are staged
+# Check which file types are staged
 STAGED_KT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.kts\?$' || true)
 STAGED_SWIFT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.swift$' || true)
+STAGED_RS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.rs$' || true)
 
-if [ -z "$STAGED_KT_FILES" ] && [ -z "$STAGED_SWIFT_FILES" ]; then
-    echo "No staged Kotlin or Swift files, skipping lint checks."
+if [ -z "$STAGED_KT_FILES" ] && [ -z "$STAGED_SWIFT_FILES" ] && [ -z "$STAGED_RS_FILES" ]; then
+    echo "No staged Kotlin, Swift, or Rust files, skipping lint checks."
     exit 0
 fi
 
-./gradlew :composeApp:lintAll --no-daemon -q 2>&1
-if [ $? -ne 0 ]; then
-    echo ""
-    echo "Lint checks failed. Fix issues before committing."
-    echo "  - ktlint auto-fix: ./gradlew :composeApp:ktlintFormat"
-    echo "  - detekt report:   composeApp/build/reports/detekt/"
-    exit 1
+# Kotlin + Swift lint
+if [ -n "$STAGED_KT_FILES" ] || [ -n "$STAGED_SWIFT_FILES" ]; then
+    ./gradlew :composeApp:lintAll --no-daemon -q 2>&1
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "Kotlin/Swift lint failed. Fix issues before committing."
+        echo "  - ktlint auto-fix: ./gradlew :composeApp:ktlintFormat"
+        echo "  - detekt report:   composeApp/build/reports/detekt/"
+        exit 1
+    fi
+fi
+
+# Rust formatting check
+if [ -n "$STAGED_RS_FILES" ]; then
+    (cd rustySDK && cargo fmt --check 2>&1)
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "Rust formatting check failed. Fix issues before committing."
+        echo "  - auto-fix: cd rustySDK && cargo fmt"
+        exit 1
+    fi
 fi
 
 echo "All pre-commit checks passed!"

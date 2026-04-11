@@ -94,7 +94,7 @@ side effects. This makes the library trivially thread-safe and easy to reason ab
 ## Project Structure
 
 ```
-rustSDK/
+rustySDK/
 ├── Cargo.toml                 # Workspace definition (lists all crates)
 ├── Cargo.lock                 # Exact dependency versions (committed to git)
 ├── deny.toml                  # Supply chain audit config
@@ -130,28 +130,142 @@ rustSDK/
 │           └── main.rs        # Calls uniffi::uniffi_bindgen_main()
 ```
 
-### Why Two Crates?
+### Why Three Crates?
 
-The separation between `core` and `ffi` is enforced by the Rust compiler:
+The workspace contains three crates with a strict, layered dependency chain:
 
 ```mermaid
-graph LR
-    A[rusty-qr-core] -->|" no UniFFI dependency "| B[Pure Rust logic]
-    C[rusty-qr-ffi] -->|" depends on "| A
-    C -->|" depends on "| D[UniFFI]
-    C -->|" generates "| E[Kotlin bindings]
-    C -->|" generates "| F[Swift bindings]
+graph TD
+    subgraph "uniffi-bindgen (binary)"
+        UB[main.rs<br/>CLI entry point]
+    end
+
+    subgraph "rusty-qr-ffi (library: cdylib + staticlib)"
+        FFI[lib.rs<br/>Thin wrappers + UniFFI annotations]
+    end
+
+    subgraph "rusty-qr-core (library)"
+        CORE[lib.rs<br/>Pure Rust business logic]
+        ENC[encoder.rs]
+        DEC[decoder.rs]
+        TYP[types.rs]
+        ERR[error.rs]
+        CMD[command.rs]
+    end
+
+    subgraph "External Crates"
+        UNIFFI[uniffi]
+        QRCODE[qrcode]
+        RQRR[rqrr]
+        IMG[image]
+        THISERR[thiserror]
+    end
+
+    FFI -->|"path dep: rusty-qr-core"| CORE
+    FFI --> UNIFFI
+    FFI --> THISERR
+    UB --> UNIFFI
+
+    CORE --> QRCODE
+    CORE --> RQRR
+    CORE --> IMG
+    CORE --> THISERR
+
+    CORE --> ENC
+    CORE --> DEC
+    CORE --> TYP
+    CORE --> ERR
+    CORE --> CMD
+
+    style UB fill:#f9f,stroke:#333
+    style FFI fill:#bbf,stroke:#333
+    style CORE fill:#bfb,stroke:#333
 ```
 
-- **`core`** contains all encoding, decoding, validation, and error handling. It has **zero
-  knowledge of FFI** — you can compile and test it on any platform (Linux, macOS, Windows, even
-  WASM).
-- **`ffi`** contains only UniFFI annotations and one-liner functions that delegate to `core`. If
-  UniFFI releases a breaking change, only `ffi` needs updating.
+### How the Crates Talk to Each Other
+
+The three crates form a pipeline — each has a single responsibility and a clear communication path:
+
+**1. `core` (lib.rs) — the engine, knows nothing about FFI**
+
+`core` exposes public modules via `pub mod` and re-exports key types at the crate root. Any Rust
+code that lists `rusty-qr-core` as a dependency can call it directly:
+
+```rust
+// core/src/lib.rs
+pub mod encoder;
+pub mod decoder;
+pub mod types;
+pub mod error;
+
+pub use error::QrError;
+pub use types::{QrConfig, QrErrorCorrection, ScanResult};
+```
+
+`core` depends only on pure Rust crates (`qrcode`, `rqrr`, `image`, `thiserror`). It has **zero
+knowledge of UniFFI, Kotlin, or Swift** — you can compile and test it on any platform (Linux, macOS,
+Windows, even WASM).
+
+**2. `ffi` (lib.rs) — the translator, bridges core to mobile platforms**
+
+`ffi/Cargo.toml` declares a **path dependency** on core:
+
+```toml
+[dependencies]
+rusty-qr-core = { path = "../core" }
+```
+
+Cargo resolves this at build time within the workspace. `ffi/src/lib.rs` then does three things:
+
+1. **Mirrors core types** with UniFFI annotations (`FfiQrConfig`, `FfiQrError`, etc.)
+2. **Implements `From` conversions** in both directions (FFI types ↔ core types)
+3. **Exports thin wrapper functions** — each is a one-liner delegating to core:
+
+```rust
+#[uniffi::export]
+fn generate_png(content: String, size: u32) -> Result<Vec<u8>, FfiQrError> {
+    rusty_qr_core::encoder::generate_png(&content, size).map_err(FfiQrError::from)
+}
+```
+
+The call chain: Kotlin/Swift → generated binding → `ffi::generate_png` → `rusty_qr_core::encoder::generate_png`.
+Data flows in as FFI wrapper types, gets converted to core types via `From`/`.into()`, processed by
+core, then results are converted back to FFI types for the return trip.
+
+**3. `uniffi-bindgen` (main.rs) — the code generator, runs at build time only**
+
+This crate is a **binary** (not a library). It does NOT depend on `ffi` or `core` at compile time.
+Instead, at build time you:
+
+1. Compile `ffi` → produces `librusty_qr_ffi.dylib` (with UniFFI metadata baked in by proc macros)
+2. Run `uniffi-bindgen` pointed at that `.dylib` → reads the embedded metadata → emits `.kt` and
+   `.swift` source files
+
+```bash
+cargo run -p uniffi-bindgen generate \
+    --library target/release/librusty_qr_ffi.dylib \
+    --language kotlin --language swift \
+    --out-dir generated/
+```
+
+### The Full Pipeline
+
+```
+core (pure Rust logic)
+  ↓  path dependency
+ffi (adds UniFFI annotations, mirrors types, delegates calls)
+  ↓  cargo build produces librusty_qr_ffi.dylib/.a
+uniffi-bindgen (reads .dylib metadata → emits .kt + .swift files)
+  ↓
+Kotlin/Swift call generated bindings → cross FFI boundary → ffi wrapper → core
+```
+
+### Why This Separation?
 
 This is the **Open/Closed Principle** applied at the crate level: `core` is closed for modification
 but open for extension. Want to add Python bindings? Add a new crate that depends on `core` — `core`
-never changes.
+never changes. If UniFFI releases a breaking change, only `ffi` needs updating. The engine stays
+untouched.
 
 ---
 
@@ -286,7 +400,7 @@ A **workspace** is a collection of related crates (packages) that share a single
 build output directory. Our workspace has three members:
 
 ```toml
-# rustSDK/Cargo.toml
+# rustySDK/Cargo.toml
 [workspace]
 members = ["crates/core", "crates/ffi", "crates/uniffi-bindgen"]
 resolver = "2"
@@ -460,6 +574,83 @@ pub struct FfiQrConfig { pub size: u32, pub error_correction: FfiQrErrorCorrecti
 // Conversion between them
 impl From<FfiQrConfig> for rusty_qr_core::QrConfig { ... }
 ```
+
+### Class Relationship Diagram
+
+```mermaid
+classDiagram
+    direction LR
+
+    namespace core {
+        class QrErrorCorrection {
+            <<enum>>
+            Low
+            Medium
+            Quartile
+            High
+            +to_ec_level() EcLevel
+        }
+
+        class QrConfig {
+            <<struct>>
+            +size u32
+            +error_correction QrErrorCorrection
+        }
+
+        class ScanResult {
+            <<struct>>
+            +content String
+        }
+
+        class QrError {
+            <<enum>>
+            InvalidInput~reason String~
+            EncodingFailed~reason String~
+            DecodingFailed~reason String~
+            ImageError~reason String~
+        }
+    }
+
+    namespace ffi {
+        class FfiQrErrorCorrection {
+            <<uniffi Enum>>
+            Low
+            Medium
+            Quartile
+            High
+        }
+
+        class FfiQrConfig {
+            <<uniffi Record>>
+            +size u32
+            +error_correction FfiQrErrorCorrection
+        }
+
+        class FfiScanResult {
+            <<uniffi Record>>
+            +content String
+        }
+
+        class FfiQrError {
+            <<uniffi Error>>
+            InvalidInput~reason String~
+            EncodingFailed~reason String~
+            DecodingFailed~reason String~
+            ImageError~reason String~
+        }
+    }
+
+    QrConfig *-- QrErrorCorrection : contains
+    FfiQrConfig *-- FfiQrErrorCorrection : contains
+
+    FfiQrErrorCorrection ..> QrErrorCorrection : From into core
+    FfiQrConfig ..> QrConfig : From into core
+    QrError ..> FfiQrError : From into ffi
+    ScanResult ..> FfiScanResult : From into ffi
+```
+
+The `From` conversion direction follows the data flow: inputs (config, error correction) convert
+**from FFI → core**, while outputs (scan results, errors) convert **from core → FFI**.
 
 ### One-Liner Delegation
 

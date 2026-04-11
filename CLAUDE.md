@@ -31,6 +31,10 @@ skeleton is complete; the Rust core library is not yet implemented. See
 
 # Install git hooks (also runs automatically on preBuild/clean)
 ./gradlew :composeApp:installGitHooks
+
+# Rust formatting (run from rustySDK/)
+cd rustySDK && cargo fmt          # auto-fix
+cd rustySDK && cargo fmt --check  # check only (used in pre-commit)
 ```
 
 ## Architecture
@@ -63,11 +67,15 @@ Package: `com.p2.apps.rustyqr`
 - **detekt**: Max line length 120. `MagicNumber` and `WildcardImport` are disabled. Function naming
   allows uppercase start for Compose.
 - **SwiftLint**: Runs on `iosApp/` only. `trailing_whitespace` and `line_length` disabled.
-- All three linters run as a pre-commit hook via `lintAll`.
+- **rustfmt**: Configured via `rustySDK/rustfmt.toml`. Edition 2024, max line width 120 (matches
+  detekt). `use_field_init_shorthand` and `use_try_shorthand` enabled.
+- All three Kotlin/Swift linters run as a pre-commit hook via `lintAll`. Rust formatting runs as a
+  separate `cargo fmt --check` step in the same hook.
 
 ## Git Hooks
 
-- **pre-commit**: Runs `lintAll` on staged `.kt`/`.kts`/`.swift` files.
+- **pre-commit**: Runs `lintAll` on staged `.kt`/`.kts`/`.swift` files; runs `cargo fmt --check`
+  on staged `.rs` files. Skips if no relevant files are staged.
 - **commit-msg**: Enforces conventional commits format (`type(scope): message`). Valid types: feat,
   fix, docs, style, refactor, perf, test, build, ci, chore, revert.
 

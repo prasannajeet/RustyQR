@@ -134,7 +134,7 @@ Rusty-QR/
 │
 ├── iosApp/                   # Swift entry point (hosts Compose UI via UIViewController)
 │
-├── rustSDK/                  # Rust workspace (all QR logic lives here)
+├── rustySDK/                  # Rust workspace (all QR logic lives here)
 │   ├── crates/core/          # Business logic — encoder, decoder, types, errors
 │   ├── crates/ffi/           # UniFFI wrapper — thin one-liner delegations
 │   └── crates/uniffi-bindgen/ # CLI tool for generating Kotlin/Swift bindings
@@ -168,7 +168,7 @@ UniFFI wrappers, zero business logic). This separation means the core logic comp
 any platform — no mobile toolchain required.
 
 For a deep dive into the Rust implementation, Rust language concepts, Cargo commands, code flow
-diagrams, and architecture details, see the **[Rust SDK README](rustSDK/README.md)**.
+diagrams, and architecture details, see the **[Rust SDK README](rustySDK/README.md)**.
 
 ---
 
@@ -183,8 +183,17 @@ diagrams, and architecture details, see the **[Rust SDK README](rustSDK/README.m
 ### Android
 
 ```bash
-# Build the Rust native libraries and generate Kotlin bindings
-cd rustSDK && make android
+# Build the Rust native libraries for Android targets
+cd rustySDK && cargo build -p rusty-qr-ffi --release --target aarch64-linux-android
+cd rustySDK && cargo build -p rusty-qr-ffi --release --target x86_64-linux-android
+
+# Generate Kotlin bindings
+cd rustySDK && cargo run -p uniffi-bindgen generate \
+  --library target/aarch64-linux-android/release/librusty_qr_ffi.so \
+  --language kotlin --out-dir ../composeApp/src/androidMain/kotlin/generated
+
+# Format the generated Kotlin file (UniFFI skips auto-format if ktlint CLI is not installed)
+./gradlew :composeApp:ktlintFormat
 
 # Build and install the Android app
 ./gradlew :composeApp:assembleDebug
@@ -193,8 +202,13 @@ cd rustSDK && make android
 ### iOS
 
 ```bash
-# Build the Rust native libraries and generate Swift bindings
-cd rustSDK && make ios
+# Build the Rust native library for iOS (static archive)
+cd rustySDK && cargo build -p rusty-qr-ffi --release --target aarch64-apple-ios
+
+# Generate Swift bindings
+cd rustySDK && cargo run -p uniffi-bindgen generate \
+  --library target/aarch64-apple-ios/release/librusty_qr_ffi.a \
+  --language swift --out-dir ../iosApp/generated
 
 # Open in Xcode and run
 open iosApp/iosApp.xcodeproj
@@ -203,7 +217,7 @@ open iosApp/iosApp.xcodeproj
 ### Rust SDK (standalone)
 
 ```bash
-cd rustSDK
+cd rustySDK
 
 # Run all tests
 cargo test --workspace
@@ -264,7 +278,7 @@ cargo deny check
 | Kotlin formatting      | ktlint          | `./gradlew :composeApp:ktlintCheck`                    |
 | Kotlin static analysis | detekt          | `./gradlew :composeApp:detekt`                         |
 | Swift linting          | SwiftLint       | `./gradlew :composeApp:swiftlint`                      |
-| Pre-commit hook        | Husky           | Runs `lintAll` on staged `.kt`/`.kts`/`.swift` files   |
+| Pre-commit hook        | Husky           | `lintAll` on staged `.kt`/`.kts`/`.swift`; `cargo fmt --check` on staged `.rs` |
 | Commit messages        | commit-msg hook | Enforces conventional commits (`type(scope): message`) |
 
 ---

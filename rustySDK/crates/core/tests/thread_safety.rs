@@ -19,11 +19,7 @@ fn concurrent_generate_does_not_panic() {
 
     for handle in handles {
         let result = handle.join().expect("thread must not panic");
-        assert!(
-            result.is_ok(),
-            "generate_png must succeed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "generate_png must succeed: {:?}", result.err());
     }
 }
 
@@ -65,10 +61,6 @@ fn concurrent_mixed_operations() {
 
     for handle in handles {
         let result = handle.join().expect("thread must not panic");
-        assert!(
-            result.is_ok(),
-            "mixed operation must succeed: {:?}",
-            result.err()
-        );
+        assert!(result.is_ok(), "mixed operation must succeed: {:?}", result.err());
     }
 }

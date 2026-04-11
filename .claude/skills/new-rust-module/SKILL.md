@@ -6,7 +6,7 @@ user-invocable: false
 
 # New Rust Module
 
-Scaffold a new module in `rustSDK/crates/core/` following project conventions.
+Scaffold a new module in `rustySDK/crates/core/` following project conventions.
 
 ## Input
 
@@ -17,7 +17,7 @@ what it does.
 
 ### 1. Create the module file
 
-`rustSDK/crates/core/src/<module_name>.rs`:
+`rustySDK/crates/core/src/<module_name>.rs`:
 
 ```rust
 //! <Module description — one line>.
@@ -64,7 +64,7 @@ mod tests {
 
 ### 2. Register in lib.rs
 
-Add to `rustSDK/crates/core/src/lib.rs`:
+Add to `rustySDK/crates/core/src/lib.rs`:
 
 ```rust
 pub mod <module_name>;
@@ -72,7 +72,7 @@ pub mod <module_name>;
 
 ### 3. Create integration test file (if applicable)
 
-`rustSDK/crates/core/tests/<module_name>.rs`:
+`rustySDK/crates/core/tests/<module_name>.rs`:
 
 ```rust
 //! Integration tests for the <module_name> module.
@@ -87,7 +87,7 @@ fn <integration_test_name>() {
 
 ### 4. Update error.rs if new variants needed
 
-Add variants to `QrError` in `rustSDK/crates/core/src/error.rs`:
+Add variants to `QrError` in `rustySDK/crates/core/src/error.rs`:
 
 ```rust
 #[derive(Debug, thiserror::Error)]
@@ -106,7 +106,7 @@ pub enum QrError {
 
 ### 5. Update types.rs if new types needed
 
-Add types to `rustSDK/crates/core/src/types.rs`:
+Add types to `rustySDK/crates/core/src/types.rs`:
 
 ```rust
 /// <Type description>.
@@ -142,5 +142,5 @@ Supported field types (must be FFI-compatible even without the derive):
 ## Verify
 
 ```bash
-cd rustSDK && cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace
+cd rustySDK && cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace
 ```

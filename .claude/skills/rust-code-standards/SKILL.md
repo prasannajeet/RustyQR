@@ -6,8 +6,8 @@ user-invocable: false
 
 # Rust Code Standards
 
-These standards MUST be followed in all Rust code across `rustSDK/crates/core/` and
-`rustSDK/crates/ffi/`.
+These standards MUST be followed in all Rust code across `rustySDK/crates/core/` and
+`rustySDK/crates/ffi/`.
 
 ---
 
@@ -523,9 +523,9 @@ fn round_trip_preserves_content() {
 All three must pass before any commit:
 
 ```bash
-cd rustSDK && cargo fmt --check
-cd rustSDK && cargo clippy --workspace -- -D warnings
-cd rustSDK && cargo test --workspace
+cd rustySDK && cargo fmt --check
+cd rustySDK && cargo clippy --workspace -- -D warnings
+cd rustySDK && cargo test --workspace
 ```
 
 - `cargo fmt` — standard Rust formatting, no custom rustfmt.toml overrides

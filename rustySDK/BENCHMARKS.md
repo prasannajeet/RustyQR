@@ -17,7 +17,7 @@ All PRD 5.1 performance targets met with significant margin.
 ## How to reproduce
 
 ```bash
-cd rustSDK && cargo bench -p rusty-qr-core
+cd rustySDK && cargo bench -p rusty-qr-core
 ```
 
 Results are stored in `target/criterion/` with HTML reports.
