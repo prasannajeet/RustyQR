@@ -1,18 +1,77 @@
-# iosApp — Xcode Project (iOS Focus)
+<div align="center">
 
-This directory is the iOS Xcode project that hosts the shared Compose Multiplatform UI via a thin
-UIKit wrapper, links the `RustyQR.xcframework`, and consumes the UniFFI-generated Swift bindings.
-This document covers the **iOS side**: how Rust gets compiled into the app, how XcodeGen is used,
-how the XCFramework is produced, and the current wiring status.
+# iosApp — iOS Xcode Project
 
-For the cross-platform app architecture, MVI pattern, and shared UI, see the
-[top-level README](../README.md). For the Android side, see
-[`composeApp/README.md`](../composeApp/README.md). For the Rust engine itself, see
-[`rustySDK/README.md`](../rustySDK/README.md).
+### Thin UIKit shell. Compose UI through SKIA. Rust linked as an XCFramework.
+
+<p>
+  <img alt="iOS" src="https://img.shields.io/badge/iOS-AVFoundation-000000?logo=apple&logoColor=white" />
+  <img alt="Swift" src="https://img.shields.io/badge/Swift-5.x-F05138?logo=swift&logoColor=white" />
+  <img alt="XcodeGen" src="https://img.shields.io/badge/XcodeGen-project.yml-147EFB" />
+  <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-auto--bindings-3B6FE0" />
+  <img alt="XCFramework" src="https://img.shields.io/badge/RustyQR-xcframework-CE422B?logo=rust&logoColor=white" />
+  <img alt="Phase 7" src="https://img.shields.io/badge/Phase%207-In%20Progress-F5A623" />
+</p>
+
+<p><b>Rust <code>.a</code> · Swift bindings · XCFramework · xcodeproj — one Gradle task builds all four</b></p>
+
+<sub>The iOS side has no native SwiftUI screens. <code>ContentView.swift</code> wraps the Compose UI exported from <code>iosMain</code>; everything else on screen is shared Kotlin.</sub>
+
+</div>
 
 ---
 
-## iOS Layout
+> **Want the full pipeline end-to-end with sequence diagrams?**
+> See [**`docs/ARCHITECTURE.md`**](../docs/ARCHITECTURE.md) — the single source of truth for how
+> Rust becomes two native apps (both Android and iOS branches, runtime call paths, UniFFI deep dive).
+>
+> For cross-platform architecture, MVI, and shared UI, see the [top-level README](../README.md).
+> Android pipeline lives in [`composeApp/README.md`](../composeApp/README.md); the Rust engine is
+> documented in [`rustySDK/README.md`](../rustySDK/README.md).
+
+---
+
+## Status — Phase 7 In Progress
+
+| Piece                                                         | State            |
+|---------------------------------------------------------------|------------------|
+| Rust `.a` for `aarch64-apple-ios` + `aarch64-apple-ios-sim`   | Built            |
+| `RustyQR.xcframework` with device + simulator slices          | Built            |
+| Swift bindings (`RustyQrFFI.swift` + `.h` + `.modulemap`)     | Generated        |
+| `iosApp.xcodeproj` generated from `project.yml`               | Yes              |
+| Shared Compose UI hosted via `MainViewController`             | Wired            |
+| `iosMain` hardware bridges (camera, haptics, share, save)     | Implemented      |
+| `QrBridge.ios.kt` → UniFFI Swift delegation                   | **TODO stubs**   |
+
+`QrBridge.ios.kt` currently returns `TODO("Wired in Phase 7")`. Scan and generate will crash on iOS
+until the Kotlin-side delegation into the generated Swift bindings is finished. Android is fully
+functional today.
+
+---
+
+## Quick Start
+
+```bash
+# First-time setup
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+brew install xcodegen
+
+# Compile Rust + generate Swift bindings + create XCFramework + regenerate Xcode project
+./gradlew :composeApp:buildRustIos
+
+# Open in Xcode and run
+open iosApp/iosApp.xcodeproj
+```
+
+If you're only editing Swift or shared Kotlin, skip `buildRustIos` — the last XCFramework and Swift
+bindings are reused.
+
+---
+
+<details>
+<summary><b>iOS Layout</b> — directory map and where the iOS actuals live</summary>
+
+<br/>
 
 ```
 iosApp/
@@ -53,7 +112,7 @@ composeApp/src/iosMain/kotlin/com/p2/apps/rustyqr/
 ├── MainViewController.kt         # fun MainViewController(): UIViewController { ComposeUIViewController { App() } }
 ├── Platform.ios.kt
 └── bridge/
-    ├── QrBridge.ios.kt           # actual — delegates to generated Swift (Phase 7 — see Status below)
+    ├── QrBridge.ios.kt           # actual — delegates to generated Swift (Phase 7 — see Status above)
     ├── CameraPreview.ios.kt      # actual — AVFoundation via UIKitView
     ├── CameraPermission.ios.kt   # actual — AVCaptureDevice.requestAccess
     ├── HapticFeedback.ios.kt     # actual — UIImpactFeedbackGenerator
@@ -63,113 +122,18 @@ composeApp/src/iosMain/kotlin/com/p2/apps/rustyqr/
     └── ImageDecoder.ios.kt       # actual — UIImage → ImageBitmap
 ```
 
----
+</details>
 
-## Status — Phase 7 In Progress
+<details>
+<summary><b>iOS Build Pipeline</b> — from Rust source to an Xcode-ready project</summary>
 
-| Piece                                                         | State            |
-|---------------------------------------------------------------|------------------|
-| Rust `.a` for `aarch64-apple-ios` + `aarch64-apple-ios-sim`   | Built            |
-| `RustyQR.xcframework` with device + simulator slices          | Built            |
-| Swift bindings (`RustyQrFFI.swift` + `.h` + `.modulemap`)     | Generated        |
-| `iosApp.xcodeproj` generated from `project.yml`               | Yes              |
-| Shared Compose UI hosted via `MainViewController`             | Wired            |
-| `iosMain` hardware bridges (camera, haptics, share, save)     | Implemented      |
-| `QrBridge.ios.kt` → UniFFI Swift delegation                   | **TODO stubs**   |
-
-`QrBridge.ios.kt` currently returns `TODO("Wired in Phase 7")`. Scan and generate will crash on iOS
-until the Kotlin-side delegation into the generated Swift bindings is finished. Android is fully
-functional today.
-
----
-
-## iOS Build: From Rust to Xcode
+<br/>
 
 Swift can't call Rust directly — they're different languages. Three things need to happen:
 
 1. **Compiled Rust libraries** (`.a` static archives) for both device and simulator
 2. **An XCFramework** that bundles both `.a` files so Xcode picks the right slice automatically
 3. **Generated Swift code** that knows how to call the functions inside the Rust library
-
-The build pipeline automates all three.
-
-### Building the app
-
-```bash
-# Compile Rust + generate Swift bindings + create XCFramework + regenerate Xcode project
-./gradlew :composeApp:buildRustIos
-
-# Open in Xcode and run (simulator or device)
-open iosApp/iosApp.xcodeproj
-```
-
-If you're only editing Swift or shared Kotlin, skip `buildRustIos`. The XCFramework and Swift
-bindings from the last Rust build are reused.
-
----
-
-## What is XcodeGen?
-
-**XcodeGen** is a command-line tool that generates `.xcodeproj` files from a human-readable YAML
-file called `project.yml`.
-
-Xcode stores project config in `.pbxproj` files — opaque auto-generated XML with random UUIDs on
-every line. They are impossible to review in pull requests and cause constant merge conflicts when
-two developers add files simultaneously.
-
-`project.yml` is the opposite: declarative YAML where every setting is readable and diffs are
-meaningful. The `.xcodeproj` becomes a **generated artifact** — like a compiled binary, you never
-edit it by hand.
-
-### Key rules
-
-- **`project.yml` is the source of truth** — all project changes go here
-- **Never edit `.xcodeproj` directly** — your changes will be overwritten on the next generation
-- **`.xcodeproj` is gitignored** — it's regenerated from `project.yml` on every build
-
-### How to regenerate
-
-```bash
-./gradlew :composeApp:generateXcodeProject
-```
-
-### When to regenerate
-
-- After editing `project.yml`
-- After running `./gradlew :composeApp:cleanBuildIos`
-- On a fresh clone (the `.xcodeproj` is not checked in)
-- After `./gradlew :composeApp:buildRustIos` (this regenerates automatically)
-
-### Common `project.yml` operations
-
-**Adding a new Swift file:** just create it in the `iosApp/` directory. XcodeGen auto-discovers
-source files via the `sources` path — no project file edit needed.
-
-**Adding a framework dependency:**
-
-```yaml
-dependencies:
-  - framework: Frameworks/SomeFramework.xcframework
-    embed: false
-```
-
-**Adding a build setting:**
-
-```yaml
-settings:
-  base:
-    MY_SETTING: "value"
-```
-
-**The `optional: true` pattern:** generated artifacts (Swift bindings, XCFrameworks) may not exist
-on a fresh clone before the first build. Marking them as `optional: true` lets XcodeGen generate a
-valid project even when these files are missing.
-
-Full XcodeGen spec: https://github.com/yonaskolb/XcodeGen/blob/master/Docs/ProjectSpec.md
-
----
-
-## What Happens Inside `buildRustIos`
 
 `buildRustIos` is a Gradle `Exec` task that invokes `make ios` in `rustySDK/`. Developers never run
 `make` directly — Gradle is the only entry point. `make ios` calls
@@ -184,8 +148,8 @@ is missing, it prints the exact install command.
 
 `cargo build` runs twice, once per target:
 
-| Target                  | Who uses it                         | Output file                   |
-|-------------------------|-------------------------------------|-------------------------------|
+| Target                  | Who uses it                         | Output file                     |
+|-------------------------|-------------------------------------|---------------------------------|
 | `aarch64-apple-ios`     | Physical iPhones and iPads          | `librusty_qr_ffi.a` (device)    |
 | `aarch64-apple-ios-sim` | iOS Simulator on Apple Silicon Macs | `librusty_qr_ffi.a` (simulator) |
 
@@ -273,9 +237,76 @@ sequenceDiagram
     S-->>Dev: done
 ```
 
----
+</details>
 
-## How Xcode Picks Up the Artifacts
+<details>
+<summary><b>XcodeGen Deep Dive</b> — <code>project.yml</code> as source of truth</summary>
+
+<br/>
+
+**XcodeGen** is a command-line tool that generates `.xcodeproj` files from a human-readable YAML
+file called `project.yml`.
+
+Xcode stores project config in `.pbxproj` files — opaque auto-generated XML with random UUIDs on
+every line. They are impossible to review in pull requests and cause constant merge conflicts when
+two developers add files simultaneously.
+
+`project.yml` is the opposite: declarative YAML where every setting is readable and diffs are
+meaningful. The `.xcodeproj` becomes a **generated artifact** — like a compiled binary, you never
+edit it by hand.
+
+### Key rules
+
+- **`project.yml` is the source of truth** — all project changes go here
+- **Never edit `.xcodeproj` directly** — your changes will be overwritten on the next generation
+- **`.xcodeproj` is gitignored** — it's regenerated from `project.yml` on every build
+
+### How to regenerate
+
+```bash
+./gradlew :composeApp:generateXcodeProject
+```
+
+### When to regenerate
+
+- After editing `project.yml`
+- After running `./gradlew :composeApp:cleanBuildIos`
+- On a fresh clone (the `.xcodeproj` is not checked in)
+- After `./gradlew :composeApp:buildRustIos` (this regenerates automatically)
+
+### Common `project.yml` operations
+
+**Adding a new Swift file:** just create it in the `iosApp/` directory. XcodeGen auto-discovers
+source files via the `sources` path — no project file edit needed.
+
+**Adding a framework dependency:**
+
+```yaml
+dependencies:
+  - framework: Frameworks/SomeFramework.xcframework
+    embed: false
+```
+
+**Adding a build setting:**
+
+```yaml
+settings:
+  base:
+    MY_SETTING: "value"
+```
+
+**The `optional: true` pattern:** generated artifacts (Swift bindings, XCFrameworks) may not exist
+on a fresh clone before the first build. Marking them as `optional: true` lets XcodeGen generate a
+valid project even when these files are missing.
+
+Full XcodeGen spec: https://github.com/yonaskolb/XcodeGen/blob/master/Docs/ProjectSpec.md
+
+</details>
+
+<details>
+<summary><b>How Xcode Picks Up the Artifacts</b> — three wiring points</summary>
+
+<br/>
 
 Three things connect the Rust build outputs to the Xcode build:
 
@@ -289,20 +320,23 @@ Three things connect the Rust build outputs to the Xcode build:
    `.modulemap` files. This lets `RustyQrFFI.swift` do `import RustyQrFFIFFI` to access the C
    functions.
 
----
+</details>
 
-## UniFFI Metadata Under the Hood
+<details>
+<summary><b>UniFFI Metadata Under the Hood</b> — proc-macros embed the signature in the <code>.a</code></summary>
+
+<br/>
 
 `uniffi-bindgen` knows what Swift to generate because **proc-macros** in the Rust FFI crate embed
 metadata directly into the `.a` binary at compile time:
 
 ```mermaid
 graph LR
-    A["#[uniffi::export]<br/>fn generate_png(content: String, size: u32)<br/>-> Result<Vec<u8>, FfiQrError>"]
+    A["#[uniffi::export]<br/>fn generate_png(content: String, size: u32)<br/>-> Result[Vec u8, FfiQrError]"]
     B["uniffi proc-macro<br/>reads the signature"]
     C["Metadata section embedded<br/>into the .a binary"]
     D["uniffi-bindgen reads<br/>metadata from .a"]
-    E["Generates Swift:<br/>func generatePng(content: String, size: UInt32) throws -> Data"]
+    E["Generates Swift:<br/>func generatePng(content: String, size: UInt32) throws → Data"]
 
     A --> B --> C -->|".a file"| D --> E
 ```
@@ -310,9 +344,7 @@ graph LR
 Change a Rust function signature and the next `buildRustIos` regenerates the Swift to match — no
 manual bridging code to keep in sync.
 
----
-
-## Why Two `.a` Files but One `.swift` File?
+### Why Two `.a` Files but One `.swift` File?
 
 **Two `.a` files** because each platform needs its own machine code. ARM64 code compiled for the
 iOS device SDK can't run on the simulator SDK (different system libraries and ABI), even though
@@ -323,9 +355,12 @@ name through the C FFI, and the linker resolves those names against whichever `.
 selected. The UniFFI metadata in both `.a` files is identical, so either one can be used as the
 source for binding generation.
 
----
+</details>
 
-## Troubleshooting: Gradle sync fails on fresh clone
+<details>
+<summary><b>Troubleshooting</b> — Gradle sync fails on a fresh clone</summary>
+
+<br/>
 
 **Symptom:**
 
@@ -355,9 +390,14 @@ bindings + XCFramework + xcodeproj), use `./gradlew :composeApp:buildRustIos` on
 
 Prerequisite: `brew install xcodegen`.
 
----
+</details>
 
-## First-Time Setup
+<details>
+<summary><b>First-Time Setup & Cleaning</b> — one-off install and full reset</summary>
+
+<br/>
+
+### First-Time Setup
 
 ```bash
 # 1. Rust
@@ -376,9 +416,7 @@ brew install xcodegen
 open iosApp/iosApp.xcodeproj
 ```
 
----
-
-## Cleaning Up
+### Cleaning Up
 
 ```bash
 # Clean all Rust + iOS artifacts, then rebuild from scratch
@@ -398,3 +436,5 @@ If you only need to regenerate the Xcode project without rebuilding Rust:
 ```bash
 ./gradlew :composeApp:generateXcodeProject
 ```
+
+</details>

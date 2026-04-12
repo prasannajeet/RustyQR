@@ -1,26 +1,28 @@
+<div align="center">
+
 # Rusty-QR SDK
 
-A QR code generation and scanning library written in Rust, designed to be called from Android (
-Kotlin) and iOS (Swift) via auto-generated bindings. One codebase, two platforms, zero manual
-bridging code.
+### Pure Rust core. Zero panics. Auto-generated Kotlin and Swift bindings.
 
----
+<p>
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-edition%202024-CE422B?logo=rust&logoColor=white" />
+  <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-0.28-3B6FE0" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-56%20passing-3DDC84" />
+  <img alt="Benchmarks" src="https://img.shields.io/badge/criterion-8%20benches-F5A623" />
+  <img alt="Panics" src="https://img.shields.io/badge/panics-0-brightgreen" />
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue" />
+</p>
 
-## Table of Contents
+<p><b>3 crates · 56 tests · 0 panics · sub-20&nbsp;ms decode on the camera path</b></p>
 
-- [Why Rust?](#why-rust)
-- [What Does This SDK Do?](#what-does-this-sdk-do)
-- [Project Structure](#project-structure)
-- [Key Rust Concepts Used](#key-rust-concepts-used)
-- [Understanding Cargo](#understanding-cargo)
-- [How the Code Flows](#how-the-code-flows)
-- [The FFI Boundary](#the-ffi-boundary)
-- [Error Handling](#error-handling)
-- [Testing](#testing)
-- [Performance](#performance)
-- [Commands Reference](#commands-reference)
-- [Supply Chain Security](#supply-chain-security)
-- [Glossary](#glossary)
+<sub>One codebase, two platforms, zero manual bridging. The SDK exposes five pure functions for QR generation and scanning; UniFFI emits the Kotlin and Swift bindings automatically.</sub>
+
+<br/><br/>
+
+<a href="../docs/ARCHITECTURE.md"><b>Deep dive: how this Rust crate becomes a .so and a .xcframework →</b></a>
+<br/><sub>Full cross-platform pipeline with sequence diagrams lives in <a href="../docs/ARCHITECTURE.md"><code>docs/ARCHITECTURE.md</code></a></sub>
+
+</div>
 
 ---
 
@@ -76,7 +78,7 @@ types) automatically.
 
 ## What Does This SDK Do?
 
-The SDK provides five operations:
+Five stateless, pure functions. Same input → same output, no side effects, trivially thread-safe.
 
 | Function               | Input                          | Output         | Use Case                                                     |
 |------------------------|--------------------------------|----------------|--------------------------------------------------------------|
@@ -86,12 +88,30 @@ The SDK provides five operations:
 | `decode_qr_from_raw`   | grayscale pixels + dimensions  | decoded text   | Decode from a live camera frame (no image encoding overhead) |
 | `get_library_version`  | —                              | version string | Runtime version check                                        |
 
-Every function is **stateless** and **pure** — same input always produces the same output, with no
-side effects. This makes the library trivially thread-safe and easy to reason about.
+---
+
+## Performance
+
+Measured on Apple Silicon via [Criterion](https://bheisler.github.io/criterion.rs/book/) (100
+samples each):
+
+| Operation                      | Time     | Target   | Status   |
+|--------------------------------|----------|----------|----------|
+| Generate 256px                 | ~1.1 ms  | < 10 ms  | PASS     |
+| Generate 1024px                | ~9.9 ms  | < 50 ms  | PASS     |
+| Decode PNG 256px               | ~2.3 ms  | < 20 ms  | PASS     |
+| Decode PNG 1080px              | ~15.4 ms | < 100 ms | PASS     |
+| Decode raw 256px (camera path) | ~2.2 ms  | < 20 ms  | PASS     |
+| Full round-trip 256px          | ~3.4 ms  | —        | baseline |
+
+All targets met with significant margin. See [BENCHMARKS.md](BENCHMARKS.md) for full details.
 
 ---
 
-## Project Structure
+<details>
+<summary><b>Project Structure</b> — three layered crates with a strict dependency chain</summary>
+
+<br/>
 
 ```
 rustySDK/
@@ -267,9 +287,12 @@ but open for extension. Want to add Python bindings? Add a new crate that depend
 never changes. If UniFFI releases a breaking change, only `ffi` needs updating. The engine stays
 untouched.
 
----
+</details>
 
-## Key Rust Concepts Used
+<details>
+<summary><b>Key Rust Concepts Used</b> — ownership, <code>Result</code>, enums, traits, feature flags</summary>
+
+<br/>
 
 ### Ownership and Borrowing
 
@@ -379,9 +402,12 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 
 This is critical for mobile — every kilobyte matters in your APK/IPA.
 
----
+</details>
 
-## Understanding Cargo
+<details>
+<summary><b>Understanding Cargo</b> — Rust's build tool, workspaces, and crate types</summary>
+
+<br/>
 
 **Cargo** is Rust's build tool and package manager — think Gradle (Android) or SPM (iOS), but for
 Rust.
@@ -423,9 +449,12 @@ crate-type = ["cdylib", "staticlib"]
 | `cdylib`    | `.so` (Linux/Android) or `.dylib` (macOS) | Android loads this via JNA at runtime              |
 | `staticlib` | `.a` (static archive)                     | iOS links this into the app binary at compile time |
 
----
+</details>
 
-## How the Code Flows
+<details>
+<summary><b>How the Code Flows</b> — sequence diagrams for generate, decode, and camera paths</summary>
+
+<br/>
 
 ### QR Generation
 
@@ -445,9 +474,9 @@ sequenceDiagram
     Enc ->> Img: render to grayscale image
     Enc ->> Img: resize to 256x256 (Nearest filter)
     Enc ->> Img: PngEncoder::write_image()
-    Img -->> Enc: PNG bytes (Vec<u8>)
+    Img -->> Enc: PNG bytes (Vec u8)
     Enc -->> FFI: Ok(png_bytes)
-    FFI -->> App: PNG bytes (List<UByte> / Data)
+    FFI -->> App: PNG bytes (List UByte / Data)
 ```
 
 ### QR Decoding (Saved Image)
@@ -538,9 +567,12 @@ graph TB
     Core --> Typ
 ```
 
----
+</details>
 
-## The FFI Boundary
+<details>
+<summary><b>The FFI Boundary</b> — how Rust types cross into Kotlin and Swift</summary>
+
+<br/>
 
 The FFI (Foreign Function Interface) layer is the bridge between Rust and mobile platforms. Here's
 how types cross the boundary:
@@ -666,9 +698,12 @@ fn generate_png(content: String, size: u32) -> Result<Vec<u8>, FfiQrError> {
 This rule is enforced by convention: **if you're writing an `if` statement in the FFI crate, it
 belongs in core.**
 
----
+</details>
 
-## Error Handling
+<details>
+<summary><b>Error Handling</b> — zero panics, four typed variants, upfront validation</summary>
+
+<br/>
 
 ### No Exceptions, No Panics
 
@@ -718,11 +753,12 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 }
 ```
 
----
+</details>
 
-## Testing
+<details>
+<summary><b>Testing</b> — 56 tests across four tiers (unit, integration, FFI, benches)</summary>
 
-The SDK has **56 tests** organised into four tiers:
+<br/>
 
 ### Test Tiers
 
@@ -768,27 +804,12 @@ mindmap
       FFI delegation matches core
 ```
 
----
+</details>
 
-## Performance
+<details>
+<summary><b>Commands Reference</b> — build, test, lint, bench, bindings, audit</summary>
 
-Measured on Apple Silicon via [Criterion](https://bheisler.github.io/criterion.rs/book/) (100
-samples each):
-
-| Operation                      | Time     | Target   | Status   |
-|--------------------------------|----------|----------|----------|
-| Generate 256px                 | ~1.1 ms  | < 10 ms  | PASS     |
-| Generate 1024px                | ~9.9 ms  | < 50 ms  | PASS     |
-| Decode PNG 256px               | ~2.3 ms  | < 20 ms  | PASS     |
-| Decode PNG 1080px              | ~15.4 ms | < 100 ms | PASS     |
-| Decode raw 256px (camera path) | ~2.2 ms  | < 20 ms  | PASS     |
-| Full round-trip 256px          | ~3.4 ms  | —        | baseline |
-
-All targets met with significant margin. See [BENCHMARKS.md](BENCHMARKS.md) for full details.
-
----
-
-## Commands Reference
+<br/>
 
 ### Prerequisites
 
@@ -896,9 +917,12 @@ cargo test --workspace && \
 cargo deny check
 ```
 
----
+</details>
 
-## Supply Chain Security
+<details>
+<summary><b>Supply Chain Security</b> — <code>cargo-deny</code> policy</summary>
+
+<br/>
 
 The project uses [`cargo-deny`](https://embarkstudios.github.io/cargo-deny/) to audit dependencies.
 The configuration in `deny.toml` enforces:
@@ -910,9 +934,12 @@ The configuration in `deny.toml` enforces:
 | **Sources**    | Only crates.io allowed — no unknown registries or git dependencies                   |
 | **Bans**       | Duplicate crate versions produce warnings                                            |
 
----
+</details>
 
-## Glossary
+<details>
+<summary><b>Glossary</b> — Cargo, crates, ownership, traits, FFI terms</summary>
+
+<br/>
 
 | Term                | Definition                                                                                       |
 |---------------------|--------------------------------------------------------------------------------------------------|
@@ -941,3 +968,5 @@ The configuration in `deny.toml` enforces:
 | **FFI**             | Foreign Function Interface — the mechanism for calling Rust from other languages                 |
 | **Proc macro**      | A compile-time code generator (UniFFI uses these: `#[uniffi::export]`)                           |
 | **Feature flag**    | Conditional compilation — pull in only the parts of a dependency you need                        |
+
+</details>

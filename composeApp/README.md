@@ -1,17 +1,72 @@
+<div align="center">
+
 # composeApp — KMP Module (Android Focus)
 
-This module is the Kotlin Multiplatform target that contains the shared Compose UI (`commonMain`),
-the Android actuals (`androidMain`), and the iOS Kotlin/Native actuals (`iosMain`). This document
-focuses on the **Android side**: how Rust gets compiled into the APK, how the Android actuals wire
-up to CameraX and UniFFI-generated Kotlin bindings, and the Android-specific Gradle tasks.
+### Shared Compose UI. CameraX scanner. Rust loaded as a native <code>.so</code> via JNA.
 
-For the cross-platform app architecture, MVI pattern, shared UI, and theme, see the
-[top-level README](../README.md). For the iOS side, see [`iosApp/README.md`](../iosApp/README.md).
-For the Rust engine itself, see [`rustySDK/README.md`](../rustySDK/README.md).
+<p>
+  <img alt="Android" src="https://img.shields.io/badge/Android-minSdk%2029-3DDC84?logo=android&logoColor=white" />
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
+  <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.11.0-4285F4?logo=jetpackcompose&logoColor=white" />
+  <img alt="CameraX" src="https://img.shields.io/badge/CameraX-ImageAnalysis-3DDC84?logo=android&logoColor=white" />
+  <img alt="JNA" src="https://img.shields.io/badge/JNA-5.14.0-777777" />
+  <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-auto--bindings-3B6FE0" />
+  <img alt="Status" src="https://img.shields.io/badge/Android-End--to--End-brightgreen" />
+</p>
+
+<p><b>Rust <code>.so</code> × 3 ABIs · UniFFI Kotlin · CameraX Y-plane path · Compose MVI</b></p>
+
+<sub>This module holds shared Compose UI (<code>commonMain</code>), Android actuals (<code>androidMain</code>), and iOS Kotlin/Native actuals (<code>iosMain</code>). Doc focus: the Android pipeline — from Rust source to installable APK.</sub>
+
+</div>
 
 ---
 
-## Android Source Set Layout
+> **Want the full pipeline end-to-end with sequence diagrams?**
+> See [**`docs/ARCHITECTURE.md`**](../docs/ARCHITECTURE.md) — the single source of truth for how
+> Rust becomes two native apps (both Android and iOS branches, runtime call paths, UniFFI deep dive).
+>
+> For cross-platform architecture, MVI, and shared UI, see the [top-level README](../README.md).
+> iOS pipeline is in [`iosApp/README.md`](../iosApp/README.md); the Rust engine is documented in
+> [`rustySDK/README.md`](../rustySDK/README.md).
+
+---
+
+## Quick Start
+
+```bash
+# First-time setup
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+cargo install cargo-ndk
+export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/$(ls $HOME/Library/Android/sdk/ndk | tail -1)"
+
+# Compile Rust + generate Kotlin bindings + build APK
+./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
+```
+
+If you're only editing Kotlin / UI, skip `buildRustAndroid` — `assembleDebug` reuses the existing
+`.so` files and generated binding.
+
+---
+
+## Android-Specific Gradle Tasks
+
+| Task                                    | What it does                                               |
+|-----------------------------------------|------------------------------------------------------------|
+| `:composeApp:buildRustAndroid`          | `make android` — cross-compile + generate Kotlin bindings  |
+| `:composeApp:assembleDebug`             | Standard Android debug APK build                           |
+| `:composeApp:installDebug`              | Install debug APK to connected device / emulator           |
+| `:composeApp:ktlintCheck` / `...Format` | Kotlin lint / auto-fix                                     |
+| `:composeApp:detekt`                    | Static analysis (max line length 120, Android mode)        |
+| `:composeApp:lintAll`                   | ktlint + detekt + SwiftLint (iOS side)                     |
+| `:composeApp:installGitHooks`           | Install pre-commit + commit-msg hooks                      |
+
+---
+
+<details>
+<summary><b>Android Source Set Layout</b> — where actuals, JNI libs, and generated bindings live</summary>
+
+<br/>
 
 ```
 composeApp/src/androidMain/
@@ -47,9 +102,12 @@ The Android app has no Compose screens of its own — it reuses the shared `comm
 the KMP module. The only Android-specific Compose code is inside the `bridge/` actuals (e.g.
 `AndroidView` wrapping `PreviewView`).
 
----
+</details>
 
-## Scan Feature — Data Flow on Android
+<details>
+<summary><b>Scan Feature — Data Flow on Android</b> — CameraX → scan gate → Rust → MVI</summary>
+
+<br/>
 
 ```mermaid
 sequenceDiagram
@@ -93,33 +151,18 @@ Key design decisions on Android:
 - **JNA is the loader** — the generated `rusty_qr_ffi.kt` calls into `librusty_qr_ffi.so` through
   the `net.java.dev.jna` runtime library, not `System.loadLibrary`.
 
----
+</details>
 
-## Android Build: From Rust to APK
+<details>
+<summary><b>Android Build Pipeline</b> — from Rust source to installable APK</summary>
+
+<br/>
 
 The QR code logic is written in **Rust**, but Android apps run Kotlin on ART. Kotlin can't call
 Rust directly — they're different languages with different runtimes. Two things need to happen:
 
 1. **A compiled Rust library** (`.so` file per CPU architecture) that Android loads at runtime
 2. **Generated Kotlin code** that knows how to call the functions inside that library
-
-The build pipeline automates both.
-
-### Building the app
-
-```bash
-# Compile Rust + generate Kotlin bindings (only needed when Rust code changes)
-./gradlew :composeApp:buildRustAndroid
-
-# Build the Android APK (picks up .so + generated .kt automatically)
-./gradlew :composeApp:assembleDebug
-
-# Both in one line
-./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
-```
-
-If you're only editing Kotlin / UI, skip `buildRustAndroid` — `assembleDebug` reuses the existing
-`.so` files and generated binding.
 
 ### What `buildRustAndroid` actually does
 
@@ -145,11 +188,11 @@ targets are installed. If anything is missing, it prints the exact install comma
 
 **2. Cross-compile Rust.** `cargo-ndk` invokes the Rust compiler once per architecture:
 
-| Architecture  | Who uses it                               | Output                                  |
-|---------------|-------------------------------------------|-----------------------------------------|
-| `arm64-v8a`   | All modern Android phones (64-bit ARM)    | `jniLibs/arm64-v8a/librusty_qr_ffi.so`  |
-| `armeabi-v7a` | Older 32-bit ARM devices                  | `jniLibs/armeabi-v7a/librusty_qr_ffi.so`|
-| `x86_64`      | Android emulator on a Mac                 | `jniLibs/x86_64/librusty_qr_ffi.so`     |
+| Architecture  | Who uses it                               | Output                                   |
+|---------------|-------------------------------------------|------------------------------------------|
+| `arm64-v8a`   | All modern Android phones (64-bit ARM)    | `jniLibs/arm64-v8a/librusty_qr_ffi.so`   |
+| `armeabi-v7a` | Older 32-bit ARM devices                  | `jniLibs/armeabi-v7a/librusty_qr_ffi.so` |
+| `x86_64`      | Android emulator on a Mac                 | `jniLibs/x86_64/librusty_qr_ffi.so`      |
 
 All `.so` files are built with **16KB ELF page alignment** (`align 2**14`), compliant with
 [Android's 16KB page size requirement](https://developer.android.com/guide/practices/page-sizes)
@@ -230,23 +273,38 @@ name (e.g. `generate_png`), and JNA resolves those names against whichever `.so`
 device. The UniFFI metadata in all three `.so` files is identical, so any one of them can be used
 as the source for binding generation.
 
----
+</details>
 
-## Android-Specific Gradle Tasks
+<details>
+<summary><b>UniFFI Metadata Under the Hood</b> — proc-macros embed the signature in the <code>.so</code></summary>
 
-| Task                                    | What it does                                               |
-|-----------------------------------------|------------------------------------------------------------|
-| `:composeApp:buildRustAndroid`          | `make android` — cross-compile + generate Kotlin bindings  |
-| `:composeApp:assembleDebug`             | Standard Android debug APK build                           |
-| `:composeApp:installDebug`              | Install debug APK to connected device / emulator           |
-| `:composeApp:ktlintCheck` / `...Format` | Kotlin lint / auto-fix                                     |
-| `:composeApp:detekt`                    | Static analysis (max line length 120, Android mode)        |
-| `:composeApp:lintAll`                   | ktlint + detekt + SwiftLint (iOS side)                     |
-| `:composeApp:installGitHooks`           | Install pre-commit + commit-msg hooks                      |
+<br/>
 
----
+`uniffi-bindgen` knows what Kotlin to emit because **proc-macros** in the Rust FFI crate embed
+metadata directly into the `.so` binary at compile time:
 
-## First-Time Setup
+```mermaid
+graph LR
+    A["#[uniffi::export]<br/>fn generate_png(content: String, size: u32)<br/>-> Result[Vec u8, FfiQrError]"]
+    B["uniffi proc-macro<br/>reads the signature"]
+    C["Metadata section embedded<br/>into the .so binary"]
+    D["uniffi-bindgen reads<br/>metadata from .so"]
+    E["Generates Kotlin:<br/>fun generatePng(content: String, size: UInt): List[UByte]"]
+
+    A --> B --> C -->|".so file"| D --> E
+```
+
+Change a Rust function signature and the next `buildRustAndroid` regenerates the Kotlin to match —
+no manual bridging code to keep in sync.
+
+</details>
+
+<details>
+<summary><b>First-Time Setup & Cleaning</b> — one-off install and full reset</summary>
+
+<br/>
+
+### First-Time Setup
 
 ```bash
 # 1. Rust
@@ -268,9 +326,7 @@ After that, every build is:
 ./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
 ```
 
----
-
-## Cleaning Up
+### Cleaning Up
 
 ```bash
 ./gradlew :composeApp:cleanBuildIos    # cleans BOTH platforms' Rust artifacts
@@ -284,30 +340,12 @@ This removes:
 
 After cleaning, rebuild Android with `./gradlew :composeApp:buildRustAndroid`.
 
----
+</details>
 
-## UniFFI Metadata Under the Hood
+<details>
+<summary><b>Troubleshooting</b> — emulator crashes, detekt complaints, missing haptics</summary>
 
-`uniffi-bindgen` knows what Kotlin to emit because **proc-macros** in the Rust FFI crate embed
-metadata directly into the `.so` binary at compile time:
-
-```mermaid
-graph LR
-    A["#[uniffi::export]<br/>fn generate_png(content: String, size: u32)<br/>-> Result<Vec<u8>, FfiQrError>"]
-    B["uniffi proc-macro<br/>reads the signature"]
-    C["Metadata section embedded<br/>into the .so binary"]
-    D["uniffi-bindgen reads<br/>metadata from .so"]
-    E["Generates Kotlin:<br/>fun generatePng(content: String, size: UInt): List<UByte>"]
-
-    A --> B --> C -->|".so file"| D --> E
-```
-
-Change a Rust function signature and the next `buildRustAndroid` regenerates the Kotlin to match —
-no manual bridging code to keep in sync.
-
----
-
-## Troubleshooting
+<br/>
 
 **Emulator crashes on scan launch with `UnsatisfiedLinkError`.** You're running an x86_64 emulator
 and the `.so` is only built for arm64. Run `./gradlew :composeApp:buildRustAndroid` — it always
@@ -319,3 +357,5 @@ breaks that rule. It's disabled globally in `config/detekt/detekt.yml`.
 **Scan works but no haptic on dismissal.** Check the Android system haptics setting. The
 `HapticFeedback.android.kt` actual uses `View.performHapticFeedback` which respects system
 preferences.
+
+</details>

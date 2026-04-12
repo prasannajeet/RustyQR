@@ -1,27 +1,56 @@
+<div align="center">
+
 # Rusty-QR
 
-A cross-platform QR code generation and live scanning app built with **Kotlin Multiplatform**,
-**Compose Multiplatform**, and a **Rust** core library. One Rust codebase handles all QR logic; one
-Compose codebase renders the UI on both Android and iOS. Auto-generated Kotlin and Swift bindings
-connect Rust to each platform with zero manual bridging code.
+### Write once in Rust. Ship native on Android and iOS. Zero duplicated logic.
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Rusty-QR App                        │
-│                                                         │
-│       Compose Multiplatform UI  (commonMain)            │
-│           Android + iOS from one codebase               │
-│                     │                                   │
-│              QrBridge (expect/actual)                    │
-│                     │                                   │
-│         ┌───── FFI Boundary ──────┐                     │
-│         │  Kotlin Bindings (JNA)  │  Swift Bindings     │
-│         └─────────────────────────┘                     │
-│                     │                                   │
-│            Rust SDK  (rusty-qr)                         │
-│         Encode · Decode · Scan                          │
-└─────────────────────────────────────────────────────────┘
-```
+<p>
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
+  <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.11.0-4285F4?logo=jetpackcompose&logoColor=white" />
+  <img alt="Rust" src="https://img.shields.io/badge/Rust-edition%202024-CE422B?logo=rust&logoColor=white" />
+  <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-0.28-3B6FE0" />
+  <img alt="Android" src="https://img.shields.io/badge/Android-minSdk%2029-3DDC84?logo=android&logoColor=white" />
+  <img alt="iOS" src="https://img.shields.io/badge/iOS-AVFoundation-000000?logo=apple&logoColor=white" />
+  <img alt="License" src="https://img.shields.io/badge/license-MIT-blue" />
+</p>
+
+<p><b>One Rust core · Two native apps · Zero duplicated logic</b></p>
+
+<sub>QR generation and live camera scanning. One <code>rusty-qr-core</code> crate handles every byte of QR logic; auto-generated Kotlin and Swift bindings wire it to a single Compose Multiplatform UI that renders identically on both platforms.</sub>
+
+<br/><br/>
+
+<a href="docs/ARCHITECTURE.md"><b>Deep dive: how Rust becomes two native apps →</b></a>
+<br/><sub>Full build pipeline, sequence diagrams, and runtime call paths in <a href="docs/ARCHITECTURE.md"><code>docs/ARCHITECTURE.md</code></a></sub>
+
+</div>
+
+---
+
+## Screenshots
+
+<div align="center">
+
+<table>
+  <tr>
+    <td align="center" width="33%">
+      <img src="screenshots/android/scan-idle.png" alt="Scan tab in idle state — centered Start Scanning button, no camera feed, no permission prompt" width="260" />
+      <br/><sub><b>Scan — Idle</b><br/>Camera cold until the user taps Start Scanning. No battery/CPU cost on tab open.</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/android/generate-input.png" alt="Generate tab with text input and primary Generate QR Code CTA" width="260" />
+      <br/><sub><b>Generate — Input</b><br/>Enter any text; Rust encoder renders a PNG in real time.</sub>
+    </td>
+    <td align="center" width="33%">
+      <img src="screenshots/android/generate-result.png" alt="Generated QR code with Share and Save actions" width="260" />
+      <br/><sub><b>Generate — Result</b><br/>Share-sheet export and save-to-gallery wired through platform bridges.</sub>
+    </td>
+  </tr>
+</table>
+
+<sub>Android · Material 3 dark theme · captured on Pixel-class device</sub>
+
+</div>
 
 ---
 
@@ -84,7 +113,10 @@ clipboard, haptics, share sheet, URL open).
 
 ---
 
-## Architecture
+<details>
+<summary><b>Architecture</b> — shared commonMain, thin platform bridges, single Rust core</summary>
+
+<br/>
 
 ```mermaid
 graph TB
@@ -130,9 +162,12 @@ requires (camera hardware, file I/O, haptics, system share sheet, clipboard, URL
 | FFI       | UniFFI (auto-generated)             | Marshals types between Kotlin/Swift and Rust                |
 | Core      | Rust                                | All QR encoding, decoding, validation, and error handling   |
 
----
+</details>
 
-## MVI Pattern
+<details>
+<summary><b>MVI Pattern</b> — State · Intent · ViewModel with strict unidirectional flow</summary>
+
+<br/>
 
 Every screen follows **Model–View–Intent** with strict unidirectional data flow:
 
@@ -163,9 +198,12 @@ Rules enforced across every screen:
 - **Explicit backing fields** (KEEP-278): `val state: StateFlow<X> field = MutableStateFlow(...)`
   rather than `_state` / `asStateFlow()`.
 
----
+</details>
 
-## expect/actual Convention
+<details>
+<summary><b>expect/actual Convention</b> — all platform contracts in one <code>bridge/</code> package</summary>
+
+<br/>
 
 All platform-specific contracts live in a single `bridge/` package — never scattered across feature
 packages:
@@ -186,9 +224,12 @@ Each has a matching `*.android.kt` and `*.ios.kt` actual. The `MatchingDeclarati
 is disabled because actual files follow the `*.android.kt` / `*.ios.kt` naming convention rather
 than matching the top-level class name.
 
----
+</details>
 
-## Navigation
+<details>
+<summary><b>Navigation</b> — two tabs, crossfade, no nav library</summary>
+
+<br/>
 
 No navigation library. Two top-level tabs with `Crossfade`. The scan result is a `ModalBottomSheet`
 driven by `ScanViewModel` state, not a navigation destination.
@@ -207,9 +248,12 @@ Camera lifecycle is gated on both tab visibility and an explicit user action. `C
 composed only when `Tab.Scan` is active **and** the user has tapped Start Scanning. Switching tabs
 or dismissing the result sheet returns the screen to idle and unbinds the camera.
 
----
+</details>
 
-## Theme, Typography, Motion
+<details>
+<summary><b>Theme, Typography, Motion</b> — Material 3 dark, amber primary, MD3 easing</summary>
+
+<br/>
 
 Dark-only Material 3 colour scheme. Feature code accesses colours only through
 `MaterialTheme.colorScheme.*` — never direct imports from `Color.kt`.
@@ -230,9 +274,12 @@ Motion uses MD3 easing curves from `ui/theme/Motion.kt`:
 - `EmphasizedDecelerate` — elements entering (QR card appear)
 - `EmphasizedAccelerate` — elements leaving (input text animates down)
 
----
+</details>
 
-## Project Structure
+<details>
+<summary><b>Project Structure</b> — module layout across Kotlin, Swift, and Rust</summary>
+
+<br/>
 
 ```
 Rusty-QR/
@@ -263,9 +310,12 @@ Rusty-QR/
 
 For per-module details, see the nested READMEs linked above.
 
----
+</details>
 
-## Build and Run
+<details>
+<summary><b>Build and Run</b> — prerequisites and Gradle entry points</summary>
+
+<br/>
 
 ### Prerequisites
 
@@ -307,9 +357,12 @@ cargo deny check                                 # supply chain audit
 
 See [`rustySDK/README.md`](rustySDK/README.md) for the full Rust deep dive.
 
----
+</details>
 
-## Tech Stack
+<details>
+<summary><b>Tech Stack</b> — versions and libraries at a glance</summary>
+
+<br/>
 
 | Component        | Technology                         | Version       |
 |------------------|------------------------------------|---------------|
@@ -331,9 +384,12 @@ See [`rustySDK/README.md`](rustySDK/README.md) for the full Rust deep dive.
 | Xcode project    | XcodeGen                           | —             |
 | Dependency audit | `cargo-deny`                       | —             |
 
----
+</details>
 
-## Code Quality
+<details>
+<summary><b>Code Quality</b> — formatters, linters, hooks, CI</summary>
+
+<br/>
 
 | Check                  | Tool            | Command                                                                        |
 |------------------------|-----------------|--------------------------------------------------------------------------------|
@@ -348,6 +404,8 @@ See [`rustySDK/README.md`](rustySDK/README.md) for the full Rust deep dive.
 | Pre-commit hook        | Husky           | `lintAll` on staged `.kt`/`.kts`/`.swift`; `cargo fmt --check` on staged `.rs` |
 | Commit messages        | commit-msg hook | Enforces conventional commits (`type(scope): message`)                         |
 | iOS CI                 | GitHub Actions  | Rust checks + XCFramework build + xcodebuild + SwiftLint                       |
+
+</details>
 
 ---
 
