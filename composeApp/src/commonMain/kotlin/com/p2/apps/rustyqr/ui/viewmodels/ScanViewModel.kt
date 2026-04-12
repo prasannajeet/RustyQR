@@ -1,6 +1,7 @@
 package com.p2.apps.rustyqr.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
+import com.p2.apps.rustyqr.bridge.isCameraPermissionGranted
 import com.p2.apps.rustyqr.bridge.isCameraPermissionPermanentlyDenied
 import com.p2.apps.rustyqr.bridge.openAppSettings
 import com.p2.apps.rustyqr.bridge.requestCameraPermission
@@ -45,6 +46,7 @@ class ScanViewModel : ViewModel() {
             is ScanQRCodeScreenIntent.PermissionResult -> handlePermissionResult(intent.granted)
             is ScanQRCodeScreenIntent.RequestPermission -> handleRequestPermission()
             is ScanQRCodeScreenIntent.OpenSettings -> openAppSettings()
+            is ScanQRCodeScreenIntent.StartScanning -> handleStartScanning()
         }
     }
 
@@ -67,7 +69,8 @@ class ScanViewModel : ViewModel() {
         scanGate = false
         state.update {
             it.copy(
-                isScanning = true,
+                isScanning = false,
+                isCameraActive = false,
                 sheetContent = null,
                 isSheetVisible = false,
             )
@@ -80,6 +83,7 @@ class ScanViewModel : ViewModel() {
             it.copy(
                 hasPermission = granted,
                 permissionRequested = true,
+                isCameraActive = granted,
                 isScanning = granted,
                 isPermanentlyDenied = permanentlyDenied,
             )
@@ -89,6 +93,24 @@ class ScanViewModel : ViewModel() {
     private fun handleRequestPermission() {
         requestCameraPermission { granted ->
             onIntent(ScanQRCodeScreenIntent.PermissionResult(granted))
+        }
+    }
+
+    private fun handleStartScanning() {
+        if (isCameraPermissionGranted()) {
+            state.update {
+                it.copy(
+                    isCameraActive = true,
+                    hasPermission = true,
+                    permissionRequested = true,
+                    isScanning = true,
+                    isPermanentlyDenied = false,
+                )
+            }
+        } else {
+            requestCameraPermission { granted ->
+                onIntent(ScanQRCodeScreenIntent.PermissionResult(granted))
+            }
         }
     }
 }

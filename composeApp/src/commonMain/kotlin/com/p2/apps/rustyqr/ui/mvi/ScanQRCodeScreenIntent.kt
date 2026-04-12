@@ -27,4 +27,7 @@ sealed interface ScanQRCodeScreenIntent {
 
     /** User tapped "Open Settings" (permission permanently denied). */
     data object OpenSettings : ScanQRCodeScreenIntent
+
+    /** User tapped "Start Scanning" on the idle screen — lazily checks permission and activates camera. */
+    data object StartScanning : ScanQRCodeScreenIntent
 }

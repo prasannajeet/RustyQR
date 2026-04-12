@@ -21,8 +21,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -32,12 +30,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.p2.apps.rustyqr.bridge.CameraPreview
-import com.p2.apps.rustyqr.bridge.isCameraPermissionGranted
 import com.p2.apps.rustyqr.ui.components.AmberButton
 import com.p2.apps.rustyqr.ui.components.ScanResultSheet
 import com.p2.apps.rustyqr.ui.components.ScannerOverlay
@@ -52,29 +46,19 @@ import rustyqr.composeapp.generated.resources.scan_hint
 import rustyqr.composeapp.generated.resources.scan_open_settings
 import rustyqr.composeapp.generated.resources.scan_permission_body
 import rustyqr.composeapp.generated.resources.scan_permission_title
+import rustyqr.composeapp.generated.resources.scan_start_scanning
 
 /**
  * Scan screen — camera preview with QR scanning, scanner overlay, and result bottom sheet.
+ *
+ * Opens in an idle state — the camera stays cold until the user taps "Start Scanning".
+ * Permission is checked lazily at that point; there is no eager permission poll on resume.
  *
  * Wires [ScanViewModel] to [ScanContent].
  */
 @Composable
 fun ScanScreen(viewModel: ScanViewModel = viewModel { ScanViewModel() }) {
     val state by viewModel.state.collectAsState()
-    val lifecycleOwner = LocalLifecycleOwner.current
-
-    // Re-check permission on every ON_RESUME — covers initial entry, return from
-    // system Settings (user may have granted/revoked), and return from another app.
-    DisposableEffect(lifecycleOwner) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_RESUME) {
-                    viewModel.onIntent(ScanQRCodeScreenIntent.PermissionResult(isCameraPermissionGranted()))
-                }
-            }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
 
     ScanContent(
         state = state,
@@ -102,68 +86,88 @@ private fun ScanContent(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
     ) {
-        if (!state.hasPermission && state.permissionRequested) {
-            PermissionDeniedContent(
-                isPermanentlyDenied = state.isPermanentlyDenied,
-                onGrantPermission = { onIntent(ScanQRCodeScreenIntent.RequestPermission) },
-                onOpenSettings = { onIntent(ScanQRCodeScreenIntent.OpenSettings) },
-            )
-        } else if (state.hasPermission) {
-            // Camera preview fills screen edge-to-edge (no inset padding on this layer)
-            CameraPreview(
-                isScanning = state.isScanning,
-                onQrDecoded = { result -> onIntent(ScanQRCodeScreenIntent.FrameDecoded(result)) },
-            )
+        when {
+            state.permissionRequested && !state.hasPermission -> {
+                PermissionDeniedContent(
+                    isPermanentlyDenied = state.isPermanentlyDenied,
+                    onGrantPermission = { onIntent(ScanQRCodeScreenIntent.RequestPermission) },
+                    onOpenSettings = { onIntent(ScanQRCodeScreenIntent.OpenSettings) },
+                )
+            }
+            state.isCameraActive && state.hasPermission -> {
+                // Camera preview fills screen edge-to-edge (no inset padding on this layer)
+                CameraPreview(
+                    isScanning = state.isScanning,
+                    onQrDecoded = { result -> onIntent(ScanQRCodeScreenIntent.FrameDecoded(result)) },
+                )
 
-            // UI overlay layer — respects safe drawing insets so overlaid content avoids cutouts
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.safeDrawing),
-            ) {
-                // Scrim overlay when sheet is showing
-                if (state.isSheetVisible) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.6f)),
-                    )
-                }
-
-                // Scanner overlay (corner brackets)
-                ScannerOverlay()
-
-                // Hint text — wrapped in scrim pill for WCAG contrast on camera feed
-                if (!state.isSheetVisible) {
-                    Surface(
-                        modifier =
-                            Modifier
-                                .align(Alignment.Center)
-                                .padding(top = 180.dp),
-                        color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f),
-                        shape = MaterialTheme.shapes.large,
-                    ) {
-                        Text(
-                            text = stringResource(Res.string.scan_hint),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            style =
-                                MaterialTheme.typography.bodyMedium.copy(
-                                    color = MaterialTheme.colorScheme.onBackground,
-                                    fontSize = 14.sp,
-                                ),
-                            textAlign = TextAlign.Center,
+                // UI overlay layer — respects safe drawing insets so overlaid content avoids cutouts
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.safeDrawing),
+                ) {
+                    // Scrim overlay when sheet is showing
+                    if (state.isSheetVisible) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.6f)),
                         )
+                    }
+
+                    // Scanner overlay (corner brackets)
+                    ScannerOverlay()
+
+                    // Hint text — wrapped in scrim pill for WCAG contrast on camera feed
+                    if (!state.isSheetVisible) {
+                        Surface(
+                            modifier =
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .padding(top = 180.dp),
+                            color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f),
+                            shape = MaterialTheme.shapes.large,
+                        ) {
+                            Text(
+                                text = stringResource(Res.string.scan_hint),
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                style =
+                                    MaterialTheme.typography.bodyMedium.copy(
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        fontSize = 14.sp,
+                                    ),
+                                textAlign = TextAlign.Center,
+                            )
+                        }
                     }
                 }
             }
-        } else if (!state.permissionRequested) {
-            // Not yet checked — request immediately
-            LaunchedEffect(Unit) {
-                onIntent(ScanQRCodeScreenIntent.RequestPermission)
+            else -> {
+                IdleContent(
+                    onStartScanning = { onIntent(ScanQRCodeScreenIntent.StartScanning) },
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun IdleContent(onStartScanning: () -> Unit) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(32.dp),
+    ) {
+        AmberButton(
+            text = stringResource(Res.string.scan_start_scanning),
+            onClick = onStartScanning,
+            modifier = Modifier.align(Alignment.Center),
+        )
     }
 }
 

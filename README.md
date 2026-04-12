@@ -55,14 +55,17 @@ Rust decode path.
 
 Live camera scanner decodes QR codes from the device camera feed. Camera frames are passed directly
 to Rust as raw grayscale (Y-plane) buffers — no image encoding overhead — enabling sub-20ms decode
-latency per frame. On successful decode, a scan gate (atomic-style flag) prevents double-fire and
-the camera session stays alive so dismissing the result returns instantly with no black flash.
+latency per frame. The Scan tab opens in an **idle** state — no camera feed, no permission prompt —
+with a centered **Start Scanning** button. Tapping the button requests camera permission (first time)
+or re-checks status, then activates the preview and frame analyzer. A scan gate (atomic-style flag)
+prevents double-fire on successful decode.
 
 ### Scan Result Sheet
 
 A successful decode surfaces a `ModalBottomSheet` with the decoded content, a content-type badge
 (URL vs TEXT), and actions: **Open in Browser** (for URLs), **Copy** to clipboard, and **Scan
-Again** which resets the scan gate and resumes analysis.
+Again**. Dismissing the sheet (swipe or Scan Again) returns the screen to idle so the camera stays
+cold until the user explicitly taps Start Scanning again — no background battery/CPU cost.
 
 ### Localization
 
@@ -200,9 +203,9 @@ graph LR
     APP -->|"Tab.Generate"| GEN
 ```
 
-Camera lifecycle is tied to tab visibility — `CameraPreview` is only composed when `Tab.Scan` is
-active. Switching to Generate unbinds the camera; switching back rebinds without a black flash. The
-rationale is documented in `docs/adr/002-scan-to-result-navigation.md`.
+Camera lifecycle is gated on both tab visibility and an explicit user action. `CameraPreview` is
+composed only when `Tab.Scan` is active **and** the user has tapped Start Scanning. Switching tabs
+or dismissing the result sheet returns the screen to idle and unbinds the camera.
 
 ---
 

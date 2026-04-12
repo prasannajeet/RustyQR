@@ -84,8 +84,10 @@ Key design decisions on Android:
 
 - **Gate is `@Volatile Boolean`**, not `AtomicBoolean` — fast read on camera thread, no lock
   overhead; writes only happen on the main thread.
-- **Camera session stays bound** when `isScanning = false` — the analyzer just drops frames. Avoids
-  the black flash that would happen if we unbound on decode and rebound on dismiss.
+- **Camera session binds only while the user is actively scanning** — `CameraPreview` is gated on
+  `isCameraActive`. On decode the analyzer stops reading frames via the scan gate (camera remains
+  bound while the result sheet is open); on dismiss the screen returns to idle and the camera
+  unbinds. The Scan tab opens cold with no preview and no permission prompt until Start Scanning.
 - **`Either.Left` frames are silently discarded** — most frames contain no QR; this is the expected
   case, not an error path.
 - **JNA is the loader** — the generated `rusty_qr_ffi.kt` calls into `librusty_qr_ffi.so` through

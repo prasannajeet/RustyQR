@@ -26,6 +26,7 @@
     <string name="scan_camera_denied_cd">Acceso a la cámara denegado</string>
     <string name="scan_viewfinder_cd">Visor de escaneo QR</string>
     <string name="scan_again">Escanear de nuevo</string>
+    <string name="scan_start_scanning">Empezar a escanear</string>
 
     <string name="content_type_url">URL</string>
     <string name="content_type_text">TEXTO</string>

@@ -10,7 +10,9 @@ import com.p2.apps.rustyqr.model.ScanResult
  */
 data class ScanScreenState(
     /** Whether the camera analyzer is actively processing frames. */
-    val isScanning: Boolean = true,
+    val isScanning: Boolean = false,
+    /** Whether the camera preview is active (user has tapped "Start Scanning" and been granted permission). */
+    val isCameraActive: Boolean = false,
     /** Decoded QR content to display in the bottom sheet. Null when sheet is hidden. */
     val sheetContent: ScanResult? = null,
     /** Whether the result bottom sheet is currently shown. */

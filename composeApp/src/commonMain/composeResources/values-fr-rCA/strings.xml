@@ -26,6 +26,7 @@
     <string name="scan_camera_denied_cd">Accès à la caméra refusé</string>
     <string name="scan_viewfinder_cd">Viseur de numérisation QR</string>
     <string name="scan_again">Numériser à nouveau</string>
+    <string name="scan_start_scanning">Commencer la numérisation</string>
 
     <string name="content_type_url">URL</string>
     <string name="content_type_text">TEXTE</string>
