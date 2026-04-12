@@ -59,7 +59,28 @@
       "Bash(make ios:*)",
       "Bash(/Users/prasanpani/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh:*)",
       "Bash(ls /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/rustySDK/target/aarch64-apple-ios/release/*.h)",
-      "Bash(ls /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/iosApp/generated/*.h)"
+      "Bash(ls /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/iosApp/generated/*.h)",
+      "Bash(cp /Users/prasanpani/Library/Fonts/JetBrainsMono-Regular.ttf /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/commonMain/composeResources/font/jetbrains_mono_regular.ttf)",
+      "Bash(cp /Users/prasanpani/Library/Fonts/JetBrainsMono-Bold.ttf /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/commonMain/composeResources/font/jetbrains_mono_bold.ttf)",
+      "Bash(curl -s -o /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/commonMain/composeResources/font/inter_regular.ttf https://github.com/rsms/inter/raw/master/docs/font-files/Inter-Regular.ttf)",
+      "Bash(curl -s -o /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/commonMain/composeResources/font/inter_semibold.ttf https://github.com/rsms/inter/raw/master/docs/font-files/Inter-SemiBold.ttf)",
+      "Bash(curl -s -o /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/composeApp/src/commonMain/composeResources/font/inter_bold.ttf https://github.com/rsms/inter/raw/master/docs/font-files/Inter-Bold.ttf)",
+      "Bash(./gradlew :composeApp:compileKotlinIosSimulatorArm64)",
+      "Bash(./gradlew :composeApp:dependencies --configuration commonMainImplementationDependenciesMetadata)",
+      "Bash(./gradlew :composeApp:dependencies)",
+      "Bash(grep \"\\\\.jar$\")",
+      "Bash(grep \".jar$\")",
+      "Bash(./gradlew :composeApp:assembleDebug)",
+      "Bash(./gradlew :composeApp:ktlintCheck)",
+      "Bash(./gradlew :composeApp:ktlintFormat)",
+      "Bash(./gradlew :composeApp:detekt)",
+      "Bash(./gradlew :composeApp:swiftlint)",
+      "WebFetch(domain:kashif-e.github.io)",
+      "WebFetch(domain:klibs.io)",
+      "WebFetch(domain:central.sonatype.com)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.jetbrains.com)"
     ]
   }
 }
