@@ -1,16 +1,16 @@
 # Rusty-QR
 
-A cross-platform QR code generation and live scanning app built with **Kotlin Multiplatform**, *
-*Compose Multiplatform**, and a **Rust** core library. One Rust codebase handles all QR logic;
-auto-generated Kotlin and Swift bindings connect it to Android and iOS with zero manual bridging
-code.
+A cross-platform QR code generation and live scanning app built with **Kotlin Multiplatform**,
+**Compose Multiplatform**, and a **Rust** core library. One Rust codebase handles all QR logic; one
+Compose codebase renders the UI on both Android and iOS. Auto-generated Kotlin and Swift bindings
+connect Rust to each platform with zero manual bridging code.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                     Rusty-QR App                        │
 │                                                         │
-│        Compose Multiplatform UI (shared)                │
-│            Android + iOS from one codebase              │
+│       Compose Multiplatform UI  (commonMain)            │
+│           Android + iOS from one codebase               │
 │                     │                                   │
 │              QrBridge (expect/actual)                    │
 │                     │                                   │
@@ -18,7 +18,7 @@ code.
 │         │  Kotlin Bindings (JNA)  │  Swift Bindings     │
 │         └─────────────────────────┘                     │
 │                     │                                   │
-│            Rust SDK (rusty-qr)                          │
+│            Rust SDK  (rusty-qr)                         │
 │         Encode · Decode · Scan                          │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -33,7 +33,8 @@ Rusty-QR demonstrates a different approach: **write the business logic once in R
 native binaries, and auto-generate idiomatic Kotlin and Swift bindings** via Mozilla's UniFFI.
 
 The result is a single source of truth for QR encoding and decoding that both platforms share, with
-native performance and compile-time memory safety.
+native performance, compile-time memory safety, and a single Compose UI rendered identically on
+both platforms.
 
 ---
 
@@ -41,40 +42,42 @@ native performance and compile-time memory safety.
 
 ### QR Code Generation
 
-The app generates QR codes from any text input and displays the result as an image. Users enter
-text, choose an output size, and receive a PNG rendered in real time. The Rust encoder supports four
-error correction levels (Low, Medium, Quartile, High) so users can trade QR code density for damage
-resilience.
+Enter text, pick a size, get a PNG rendered in real time. The Rust encoder supports four error
+correction levels (Low, Medium, Quartile, High) trading density for damage resilience. Result card
+offers share-sheet export and save-to-gallery.
 
 ### QR Code Scanning (Saved Images)
 
-Users can decode QR codes from saved images in their photo library. The app accepts PNG and JPEG
-images, passes the bytes to the Rust decoder, and displays the decoded content. This works on both
-platforms through the same shared decode path.
+Decode QR codes from PNG or JPEG bytes picked from the photo library. Both platforms share the same
+Rust decode path.
 
 ### Live Camera Scanning
 
-The app provides a live camera scanner that decodes QR codes from the device camera feed in real
-time. The camera preview and scan UI are built with Compose Multiplatform, while the
-platform-specific camera access uses CameraX (Android) and AVFoundation (iOS) under the hood. Camera
-frames are passed directly to Rust as raw grayscale pixel buffers — no image encoding/decoding
-overhead — enabling sub-20ms decode latency per frame.
+Live camera scanner decodes QR codes from the device camera feed. Camera frames are passed directly
+to Rust as raw grayscale (Y-plane) buffers — no image encoding overhead — enabling sub-20ms decode
+latency per frame. On successful decode, a scan gate (atomic-style flag) prevents double-fire and
+the camera session stays alive so dismissing the result returns instantly with no black flash.
 
-When a QR code is detected, the app navigates to a result screen showing the decoded content with
-options to open URLs in the browser, copy text to the clipboard, or scan again.
+### Scan Result Sheet
 
-### Scan-to-Result Navigation
+A successful decode surfaces a `ModalBottomSheet` with the decoded content, a content-type badge
+(URL vs TEXT), and actions: **Open in Browser** (for URLs), **Copy** to clipboard, and **Scan
+Again** which resets the scan gate and resumes analysis.
 
-Successful scans trigger a navigation flow from the camera screen to a result screen. A scan gate (
-atomic lock) prevents double-navigation on rapid successive decodes. The camera session stays alive
-during navigation — no black flash when returning to scan again.
+### Localization
 
-### Cross-Platform Shared UI
+UI ships in **three languages**: English (default), French (Canada), and Spanish. Strings live in
+Compose Multiplatform resource bundles under `composeApp/src/commonMain/composeResources/`
+(`values/`, `values-fr-rCA/`, `values-es/`) and are shared by Android and iOS from a single source.
+ViewModels emit `UiText` (sealed type wrapping either a raw string or a `StringResource`) so locale
+resolution stays in the composable layer and user-facing copy is never hardcoded in business logic.
 
-All screens — generation, scanning, and results — are built with Compose Multiplatform, sharing UI
-code across Android and iOS from a single Kotlin codebase. Platform-specific code is limited to
-camera hardware access (CameraX on Android, AVFoundation on iOS) and the FFI bridge layer. The iOS
-app hosts the Compose UI via a `UIViewControllerRepresentable` wrapper.
+### Shared Compose UI
+
+Every screen — scan, generate, result sheet — is Compose Multiplatform and lives in `commonMain`.
+The iOS app hosts this Compose UI inside a single `UIViewControllerRepresentable` wrapper. No
+duplicate SwiftUI screens; the only platform-specific code is the hardware bridges (camera,
+clipboard, haptics, share sheet, URL open).
 
 ---
 
@@ -82,44 +85,147 @@ app hosts the Compose UI via a `UIViewControllerRepresentable` wrapper.
 
 ```mermaid
 graph TB
-subgraph "Compose Multiplatform (shared UI + logic)"
-A[Screens — Scan, Result, Generate]
-C[ViewModels — MVI Pattern]
-D[Navigation — Compose Navigation]
-E[QrBridge — expect/actual]
-end
+    subgraph "commonMain — shared Kotlin (Android + iOS)"
+        UI["Compose Multiplatform UI<br/>(screens · components · theme)"]
+        MVI["MVI ViewModels<br/>State · Intent · ViewModel"]
+        BRIDGE_EXP["expect bridges<br/>(bridge/ package)"]
+    end
 
-subgraph "Platform-Specific (camera only)"
-F[androidMain<br/>CameraX image analysis]
-G[iosMain<br/>AVFoundation frame capture]
-end
+    subgraph "androidMain — Android actuals"
+        BRIDGE_AND["QrBridge → UniFFI Kotlin (JNA)"]
+        CAM_AND["CameraPreview → CameraX ImageAnalysis"]
+        MISC_AND["Permissions · Haptics · OpenUrl ·<br/>Share · Save · ImageDecoder"]
+    end
 
-subgraph "Rust SDK"
-H[ffi crate — UniFFI exports]
-I[core crate — encoder, decoder, types, errors]
-end
+    subgraph "iosMain — iOS actuals (KMM side)"
+        BRIDGE_IOS["QrBridge → RustyQR.xcframework"]
+        CAM_IOS["CameraPreview → AVFoundation UIKitView"]
+        MISC_IOS["Haptics · OpenUrl · Share · Save"]
+    end
 
-A --> C
-C --> D
-C --> E
-E --> F
-E --> G
-F --> H
-G --> H
-H --> I
+    subgraph "rustySDK — Rust core + FFI"
+        FFI["rusty-qr-ffi<br/>UniFFI proc-macro exports"]
+        CORE["rusty-qr-core<br/>encoder · decoder · scanner"]
+    end
+
+    MVI --> BRIDGE_EXP
+    BRIDGE_EXP --> BRIDGE_AND
+    BRIDGE_EXP --> BRIDGE_IOS
+    BRIDGE_AND --> FFI
+    BRIDGE_IOS --> FFI
+    FFI --> CORE
 ```
 
-The project follows the **MVI (Model-View-Intent)** pattern on the mobile side and the *
-*Command-Response** pattern on the Rust side. Both patterns share the same philosophy:
-unidirectional data flow with no hidden state.
+All business logic and UI live in `commonMain`. Platform code is minimal — only what the OS
+requires (camera hardware, file I/O, haptics, system share sheet, clipboard, URL open).
 
-| Layer     | Technology                             | Responsibility                                            |
-|-----------|----------------------------------------|-----------------------------------------------------------|
-| UI        | Compose Multiplatform (both platforms) | Renders state, dispatches intents                         |
-| ViewModel | Kotlin (commonMain)                    | Processes intents, manages state, emits navigation events |
-| Bridge    | expect/actual (KMM)                    | Abstracts the platform-specific FFI call                  |
-| FFI       | UniFFI (auto-generated)                | Marshals types between Kotlin/Swift and Rust              |
-| Core      | Rust                                   | All QR encoding, decoding, validation, and error handling |
+| Layer     | Technology                          | Responsibility                                              |
+|-----------|-------------------------------------|-------------------------------------------------------------|
+| UI        | Compose Multiplatform (both)        | Renders state, dispatches intents                           |
+| ViewModel | Kotlin (commonMain)                 | Processes intents, owns state, manages the scan gate        |
+| Bridge    | expect/actual (`bridge/` package)   | Abstracts platform-specific FFI / hardware calls            |
+| FFI       | UniFFI (auto-generated)             | Marshals types between Kotlin/Swift and Rust                |
+| Core      | Rust                                | All QR encoding, decoding, validation, and error handling   |
+
+---
+
+## MVI Pattern
+
+Every screen follows **Model–View–Intent** with strict unidirectional data flow:
+
+```mermaid
+graph LR
+    USER(("User action"))
+    INTENT["Intent<br/>(sealed interface)"]
+    VM["ViewModel<br/>onIntent()"]
+    STATE["State<br/>(immutable data class)"]
+    VIEW["Composable<br/>(pure render)"]
+
+    USER -->|"tap / frame / permission"| INTENT
+    INTENT -->|"dispatched to"| VM
+    VM -->|"state.update { }"| STATE
+    STATE -->|"collectAsState()"| VIEW
+    VIEW -->|"emits"| INTENT
+```
+
+Rules enforced across every screen:
+
+- **State** is an immutable `data class` — no `var` exposed to composables.
+- **Intent** is a `sealed interface` — every user action is an explicit type, not a lambda callback.
+- **ViewModel** owns all business logic — composables are pure render functions.
+- **Side effects** (haptics, URL open, share, save) are triggered inside `onIntent()`, never inside
+  a composable body.
+- **Error contract**: ArrowKT `Either<QrError, T>` — never throw for domain errors, never
+  `kotlin.Result<T>`.
+- **Explicit backing fields** (KEEP-278): `val state: StateFlow<X> field = MutableStateFlow(...)`
+  rather than `_state` / `asStateFlow()`.
+
+---
+
+## expect/actual Convention
+
+All platform-specific contracts live in a single `bridge/` package — never scattered across feature
+packages:
+
+```
+commonMain/kotlin/com/p2/apps/rustyqr/bridge/
+├── QrBridge.kt             // Rust FFI — generate/decode/version
+├── CameraPreview.kt        // camera composable
+├── CameraPermission.kt     // runtime permission check + request
+├── HapticFeedback.kt       // tap/success haptic
+├── OpenUrl.kt              // open http(s) URL in system browser
+├── ShareQrImage.kt         // system share sheet for PNG bytes
+├── SaveQrImage.kt          // save PNG to gallery / Photos
+└── ImageDecoder.kt         // PNG bytes → ImageBitmap
+```
+
+Each has a matching `*.android.kt` and `*.ios.kt` actual. The `MatchingDeclarationName` detekt rule
+is disabled because actual files follow the `*.android.kt` / `*.ios.kt` naming convention rather
+than matching the top-level class name.
+
+---
+
+## Navigation
+
+No navigation library. Two top-level tabs with `Crossfade`. The scan result is a `ModalBottomSheet`
+driven by `ScanViewModel` state, not a navigation destination.
+
+```mermaid
+graph LR
+    APP["App.kt<br/>Tab state hoisted here"]
+    SCAN["ScanScreen<br/>+ ScanResultSheet"]
+    GEN["GenerateScreen<br/>+ QrResultCard"]
+
+    APP -->|"Tab.Scan (default)"| SCAN
+    APP -->|"Tab.Generate"| GEN
+```
+
+Camera lifecycle is tied to tab visibility — `CameraPreview` is only composed when `Tab.Scan` is
+active. Switching to Generate unbinds the camera; switching back rebinds without a black flash. The
+rationale is documented in `docs/adr/002-scan-to-result-navigation.md`.
+
+---
+
+## Theme, Typography, Motion
+
+Dark-only Material 3 colour scheme. Feature code accesses colours only through
+`MaterialTheme.colorScheme.*` — never direct imports from `Color.kt`.
+
+| Token                 | Value                                    |
+|-----------------------|------------------------------------------|
+| Primary               | `#F5A623` (amber)                        |
+| Background            | `#1A1A1A`                                |
+| Surface / Container   | `#1E1E1E` / `#242424`                    |
+| Outline               | `#3A3A3A`                                |
+| Body font             | Inter                                    |
+| Display / mono font   | JetBrains Mono (titles, badges, buttons) |
+| Shape scale           | 4 / 8 / 12 / 16 / 28dp (MD3)             |
+
+Motion uses MD3 easing curves from `ui/theme/Motion.kt`:
+
+- `StandardEasing` — tab crossfade, colour animations
+- `EmphasizedDecelerate` — elements entering (QR card appear)
+- `EmphasizedAccelerate` — elements leaving (input text animates down)
 
 ---
 
@@ -127,55 +233,32 @@ unidirectional data flow with no hidden state.
 
 ```
 Rusty-QR/
-├── composeApp/
-│   ├── src/commonMain/       # Shared Kotlin — UI, ViewModels, navigation
-│   ├── src/androidMain/      # Android — CameraX, QrBridge actual, MainActivity
-│   └── src/iosMain/          # iOS — QrBridge actual (KMM side)
+├── composeApp/                 # KMP module — shared UI + Android actuals + iOS actuals
+│   ├── src/commonMain/         # Shared Kotlin: UI, ViewModels, bridges (expect)
+│   ├── src/androidMain/        # Android actuals + CameraX + JNI libs + generated UniFFI
+│   └── src/iosMain/            # iOS actuals (Kotlin/Native)
+│   └── README.md               # Android build pipeline + androidMain details
 │
-├── iosApp/
-│   ├── project.yml            # XcodeGen spec (source of truth for Xcode project)
-│   ├── iosApp/                # Swift source files
-│   ├── Configuration/         # xcconfig files
-│   ├── generated/             # UniFFI Swift bindings (generated, gitignored)
-│   └── Frameworks/            # RustyQR.xcframework (generated, gitignored)
+├── iosApp/                     # iOS Xcode project — hosts Compose UI via UIKit
+│   ├── project.yml             # XcodeGen source of truth
+│   ├── iosApp/                 # Swift shell (ContentView wraps MainViewController)
+│   ├── Configuration/          # xcconfig files
+│   ├── generated/              # UniFFI Swift bindings (gitignored)
+│   ├── Frameworks/             # RustyQR.xcframework (gitignored)
+│   └── README.md               # iOS build pipeline + Xcode/XcodeGen details
 │
-├── rustySDK/                  # Rust workspace (all QR logic lives here)
-│   ├── crates/core/          # Business logic — encoder, decoder, types, errors
-│   ├── crates/ffi/           # UniFFI wrapper — thin one-liner delegations
-│   └── crates/uniffi-bindgen/ # CLI tool for generating Kotlin/Swift bindings
+├── rustySDK/                   # Rust workspace — all QR logic
+│   ├── crates/core/            # encoder · decoder · types · errors (no FFI)
+│   ├── crates/ffi/             # UniFFI thin wrappers
+│   ├── crates/uniffi-bindgen/  # CLI for generating Kotlin/Swift bindings
+│   └── README.md               # Rust SDK deep dive (ownership, cargo, FFI types)
 │
-├── config/detekt/            # Detekt static analysis rules
-├── docs/                     # PRD, implementation plan, ADRs
-└── .husky/                   # Git hooks (pre-commit lint, commit-msg format)
+├── config/detekt/              # Detekt static analysis rules
+├── docs/                       # PRD, implementation plan, ADRs
+└── .husky/                     # Git hooks (pre-commit lint, commit-msg format)
 ```
 
----
-
-## The Rust SDK
-
-The Rust SDK is the core of this project — a pure-Rust library that handles all QR code generation
-and scanning. It compiles to native `.so` (Android) and `.a` (iOS) binaries, with Kotlin and Swift
-bindings auto-generated by UniFFI.
-
-**Key stats:**
-
-| Metric                   | Value                                                         |
-|--------------------------|---------------------------------------------------------------|
-| Public API surface       | 5 functions, 4 types                                          |
-| Test coverage            | 56 tests (unit, integration, FFI, thread safety, determinism) |
-| Generate 256px QR        | ~1.1 ms                                                       |
-| Decode from camera frame | ~2.2 ms                                                       |
-| Zero panics              | All errors returned as typed `Result<T, QrError>`             |
-| Dependencies             | Feature-gated, audited via `cargo-deny`                       |
-| 16KB page alignment      | All `.so` files are 16KB ELF-aligned (NDK 30, Android 15+ compliant) |
-| iOS XCFramework          | Device + simulator slices, built via `buildRustIos`                   |
-
-The SDK is structured as two crates: **core** (all logic, no FFI dependency) and **ffi** (thin
-UniFFI wrappers, zero business logic). This separation means the core logic compiles and tests on
-any platform — no mobile toolchain required.
-
-For a deep dive into the Rust implementation, Rust language concepts, Cargo commands, code flow
-diagrams, and architecture details, see the **[Rust SDK README](rustySDK/README.md)**.
+For per-module details, see the nested READMEs linked above.
 
 ---
 
@@ -184,65 +267,42 @@ diagrams, and architecture details, see the **[Rust SDK README](rustySDK/README.
 ### Prerequisites
 
 - **Android**: Android Studio, JDK 11+, Android SDK (compileSdk 36, minSdk 29)
-- **iOS**: Xcode, macOS
-- **Rust**: Install via [rustup.rs](https://rustup.rs/) (edition 2021)
+- **iOS**: Xcode, macOS, XcodeGen (`brew install xcodegen`)
+- **Rust**: Install via [rustup.rs](https://rustup.rs/) — targets for Android + iOS cross-compile
+  (see platform READMEs for first-time setup)
 
-### Android
-
-```bash
-# Build Rust native libraries + Kotlin bindings for all Android targets
-./gradlew :composeApp:buildRustAndroid
-
-# Build and install the Android app
-./gradlew :composeApp:assembleDebug
-```
-
-### iOS
+### Quick commands
 
 ```bash
-# Build Rust native libraries + Swift bindings + XCFramework + regenerate Xcode project
+# Android — build Rust .so + Kotlin bindings + APK
+./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
+
+# iOS — build Rust .a + XCFramework + Swift bindings + Xcode project
 ./gradlew :composeApp:buildRustIos
-
-# Open in Xcode and run
 open iosApp/iosApp.xcodeproj
-```
 
-> **XcodeGen note:** The iOS project uses [XcodeGen](https://github.com/yonaskolb/XcodeGen) --
-> `iosApp/project.yml` is the source of truth for the Xcode project. The `.xcodeproj` is generated
-> and gitignored. After cloning, run `./gradlew :composeApp:buildRustIos` to generate it. Never edit
-> `.xcodeproj` directly -- edit `project.yml` instead. See [iosApp/README.md](iosApp/README.md) for
-> full details.
-
-### Rust SDK (standalone)
-
-These commands run directly in the Rust workspace -- no Gradle wrapper exists for them since they're
-developer-only checks, not build steps.
-
-```bash
-cd rustySDK
-
-# Run all tests
-cargo test --workspace
-
-# Run linter
-cargo clippy --workspace -- -D warnings
-
-# Run benchmarks
-cargo bench -p rusty-qr-core
-
-# Audit dependencies
-cargo deny check
-```
-
-### Kotlin/Swift Linting
-
-```bash
-# All three linters (ktlint, detekt, swiftlint)
+# All three Kotlin/Swift linters
 ./gradlew :composeApp:lintAll
 
 # Auto-fix Kotlin formatting
 ./gradlew :composeApp:ktlintFormat
 ```
+
+Deeper details (what each task does, how the cross-compiler is invoked, how UniFFI generates
+bindings) live in the platform READMEs — see [`composeApp/README.md`](composeApp/README.md) and
+[`iosApp/README.md`](iosApp/README.md).
+
+### Rust SDK (standalone)
+
+```bash
+cd rustySDK
+cargo test --workspace                           # all tests
+cargo clippy --workspace -- -D warnings          # lint
+cargo bench -p rusty-qr-core                     # benchmarks
+cargo deny check                                 # supply chain audit
+```
+
+See [`rustySDK/README.md`](rustySDK/README.md) for the full Rust deep dive.
 
 ---
 
@@ -252,15 +312,16 @@ cargo deny check
 |------------------|------------------------------------|---------------|
 | Shared UI        | Compose Multiplatform              | 1.11.0-beta01 |
 | Shared logic     | Kotlin Multiplatform               | 2.3.20        |
-| Android camera   | CameraX (platform-specific)        | —             |
-| iOS camera       | AVFoundation (platform-specific)   | —             |
-| Navigation       | Compose Navigation (multiplatform) | 2.9.0-alpha01 |
+| Error handling   | ArrowKT `Either`                   | —             |
+| Android camera   | CameraX                            | —             |
+| iOS camera       | AVFoundation                       | —             |
+| FFI loader       | JNA (Android)                      | 5.14.0        |
 | QR engine        | Rust (edition 2021)                | —             |
 | QR encoding      | `qrcode` crate                     | 0.14          |
 | QR decoding      | `rqrr` crate                       | 0.10          |
 | Image processing | `image` crate                      | 0.25          |
 | FFI bindings     | UniFFI                             | 0.28          |
-| Error handling   | `thiserror`                        | 2.x           |
+| Rust errors      | `thiserror`                        | 2.x           |
 | Kotlin lint      | ktlint + detekt                    | —             |
 | Swift lint       | SwiftLint                          | —             |
 | Git hooks        | Husky-style (Gradle task)          | —             |
@@ -271,22 +332,42 @@ cargo deny check
 
 ## Code Quality
 
-| Check                  | Tool            | Command                                                |
-|------------------------|-----------------|--------------------------------------------------------|
-| Rust formatting        | `rustfmt`       | `cargo fmt --check`                                    |
-| Rust linting           | Clippy          | `cargo clippy --workspace -- -D warnings`              |
-| Rust tests             | Cargo test      | `cargo test --workspace`                               |
-| Rust benchmarks        | Criterion       | `cargo bench -p rusty-qr-core`                         |
-| Rust supply chain      | cargo-deny      | `cargo deny check`                                     |
-| Kotlin formatting      | ktlint          | `./gradlew :composeApp:ktlintCheck`                    |
-| Kotlin static analysis | detekt          | `./gradlew :composeApp:detekt`                         |
-| Swift linting          | SwiftLint       | `./gradlew :composeApp:swiftlint`                      |
+| Check                  | Tool            | Command                                                                        |
+|------------------------|-----------------|--------------------------------------------------------------------------------|
+| Rust formatting        | `rustfmt`       | `cargo fmt --check`                                                            |
+| Rust linting           | Clippy          | `cargo clippy --workspace -- -D warnings`                                      |
+| Rust tests             | Cargo test      | `cargo test --workspace`                                                       |
+| Rust benchmarks        | Criterion       | `cargo bench -p rusty-qr-core`                                                 |
+| Rust supply chain      | cargo-deny      | `cargo deny check`                                                             |
+| Kotlin formatting      | ktlint          | `./gradlew :composeApp:ktlintCheck`                                            |
+| Kotlin static analysis | detekt          | `./gradlew :composeApp:detekt`                                                 |
+| Swift linting          | SwiftLint       | `./gradlew :composeApp:swiftlint`                                              |
 | Pre-commit hook        | Husky           | `lintAll` on staged `.kt`/`.kts`/`.swift`; `cargo fmt --check` on staged `.rs` |
-| iOS CI                 | GitHub Actions  | Rust checks + XCFramework build + xcodebuild + SwiftLint |
-| Commit messages        | commit-msg hook | Enforces conventional commits (`type(scope): message`) |
+| Commit messages        | commit-msg hook | Enforces conventional commits (`type(scope): message`)                         |
+| iOS CI                 | GitHub Actions  | Rust checks + XCFramework build + xcodebuild + SwiftLint                       |
+
+---
+
+## Status
+
+| Phase                                         | Status            |
+|-----------------------------------------------|-------------------|
+| 0 — Toolchain setup                           | Done              |
+| 1 — Rust core encoder                         | Done              |
+| 2 — Rust core decoder + raw scanner           | Done              |
+| 3 — FFI crate + UniFFI bindings               | Done              |
+| 4 — Android build pipeline (.so + Kotlin)     | Done              |
+| 5 — iOS build pipeline (.a + XCFramework)     | Done              |
+| 6 — Android UI + CameraX scanner              | Done              |
+| 7 — iOS runtime wiring                        | In progress       |
+| 8 — Polish, perf assertions, docs             | In progress       |
+
+iOS actuals for `QrBridge.ios.kt` are currently stubs (`TODO("Wired in Phase 7")`). The iOS build
+pipeline produces the XCFramework and Swift bindings, but the Kotlin-side iOS bridge delegation to
+those bindings is not yet in place. Android is end-to-end functional.
 
 ---
 
 ## License
 
-This is a portfolio project. Not published to crates.io, Maven Central, or CocoaPods.
+Portfolio project. Not published to crates.io, Maven Central, or CocoaPods.

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RustyQR</string>
+
+    <string name="tab_scan">Scan</string>
+    <string name="tab_generate">Generate</string>
+
+    <string name="generate_input_hint">Add a text content below for which you need a QR code generated</string>
+    <string name="generate_input_placeholder">Enter text or URL</string>
+    <string name="generate_error_too_long">Content too long for QR code</string>
+    <string name="generate_button">Generate QR Code</string>
+    <string name="generate_preview_format">QR code created for - %1$s</string>
+    <string name="generate_qr_content_description">Generated QR Code</string>
+    <string name="generate_message_saved">Saved to gallery</string>
+
+    <string name="action_share">Share</string>
+    <string name="action_save">Save</string>
+    <string name="action_open">Open</string>
+    <string name="action_copy">Copy</string>
+
+    <string name="scan_hint">Point camera at a QR code</string>
+    <string name="scan_permission_title">Camera access needed</string>
+    <string name="scan_permission_body">To scan QR codes, allow camera access for Rusty QR</string>
+    <string name="scan_open_settings">Open Settings</string>
+    <string name="scan_grant_permission">Grant Permission</string>
+    <string name="scan_camera_denied_cd">Camera access denied</string>
+    <string name="scan_viewfinder_cd">QR scan viewfinder</string>
+    <string name="scan_again">Scan Again</string>
+
+    <string name="content_type_url">URL</string>
+    <string name="content_type_text">TEXT</string>
+</resources>

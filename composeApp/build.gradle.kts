@@ -10,6 +10,13 @@ plugins {
 }
 
 kotlin {
+    compilerOptions {
+        // Explicit backing fields (KEEP-278) — lets ViewModels expose
+        // `val state: StateFlow<T>` with a private `field = MutableStateFlow(...)`,
+        // eliminating the `_state` / `state` duplication. Still experimental in 2.3.x.
+        freeCompilerArgs.add("-Xexplicit-backing-fields")
+    }
+
     androidTarget {
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
@@ -30,16 +37,23 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
+            implementation(libs.androidx.camera.core)
+            implementation(libs.androidx.camera.camera2)
+            implementation(libs.androidx.camera.lifecycle)
+            implementation(libs.androidx.camera.view)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
+            implementation(libs.compose.ui.backhandler)
             implementation(libs.compose.components.resources)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.arrow.core)
+            implementation(libs.compose.material.icons.extended)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

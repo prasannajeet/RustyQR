@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RustyQR</string>
+
+    <string name="tab_scan">Scanner</string>
+    <string name="tab_generate">Générer</string>
+
+    <string name="generate_input_hint">Ajoutez ci-dessous le contenu pour lequel vous avez besoin d\'un code QR</string>
+    <string name="generate_input_placeholder">Entrez du texte ou une URL</string>
+    <string name="generate_error_too_long">Contenu trop long pour un code QR</string>
+    <string name="generate_button">Générer le code QR</string>
+    <string name="generate_preview_format">Code QR créé pour - %1$s</string>
+    <string name="generate_qr_content_description">Code QR généré</string>
+    <string name="generate_message_saved">Enregistré dans la galerie</string>
+
+    <string name="action_share">Partager</string>
+    <string name="action_save">Enregistrer</string>
+    <string name="action_open">Ouvrir</string>
+    <string name="action_copy">Copier</string>
+
+    <string name="scan_hint">Pointez la caméra vers un code QR</string>
+    <string name="scan_permission_title">Accès à la caméra requis</string>
+    <string name="scan_permission_body">Pour scanner les codes QR, autorisez l\'accès à la caméra pour Rusty QR</string>
+    <string name="scan_open_settings">Ouvrir les paramètres</string>
+    <string name="scan_grant_permission">Autoriser l\'accès</string>
+    <string name="scan_camera_denied_cd">Accès à la caméra refusé</string>
+    <string name="scan_viewfinder_cd">Viseur de numérisation QR</string>
+    <string name="scan_again">Numériser à nouveau</string>
+
+    <string name="content_type_url">URL</string>
+    <string name="content_type_text">TEXTE</string>
+</resources>
