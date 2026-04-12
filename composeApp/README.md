@@ -1,4 +1,276 @@
-# Android Build: From Rust to APK
+# composeApp — Android / KMP Module
+
+This document covers two things:
+1. **App architecture** — how the KMP codebase is structured, how data flows, how the UI is built
+2. **Build pipeline** — how the Rust QR library gets compiled and packaged into the Android app
+
+---
+
+## App Architecture
+
+### KMP Layer Overview
+
+The app is written with **Kotlin Multiplatform + Compose Multiplatform**. Code lives in three source sets:
+
+```mermaid
+graph TB
+    subgraph commonMain["commonMain — shared Kotlin (Android + iOS)"]
+        UI["Compose Multiplatform UI<br/>(screens, components, theme)"]
+        MVI["MVI ViewModels<br/>(State · Intent · ViewModel)"]
+        BRIDGE_EXP["expect bridges<br/>(QrBridge · CameraPreview · HapticFeedback · OpenUrl · CameraPermission)"]
+    end
+
+    subgraph androidMain["androidMain — Android actuals"]
+        BRIDGE_AND["actual QrBridge → UniFFI Kotlin bindings"]
+        CAM_AND["actual CameraPreview → CameraX + ImageAnalysis"]
+        PERM_AND["actual CameraPermission → ActivityResultLauncher"]
+        HAP_AND["actual HapticFeedback → HapticFeedbackType"]
+        URL_AND["actual OpenUrl → Intent(ACTION_VIEW)"]
+    end
+
+    subgraph iosMain["iosMain — iOS actuals (Phase 7)"]
+        BRIDGE_IOS["actual QrBridge → RustyQR.xcframework"]
+        CAM_IOS["actual CameraPreview → AVFoundation UIKitView"]
+    end
+
+    subgraph rustySDK["rustySDK/ — Rust core + FFI"]
+        CORE["rusty-qr-core<br/>(encoder · decoder · scanner)"]
+        FFI["rusty-qr-ffi<br/>(UniFFI proc-macro exports)"]
+    end
+
+    MVI --> BRIDGE_EXP
+    BRIDGE_EXP --> BRIDGE_AND
+    BRIDGE_EXP --> BRIDGE_IOS
+    BRIDGE_AND --> FFI
+    FFI --> CORE
+```
+
+All business logic and UI live in `commonMain`. Platform code is minimal — only what the OS requires (camera access, file I/O, haptics).
+
+---
+
+### MVI Architecture
+
+Every screen follows the **Model–View–Intent** pattern with strict unidirectional data flow:
+
+```mermaid
+graph LR
+    USER(("User\naction"))
+    INTENT["Intent\n(sealed interface)"]
+    VM["ViewModel\nonIntent()"]
+    STATE["State\n(immutable data class)"]
+    VIEW["Composable\n(pure render)"]
+
+    USER -->|"tap / frame / permission"| INTENT
+    INTENT -->|"dispatched to"| VM
+    VM -->|"_state.update { }"| STATE
+    STATE -->|"StateFlow.collectAsState()"| VIEW
+    VIEW -->|"emits"| INTENT
+
+    style INTENT fill:#2A2A2A,color:#F5A623
+    style STATE fill:#2A2A2A,color:#F5A623
+```
+
+Rules enforced across all screens:
+- **State** is an immutable `data class` — no `var` properties exposed to composables
+- **Intent** is a `sealed interface` — every user action is an explicit type, not a callback
+- **ViewModel** contains all business logic — composables are pure render functions
+- **Side effects** (haptics, navigation, permission requests) are triggered inside `onIntent()`, never from composables
+- **Error contract**: `ArrowKT Either<DomainError, T>` — never throw for domain errors, never `kotlin.Result<T>`
+
+---
+
+### Package Structure
+
+```
+composeApp/src/commonMain/kotlin/com/p2/apps/rustyqr/
+│
+├── App.kt                          # Root composable — tab state, Crossfade, RustyQrTheme
+│
+├── navigation/
+│   └── Tab.kt                      # Tab enum: Scan | Generate
+│
+├── bridge/                         # All expect/actual declarations (never in feature packages)
+│   ├── QrBridge.kt                 # expect — Rust encode/decode functions
+│   ├── CameraPreview.kt            # expect — camera composable
+│   ├── CameraPermission.kt         # expect — permission check + request
+│   ├── HapticFeedback.kt           # expect — haptic tap trigger
+│   ├── OpenUrl.kt                  # expect — URL intent / UIApplication.open
+│   └── ImageDecoder.kt             # expect — PNG bytes → ImageBitmap
+│
+├── model/
+│   ├── ScanResult.kt               # data class ScanResult(content: String)
+│   └── QrError.kt                  # sealed class QrError (InvalidInput · Encoding · Decoding · Image)
+│
+├── scan/
+│   ├── ScanScreenState.kt          # State: isScanning · sheetContent · isSheetVisible · permission flags
+│   ├── ScanIntent.kt               # Intent: FrameDecoded · DismissSheet · ResumeScanning · Permission*
+│   ├── ScanViewModel.kt            # AtomicBoolean scan gate · state management
+│   ├── ScanScreen.kt               # ScanScreen (wiring) + ScanContent (render) + PermissionDeniedContent
+│   ├── ScannerOverlay.kt           # Amber corner brackets (Canvas draw)
+│   └── ScanResultSheet.kt          # ModalBottomSheet — badge, decoded text, action row
+│
+├── result/
+│   ├── QrContentType.kt            # sealed class: Url · PlainText
+│   └── ContentTypeDetector.kt      # (future) detect URL vs plain text in decoded content
+│
+├── generate/
+│   ├── GenerateScreenState.kt      # State: inputText · qrImageBytes · isGenerating · animationPhase · error
+│   ├── GenerateIntent.kt           # Intent: UpdateText · Generate · ClearResult · ClearError
+│   ├── GenerateViewModel.kt        # Calls QrBridge.generateQrPng on Dispatchers.IO via ArrowKT fold
+│   ├── GenerateScreen.kt           # Input + generate button + error snackbar + IME handling
+│   ├── QrResultCard.kt             # OutlinedCard — QR image, share/save icon buttons (48dp targets)
+│   └── AnimatedGenerateContent.kt  # Orchestrates text-animate-down + card-fade-in with MD3 easing
+│
+└── ui/
+    ├── theme/
+    │   ├── RustyQrTheme.kt         # MaterialTheme wrapper — dark-only, no dynamic color
+    │   ├── Color.kt                # Palette constants — internal to theme; feature code uses colorScheme.*
+    │   ├── Type.kt                 # JetBrains Mono + Inter typography scale
+    │   ├── Shape.kt                # RustyShapes (4/8/12/16/28dp MD3 scale)
+    │   └── Motion.kt              # MD3 easing: StandardEasing · EmphasizedDecelerate · EmphasizedAccelerate
+    └── components/
+        ├── PillTabBar.kt           # Pill toggle with amber fill, selectableGroup, Role.Tab semantics
+        ├── AmberButton.kt          # Primary filled button (amber bg, dark text, JetBrains Mono)
+        ├── OutlineButton.kt        # Secondary outline button (amber border)
+        └── ContentTypeBadge.kt    # Small "URL" / "TEXT" pill badge
+```
+
+---
+
+### Scan Feature — Data Flow
+
+How a camera frame becomes a decoded result shown on screen:
+
+```mermaid
+sequenceDiagram
+    participant CAM as CameraX<br/>ImageAnalysis
+    participant ANA as Frame Analyzer<br/>(camera thread)
+    participant GATE as scanGate<br/>(@Volatile Boolean)
+    participant RUST as QrBridge<br/>.decodeQrFromRaw()
+    participant VM as ScanViewModel<br/>(main thread)
+    participant UI as ScanScreen<br/>Composable
+
+    CAM->>ANA: ImageProxy (Y-plane luma buffer)
+    ANA->>GATE: check isScanning
+    alt gate locked (sheet visible)
+        GATE-->>ANA: skip frame, close proxy
+    else gate open
+        ANA->>RUST: decodeQrFromRaw(pixels, w, h)
+        alt Either.Left (no QR found — most frames)
+            RUST-->>ANA: discard silently
+        else Either.Right (QR decoded)
+            RUST-->>ANA: ScanResult(content)
+            ANA->>VM: mainExecutor.execute { onIntent(FrameDecoded) }
+            VM->>GATE: lock (true) — first-write-wins
+            VM->>VM: triggerHaptic()
+            VM->>VM: state = isScanning=false, sheetContent=result, isSheetVisible=true
+            VM-->>UI: StateFlow emits new state
+            UI->>UI: show scrim + ScanResultSheet
+        end
+    end
+```
+
+Key design decisions:
+- **Gate is `@Volatile Boolean`**, not `AtomicBoolean` — fast read on camera thread, no lock overhead
+- **Camera session stays alive** when `isScanning = false` — avoids black flash when sheet dismisses
+- **`Either.Left` frames are silently discarded** — most frames have no QR; this is the expected case
+
+---
+
+### Generate Feature — State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Input : app launch
+    Input --> Input : UpdateText intent
+    Input --> Generating : Generate intent (valid input)
+    Generating --> Input : Either.Left QrError (Rust failure)
+    Generating --> Animating : Either.Right ByteArray (PNG bytes)
+    Animating --> ShowingResult : animation completes (300ms)
+    ShowingResult --> Input : ClearResult intent (back tap)
+    Input --> Input : ClearError intent (snackbar dismiss)
+
+    note right of Input
+        isGenerating = false
+        qrImageBytes = null
+        animationPhase = Input
+    end note
+
+    note right of ShowingResult
+        qrImageBytes = ByteArray (PNG)
+        animationPhase = ShowingResult
+        Share / Save actions available
+    end note
+```
+
+---
+
+### MD3 Theme System
+
+The app uses a custom **dark-only** Material 3 colour scheme. All feature code accesses colours through `MaterialTheme.colorScheme.*` — never direct imports from `Color.kt`.
+
+```mermaid
+graph TB
+    subgraph Palette["ui/theme/Color.kt — internal palette"]
+        P1["Primary = #F5A623 (amber)"]
+        P2["Background = #1A1A1A"]
+        P3["Surface = #1E1E1E"]
+        P4["SurfaceContainerHigh = #242424"]
+        P5["OnBackground = #E8E8E8"]
+        P6["Outline = #3A3A3A"]
+    end
+
+    subgraph Scheme["RustyQrTheme — darkColorScheme()"]
+        S1["primary → Primary"]
+        S2["background → Background"]
+        S3["surface / surfaceContainer → Surface tier"]
+        S4["onSurface → OnBackground (high emphasis)"]
+        S5["onSurfaceVariant → OnSurfaceVariant (secondary)"]
+        S6["outline → Outline"]
+        S7["shapes → RustyShapes (4/8/12/16/28dp)"]
+    end
+
+    subgraph Feature["Feature code"]
+        F1["MaterialTheme.colorScheme.primary"]
+        F2["MaterialTheme.colorScheme.surfaceContainer"]
+        F3["MaterialTheme.colorScheme.outline"]
+        F4["MaterialTheme.shapes.medium (12dp)"]
+    end
+
+    Palette --> Scheme
+    Scheme --> Feature
+```
+
+**Typography:** JetBrains Mono (titles, badges, buttons, code-style content) + Inter (body, inputs, labels). Both bundled as `.ttf` in `commonMain/composeResources/font/`.
+
+**Motion:** MD3 easing curves from `ui/theme/Motion.kt`:
+- `StandardEasing` → tab crossfade, colour animations
+- `EmphasizedDecelerate` → elements entering (QR card appear)
+- `EmphasizedAccelerate` → elements leaving (text animates down)
+
+---
+
+### Navigation
+
+No navigation library — two top-level tabs with `Crossfade`. The result is a `ModalBottomSheet` driven by `ScanViewModel` state, not a navigation destination (see `docs/adr/002-scan-to-result-navigation.md`).
+
+```mermaid
+graph LR
+    APP["App.kt\nTab state hoisted here"]
+    SCAN["ScanScreen\n+ ScanResultSheet\n(ModalBottomSheet)"]
+    GEN["GenerateScreen\n+ QrResultCard\n(state-driven)"]
+
+    APP -->|"Tab.Scan (default)"| SCAN
+    APP -->|"Tab.Generate"| GEN
+    APP -->|"Crossfade(300ms, StandardEasing)"| APP
+```
+
+Camera lifecycle is tied to tab visibility — `CameraPreview` is only composed when `Tab.Scan` is active. Switching to Generate unbinds the camera; switching back rebinds without a black flash.
+
+---
+
+## Android Build: From Rust to APK
 
 This document explains how the Rust QR library gets compiled, wrapped in Kotlin bindings, and packaged into the Android app. If you've never used `make` or worked with native bindings before, start here.
 
