@@ -56,7 +56,10 @@
       "Bash(xcodegen --version)",
       "Bash(xcodegen generate:*)",
       "Bash(chmod +x:*)",
-      "Bash(make ios:*)"
+      "Bash(make ios:*)",
+      "Bash(/Users/prasanpani/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh:*)",
+      "Bash(ls /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/rustySDK/target/aarch64-apple-ios/release/*.h)",
+      "Bash(ls /Users/prasanpani/Claude-Projects/Staff-Prep/Rusty-QR/iosApp/generated/*.h)"
     ]
   }
 }
