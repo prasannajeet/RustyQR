@@ -370,4 +370,5 @@ those bindings is not yet in place. Android is end-to-end functional.
 
 ## License
 
-Portfolio project. Not published to crates.io, Maven Central, or CocoaPods.
+Released under the [MIT License](LICENSE). Portfolio project — not published to crates.io, Maven
+Central, or CocoaPods.
