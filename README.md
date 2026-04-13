@@ -2,7 +2,7 @@
 
 # Rusty-QR
 
-### Write once in Rust. Ship native on Android and iOS. Zero duplicated logic.
+### QR Scanner/Generator app for Android and iOS - powered by a Rust based logic for encoding/decoding
 
 <p>
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
@@ -14,14 +14,14 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue" />
 </p>
 
-<p><b>One Rust core · Two native apps · Zero duplicated logic</b></p>
+<p><b>One Rust core · Two native apps</b></p>
 
-<sub>QR generation and live camera scanning. One <code>rusty-qr-core</code> crate handles every byte of QR logic; auto-generated Kotlin and Swift bindings wire it to a single Compose Multiplatform UI that renders identically on both platforms.</sub>
+<sub>QR generation and live camera scanning. <code>rusty-qr-core</code> crate handles every byte of QR logic; auto-generated Kotlin and Swift bindings wire it to a single Compose Multiplatform UI that renders identically on both platforms.</sub>
 
 <br/><br/>
 
-<a href="docs/ARCHITECTURE.md"><b>Deep dive: how Rust becomes two native apps →</b></a>
-<br/><sub>Full build pipeline, sequence diagrams, and runtime call paths in <a href="docs/ARCHITECTURE.md"><code>docs/ARCHITECTURE.md</code></a></sub>
+<a href="docs/ARCHITECTURE.md"><b>Deep dive: how Rust core powers the two apps' functionality →</b></a>
+<br/><sub>Full build pipeline in <a href="docs/ARCHITECTURE.md"><code>docs/ARCHITECTURE.md</code></a></sub>
 
 </div>
 
@@ -35,15 +35,15 @@
   <tr>
     <td align="center" width="33%">
       <img src="screenshots/android/scan-idle.png" alt="Scan tab in idle state — centered Start Scanning button, no camera feed, no permission prompt" width="260" />
-      <br/><sub><b>Scan — Idle</b><br/>Camera cold until the user taps Start Scanning. No battery/CPU cost on tab open.</sub>
+      <br/><sub><b>Scaning Screen</b><br/>Camera cold until the user taps Start Scanning. No battery/CPU cost on tab open.</sub>
     </td>
     <td align="center" width="33%">
       <img src="screenshots/android/generate-input.png" alt="Generate tab with text input and primary Generate QR Code CTA" width="260" />
-      <br/><sub><b>Generate — Input</b><br/>Enter any text; Rust encoder renders a PNG in real time.</sub>
+      <br/><sub><b>Generate Screen — Input</b><br/>Enter any text; Rust encoder renders a PNG in real time.</sub>
     </td>
     <td align="center" width="33%">
       <img src="screenshots/android/generate-result.png" alt="Generated QR code with Share and Save actions" width="260" />
-      <br/><sub><b>Generate — Result</b><br/>Share-sheet export and save-to-gallery wired through platform bridges.</sub>
+      <br/><sub><b>Generate Screen — Result</b><br/>Share-sheet export and save-to-gallery wired through platform bridges.</sub>
     </td>
   </tr>
 </table>
@@ -54,11 +54,11 @@
 
 ---
 
-## Why This Project Exists
+## What does the project do
 
 Mobile teams writing cross-platform features often maintain the same logic in two languages. This
 leads to subtle behavioural drift, double the bug surface, and double the maintenance burden.
-Rusty-QR demonstrates a different approach: **write the business logic once in Rust, compile to
+Rusty-QR demonstrates a different approach: **write the low-level logic once in Rust, compile to
 native binaries, and auto-generate idiomatic Kotlin and Swift bindings** via Mozilla's UniFFI.
 
 The result is a single source of truth for QR encoding and decoding that both platforms share, with
@@ -71,11 +71,11 @@ both platforms.
 
 ### QR Code Generation
 
-Enter text, pick a size, get a PNG rendered in real time. The Rust encoder supports four error
+Enter text, get a PNG rendered in real time. The Rust encoder supports four error
 correction levels (Low, Medium, Quartile, High) trading density for damage resilience. Result card
 offers share-sheet export and save-to-gallery.
 
-### QR Code Scanning (Saved Images)
+### QR Code Scanning (Saved Images) - on Roadmap for v1.1
 
 Decode QR codes from PNG or JPEG bytes picked from the photo library. Both platforms share the same
 Rust decode path.
@@ -406,26 +406,6 @@ See [`rustySDK/README.md`](rustySDK/README.md) for the full Rust deep dive.
 | iOS CI                 | GitHub Actions  | Rust checks + XCFramework build + xcodebuild + SwiftLint                       |
 
 </details>
-
----
-
-## Status
-
-| Phase                                         | Status            |
-|-----------------------------------------------|-------------------|
-| 0 — Toolchain setup                           | Done              |
-| 1 — Rust core encoder                         | Done              |
-| 2 — Rust core decoder + raw scanner           | Done              |
-| 3 — FFI crate + UniFFI bindings               | Done              |
-| 4 — Android build pipeline (.so + Kotlin)     | Done              |
-| 5 — iOS build pipeline (.a + XCFramework)     | Done              |
-| 6 — Android UI + CameraX scanner              | Done              |
-| 7 — iOS runtime wiring                        | In progress       |
-| 8 — Polish, perf assertions, docs             | In progress       |
-
-iOS actuals for `QrBridge.ios.kt` are currently stubs (`TODO("Wired in Phase 7")`). The iOS build
-pipeline produces the XCFramework and Swift bindings, but the Kotlin-side iOS bridge delegation to
-those bindings is not yet in place. Android is end-to-end functional.
 
 ---
 
