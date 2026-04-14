@@ -3,7 +3,7 @@ options:
   bundleIdPrefix: com.p2.apps.rustyqr
   deploymentTarget:
     iOS: "18.2"
-  xcodeVersion: "16.2"
+  xcodeVersion: "26.4"
 
 settings:
   base:
@@ -91,6 +91,8 @@ targets:
     info:
       path: iosApp/Info.plist
       properties:
+        NSCameraUsageDescription: "Rusty QR needs camera access to scan QR codes"
+        NSPhotoLibraryAddUsageDescription: "Rusty QR saves generated QR codes to your Photos library"
         CADisableMinimumFrameDurationOnPhone: true
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

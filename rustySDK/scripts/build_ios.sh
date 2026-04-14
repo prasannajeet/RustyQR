@@ -22,10 +22,6 @@ if ! command -v xcodebuild &>/dev/null; then
   MISSING+=("xcodebuild (Xcode not found — install from the App Store)")
 fi
 
-if ! command -v xcodegen &>/dev/null; then
-  MISSING+=("xcodegen (run: brew install xcodegen)")
-fi
-
 # Check required Rust iOS targets
 REQUIRED_TARGETS=("aarch64-apple-ios" "aarch64-apple-ios-sim")
 for target in "${REQUIRED_TARGETS[@]}"; do
@@ -86,9 +82,5 @@ xcodebuild -create-xcframework \
   -output "$FRAMEWORKS_DIR/RustyQR.xcframework"
 
 echo "=== XCFramework created at $FRAMEWORKS_DIR/RustyQR.xcframework ==="
-
-# Regenerate Xcode project via XcodeGen
-cd "$PROJECT_DIR/iosApp" && xcodegen generate
-
-echo "=== Xcode project regenerated ==="
 echo "=== iOS build complete ==="
+echo "Note: run './gradlew :composeApp:generateXcodeProject' to regenerate iosApp.xcodeproj"

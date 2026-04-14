@@ -47,6 +47,7 @@ import rustyqr.composeapp.generated.resources.generate_button
 import rustyqr.composeapp.generated.resources.generate_error_too_long
 import rustyqr.composeapp.generated.resources.generate_input_hint
 import rustyqr.composeapp.generated.resources.generate_input_placeholder
+import rustyqr.composeapp.generated.resources.generate_loading
 import rustyqr.composeapp.generated.resources.generate_preview_format
 
 private const val MAX_QR_VISIBLE_LENGTH = 4296
@@ -134,6 +135,7 @@ private fun GenerateContent(
                         QrResultCard(
                             qrImageBytes = state.qrImageBytes,
                             modifier = Modifier.fillMaxWidth(),
+                            onClose = { onIntent(GenerateQRCodeScreenIntent.ClearResult) },
                             onShare = { onIntent(GenerateQRCodeScreenIntent.ShareQr) },
                             onSave = { onIntent(GenerateQRCodeScreenIntent.SaveQr) },
                         )
@@ -222,7 +224,10 @@ private fun InputForm(
         Spacer(modifier = Modifier.height(16.dp))
 
         AmberButton(
-            text = stringResource(Res.string.generate_button),
+            text =
+                stringResource(
+                    if (state.isGenerating) Res.string.generate_loading else Res.string.generate_button,
+                ),
             onClick = {
                 keyboardController?.hide()
                 focusManager.clearFocus(force = true)
@@ -230,8 +235,8 @@ private fun InputForm(
             },
             enabled =
                 state.inputText.isNotBlank() &&
-                    !state.isGenerating &&
                     state.inputText.length <= MAX_QR_VISIBLE_LENGTH,
+            loading = state.isGenerating,
         )
     }
 }

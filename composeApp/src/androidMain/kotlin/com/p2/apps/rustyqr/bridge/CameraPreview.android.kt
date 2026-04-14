@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.p2.apps.rustyqr.model.ScanResult
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Android actual — CameraX [PreviewView] with [ImageAnalysis] for live QR decoding.
@@ -28,10 +29,12 @@ import java.util.concurrent.Executors
 actual fun CameraPreview(
     isScanning: Boolean,
     onQrDecoded: (ScanResult) -> Unit,
+    onCameraReady: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
+    val readyFired = remember { AtomicBoolean(false) }
 
     DisposableEffect(lifecycleOwner) {
         onDispose {
@@ -54,6 +57,8 @@ actual fun CameraPreview(
                 analysisExecutor = analysisExecutor,
                 isScanning = { isScanning },
                 onQrDecoded = onQrDecoded,
+                readyFired = readyFired,
+                onCameraReady = onCameraReady,
             )
             previewView
         },
@@ -70,6 +75,8 @@ private fun bindCamera(
     analysisExecutor: java.util.concurrent.ExecutorService,
     isScanning: () -> Boolean,
     onQrDecoded: (ScanResult) -> Unit,
+    readyFired: AtomicBoolean,
+    onCameraReady: () -> Unit,
 ) {
     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
     cameraProviderFuture.addListener({
@@ -87,6 +94,11 @@ private fun bindCamera(
                 .build()
                 .also { analysis ->
                     analysis.setAnalyzer(analysisExecutor) { imageProxy ->
+                        // Fire the ready callback on the first delivered frame (even if not scanning),
+                        // so the "Starting camera…" overlay clears as soon as the preview is live.
+                        if (readyFired.compareAndSet(false, true)) {
+                            ContextCompat.getMainExecutor(context).execute { onCameraReady() }
+                        }
                         if (!isScanning()) {
                             imageProxy.close()
                             return@setAnalyzer

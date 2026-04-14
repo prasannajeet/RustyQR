@@ -47,7 +47,12 @@ class ScanViewModel : ViewModel() {
             is ScanQRCodeScreenIntent.RequestPermission -> handleRequestPermission()
             is ScanQRCodeScreenIntent.OpenSettings -> openAppSettings()
             is ScanQRCodeScreenIntent.StartScanning -> handleStartScanning()
+            is ScanQRCodeScreenIntent.CameraReady -> handleCameraReady()
         }
+    }
+
+    private fun handleCameraReady() {
+        state.update { it.copy(isCameraWarmingUp = false) }
     }
 
     private fun handleFrameDecoded(intent: ScanQRCodeScreenIntent.FrameDecoded) {
@@ -71,6 +76,7 @@ class ScanViewModel : ViewModel() {
             it.copy(
                 isScanning = false,
                 isCameraActive = false,
+                isCameraWarmingUp = false,
                 sheetContent = null,
                 isSheetVisible = false,
             )
@@ -85,6 +91,7 @@ class ScanViewModel : ViewModel() {
                 permissionRequested = true,
                 isCameraActive = granted,
                 isScanning = granted,
+                isCameraWarmingUp = granted,
                 isPermanentlyDenied = permanentlyDenied,
             )
         }
@@ -104,6 +111,7 @@ class ScanViewModel : ViewModel() {
                     hasPermission = true,
                     permissionRequested = true,
                     isScanning = true,
+                    isCameraWarmingUp = true,
                     isPermanentlyDenied = false,
                 )
             }

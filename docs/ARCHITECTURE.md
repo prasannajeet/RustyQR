@@ -9,7 +9,8 @@ every section builds on the previous one.
 Sibling docs:
 
 - [Root README](../README.md) — product overview, screenshots, feature list
-- [`composeApp/README.md`](../composeApp/README.md) — Android module reference
+- [`composeApp/README.md`](../composeApp/README.md) — KMP module reference (shared Compose UI, MVI, `bridge/` pattern)
+- [`composeApp/src/androidMain/README.md`](../composeApp/src/androidMain/README.md) — Android actuals + build pipeline
 - [`iosApp/README.md`](../iosApp/README.md) — iOS Xcode project reference
 - [`rustySDK/README.md`](../rustySDK/README.md) — Rust crate reference
 
@@ -253,8 +254,11 @@ configuration. Without JNA, the generated Kotlin would compile but crash on the 
 
 ## iOS Branch — `.rs` to Xcode-ready XCFramework
 
-The iOS pipeline is also driven by one Gradle task: `./gradlew :composeApp:buildRustIos`. It shells
-out to `make ios`, which runs `rustySDK/scripts/build_ios.sh`. Five steps:
+The iOS pipeline is driven by one Gradle task: `./gradlew :composeApp:buildRustIos`. Responsibility
+is split — Make produces Rust/bindings/XCFramework, Gradle regenerates `iosApp.xcodeproj` from
+`project.yml`. `buildRustIos` shells out to `make ios` (via `rustySDK/scripts/build_ios.sh`) and is
+finalized by the `generateXcodeProject` Gradle task, so a single invocation delivers a buildable
+iOS tree.
 
 ```mermaid
 sequenceDiagram
@@ -264,13 +268,13 @@ sequenceDiagram
     participant Cargo as cargo
     participant UB as uniffi-bindgen
     participant XCB as xcodebuild
-    participant XCG as xcodegen
+    participant XCG as generateXcodeProject<br/>(Gradle task → xcodegen)
     participant Xcode as Xcode build
 
     Dev->>G: buildRustIos
     G->>S: make ios → bash build_ios.sh
 
-    Note over S: Step 1 — dependency check<br/>(cargo, xcodebuild, xcodegen, rustup targets)
+    Note over S: Step 1 — dependency check<br/>(cargo, xcodebuild, rustup targets)
 
     Note over S: Step 2 — cross-compile 2 × .a
     S->>Cargo: build --target aarch64-apple-ios
@@ -288,11 +292,13 @@ sequenceDiagram
     S->>XCB: xcodebuild -create-xcframework<br/>-library device.a -headers headers/<br/>-library simulator.a -headers headers/
     XCB-->>S: Frameworks/RustyQR.xcframework/<br/>├── ios-arm64/<br/>└── ios-arm64-simulator/
 
-    Note over S: Step 5 — regenerate .xcodeproj
-    S->>XCG: xcodegen generate
-    XCG-->>S: iosApp.xcodeproj<br/>(links XCFramework, adds generated/ to sources)
+    S-->>G: make ios complete
 
-    S-->>Dev: Rust build complete
+    Note over G: finalizedBy generateXcodeProject
+    G->>XCG: xcodegen generate
+    XCG-->>G: iosApp.xcodeproj + Info.plist<br/>(links XCFramework, adds generated/ to sources)
+
+    G-->>Dev: iOS tree ready
 
     Dev->>Xcode: open iosApp.xcodeproj → Build
     Note over Xcode: Xcode:<br/>• links correct slice from XCFramework<br/>• compiles Swift (including generated)<br/>• resolves 'import RustyQrFFIFFI' via SWIFT_IMPORT_PATHS
@@ -414,33 +420,34 @@ sequenceDiagram
     VM-->>UI: state.qrImage = ImageBitmap(...)
 ```
 
-### iOS (once Phase 7 wiring lands)
+### iOS
 
 ```mermaid
 sequenceDiagram
     participant UI as GenerateScreen<br/>(Compose, iosMain)
     participant VM as GenerateViewModel<br/>(commonMain)
     participant Bridge as QrBridge.ios.kt<br/>(expect/actual actual)
-    participant Gen as RustyQrFFI.swift<br/>(UniFFI-generated)
+    participant CI as Kotlin/Native cinterop<br/>(RustyQrFFIFFI.h)
     participant A as librusty_qr_ffi.a<br/>(linked into app binary)
     participant Rust as Rust core
 
     UI->>VM: onIntent(GenerateQr("hello", 256))
     VM->>Bridge: qrBridge.generatePng("hello", 256)
-    Bridge->>Gen: RustyQrFFI.generatePng(content: "hello", size: 256)
-    Gen->>A: C ABI call<br/>uniffi_rusty_qr_ffi_fn_func_generate_png(...)
+    Bridge->>CI: uniffi_rusty_qr_ffi_fn_func_generate_png(rb, size, status)
+    CI->>A: C ABI call (statically linked symbol)
     A->>Rust: generate_png(content, size)
     Rust-->>A: Result[Vec u8, FfiQrError]
-    A-->>Gen: raw bytes + status code
-    Gen-->>Bridge: Data (PNG bytes) or throws FfiQrError
-    Bridge-->>VM: ByteArray
+    A-->>CI: RustBuffer + status code
+    CI-->>Bridge: CValue<RustBuffer> — lift length-prefixed bytes
+    Bridge-->>VM: Either<QrError, ByteArray>
     VM-->>UI: state.qrImage = ImageBitmap(...)
 ```
 
 The key difference: on Android JNA does a **runtime** symbol lookup into a dynamically loaded
 `.so`; on iOS the symbol is resolved at **link time** because the `.a` was statically linked into
-the app binary. Everything above that boundary is identical — same Compose UI, same ViewModel,
-same `QrBridge` expect declaration.
+the app binary. Kotlin/Native cinterop consumes the UniFFI-generated C header directly — no Swift
+round-trip. Everything above that boundary is identical — same Compose UI, same ViewModel, same
+`QrBridge` expect declaration.
 
 ---
 
@@ -598,4 +605,5 @@ follow only the threads you care about.
 ---
 
 **Next:** jump into the platform-specific READMEs for build commands and troubleshooting:
-[Android](../composeApp/README.md) · [iOS](../iosApp/README.md) · [Rust SDK](../rustySDK/README.md).
+[Android](../composeApp/src/androidMain/README.md) · [iOS](../iosApp/README.md) · [Rust SDK](../rustySDK/README.md).
+For shared KMP conventions, see [`composeApp/README.md`](../composeApp/README.md).

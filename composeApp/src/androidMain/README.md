@@ -38,10 +38,9 @@ UI itself lives in <code>commonMain</code>.</sub>
 ## Quick Start
 
 ```bash
-# First-time setup
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-cargo install cargo-ndk
-export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/$(ls $HOME/Library/Android/sdk/ndk | tail -1)"
+# First-time setup — verifies JDK, Android SDK/NDK, Rust toolchain,
+# Android Rust targets, cargo-ndk; prompts to install what's missing
+./scripts/bootstrap.sh
 
 # Compile Rust + generate Kotlin bindings + build APK
 ./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -41,6 +42,7 @@ import com.p2.apps.rustyqr.ui.viewmodels.ScanViewModel
 import org.jetbrains.compose.resources.stringResource
 import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.scan_camera_denied_cd
+import rustyqr.composeapp.generated.resources.scan_camera_starting
 import rustyqr.composeapp.generated.resources.scan_grant_permission
 import rustyqr.composeapp.generated.resources.scan_hint
 import rustyqr.composeapp.generated.resources.scan_open_settings
@@ -99,7 +101,15 @@ private fun ScanContent(
                 CameraPreview(
                     isScanning = state.isScanning,
                     onQrDecoded = { result -> onIntent(ScanQRCodeScreenIntent.FrameDecoded(result)) },
+                    onCameraReady = { onIntent(ScanQRCodeScreenIntent.CameraReady) },
                 )
+
+                // Warm-up loader overlay — covers the black-while-warming-up frame so the user
+                // sees a deliberate loading state instead of a dead preview. Cleared on the first
+                // camera frame via ScanQRCodeScreenIntent.CameraReady.
+                if (state.isCameraWarmingUp) {
+                    CameraWarmingUpOverlay()
+                }
 
                 // UI overlay layer — respects safe drawing insets so overlaid content avoids cutouts
                 Box(
@@ -150,6 +160,37 @@ private fun ScanContent(
                     onStartScanning = { onIntent(ScanQRCodeScreenIntent.StartScanning) },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CameraWarmingUpOverlay() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(36.dp),
+                color = MaterialTheme.colorScheme.primary,
+                strokeWidth = 3.dp,
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = stringResource(Res.string.scan_camera_starting),
+                style =
+                    MaterialTheme.typography.bodyMedium.copy(
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 14.sp,
+                    ),
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }

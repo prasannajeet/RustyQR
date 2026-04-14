@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.CardDefaults
@@ -21,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -36,15 +38,20 @@ import org.jetbrains.compose.resources.stringResource
 import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.action_save
 import rustyqr.composeapp.generated.resources.action_share
+import rustyqr.composeapp.generated.resources.generate_close_cd
 import rustyqr.composeapp.generated.resources.generate_qr_content_description
 
 /**
  * Card displaying the generated QR code image with share and save icon buttons.
+ *
+ * [onClose] fires when the user taps the top-end close button, which animates the screen back to
+ * the input form via the existing [GenerateQRCodeScreenIntent.ClearResult] path.
  */
 @Composable
 fun QrResultCard(
     qrImageBytes: ByteArray,
     modifier: Modifier = Modifier,
+    onClose: () -> Unit = {},
     onShare: () -> Unit = {},
     onSave: () -> Unit = {},
 ) {
@@ -71,6 +78,15 @@ fun QrResultCard(
                     .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                CloseChip(onClick = onClose)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             // White QR image container — functional white background for the scannable code,
             // intentionally not themed (scanner requires high contrast white background).
             Surface(
@@ -90,7 +106,6 @@ fun QrResultCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Share and Save icon buttons
             val shareLabel = stringResource(Res.string.action_share)
             val saveLabel = stringResource(Res.string.action_save)
             Row(
@@ -109,6 +124,25 @@ fun QrResultCard(
                     onClick = onSave,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun CloseChip(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.minimumInteractiveComponentSize().size(36.dp),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        onClick = onClick,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Outlined.Close,
+                contentDescription = stringResource(Res.string.generate_close_cd),
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

@@ -13,6 +13,12 @@ data class ScanScreenState(
     val isScanning: Boolean = false,
     /** Whether the camera preview is active (user has tapped "Start Scanning" and been granted permission). */
     val isCameraActive: Boolean = false,
+    /**
+     * True between the moment the user taps "Start Scanning" (with permission granted) and the
+     * first camera frame actually being delivered. Drives the "Starting camera…" loader overlay
+     * so the screen never goes visibly black while AVCaptureSession / CameraX warm up.
+     */
+    val isCameraWarmingUp: Boolean = false,
     /** Decoded QR content to display in the bottom sheet. Null when sheet is hidden. */
     val sheetContent: ScanResult? = null,
     /** Whether the result bottom sheet is currently shown. */

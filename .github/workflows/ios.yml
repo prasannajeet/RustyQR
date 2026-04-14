@@ -44,6 +44,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # --- Pin Xcode version to match the one specified in iosApp/project.yml ---
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26.4'
+
       # --- Rust toolchain ---
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -64,6 +69,9 @@ jobs:
 
       # --- Build Rust for iOS + generate Swift bindings + create XCFramework ---
       - run: cd rustySDK && make ios
+
+      # --- Regenerate iosApp.xcodeproj (Gradle owns this; Make no longer runs xcodegen) ---
+      - run: ./gradlew :composeApp:generateXcodeProject
 
       # --- Verify outputs ---
       - run: test -d iosApp/Frameworks/RustyQR.xcframework

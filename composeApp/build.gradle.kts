@@ -23,13 +23,33 @@ kotlin {
         }
     }
 
-    listOf(
-        iosArm64(),
-        iosSimulatorArm64(),
-    ).forEach { iosTarget ->
-        iosTarget.binaries.framework {
+    val rootDirPath = rootProject.projectDir.absolutePath
+
+    iosArm64().apply {
+        binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
+        }
+        compilations["main"].cinterops {
+            create("RustyQrFFI") {
+                defFile = file("src/nativeInterop/cinterop/RustyQrFFI.def")
+                includeDirs(file("$rootDirPath/iosApp/generated/headers"))
+                extraOpts("-libraryPath", "$rootDirPath/iosApp/Frameworks/RustyQR.xcframework/ios-arm64")
+            }
+        }
+    }
+
+    iosSimulatorArm64().apply {
+        binaries.framework {
+            baseName = "ComposeApp"
+            isStatic = true
+        }
+        compilations["main"].cinterops {
+            create("RustyQrFFI") {
+                defFile = file("src/nativeInterop/cinterop/RustyQrFFI.def")
+                includeDirs(file("$rootDirPath/iosApp/generated/headers"))
+                extraOpts("-libraryPath", "$rootDirPath/iosApp/Frameworks/RustyQR.xcframework/ios-arm64-simulator")
+            }
         }
     }
 
@@ -162,17 +182,33 @@ tasks.register<Exec>("buildRustAndroid") {
 
 tasks.register<Exec>("buildRustIos") {
     group = "rust"
-    description = "Cross-compiles Rust FFI for iOS, creates XCFramework, and regenerates Xcode project (runs make ios)"
+    description = "Cross-compiles Rust FFI for iOS, creates the XCFramework, and regenerates iosApp.xcodeproj"
     workingDir = File(rootDir, "rustySDK")
     commandLine("make", "ios")
+    // Make owns Rust + bindings + XCFramework. Gradle owns the Xcode project.
+    // Chain them so a single buildRustIos invocation still produces a fully buildable iOS tree.
+    finalizedBy("generateXcodeProject")
+}
+
+tasks.register<Delete>("cleanXcodeProject") {
+    group = "xcode"
+    description = "Deletes xcodegen-generated artifacts (iosApp.xcodeproj + Info.plist)"
+    delete(
+        File(rootDir, "iosApp/iosApp.xcodeproj"),
+        File(rootDir, "iosApp/iosApp/Info.plist"),
+    )
 }
 
 tasks.register<Exec>("cleanBuildIos") {
     group = "rust"
-    description = "Cleans all Rust/iOS artifacts, then rebuilds from scratch (make clean + make ios)"
+    description = "Cleans all Rust/iOS artifacts (including the Xcode project) and rebuilds from scratch"
     workingDir = File(rootDir, "rustySDK")
     commandLine("make", "clean")
+    dependsOn("cleanXcodeProject")
     finalizedBy("buildRustIos")
+    doLast {
+        println("Make sure to run a gradle sync after")
+    }
 }
 
 tasks.register<Exec>("generateXcodeProject") {
@@ -180,6 +216,7 @@ tasks.register<Exec>("generateXcodeProject") {
     description = "Regenerates iosApp.xcodeproj from project.yml via XcodeGen"
     workingDir = File(rootDir, "iosApp")
     commandLine("xcodegen", "generate")
+    mustRunAfter("buildRustIos", "cleanBuildIos")
     doLast {
         logger.lifecycle("\n⚠️  If the iOS run configuration is missing in Android Studio, run: File > Sync Project with Gradle Files")
     }

@@ -30,4 +30,7 @@ sealed interface ScanQRCodeScreenIntent {
 
     /** User tapped "Start Scanning" on the idle screen — lazily checks permission and activates camera. */
     data object StartScanning : ScanQRCodeScreenIntent
+
+    /** First camera frame has been delivered — clears the warm-up loader overlay. */
+    data object CameraReady : ScanQRCodeScreenIntent
 }

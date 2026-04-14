@@ -9,8 +9,10 @@
     <string name="generate_input_placeholder">Entrez du texte ou une URL</string>
     <string name="generate_error_too_long">Contenu trop long pour un code QR</string>
     <string name="generate_button">Générer le code QR</string>
+    <string name="generate_loading">Génération…</string>
     <string name="generate_preview_format">Code QR créé pour - %1$s</string>
     <string name="generate_qr_content_description">Code QR généré</string>
+    <string name="generate_close_cd">Fermer le code QR</string>
     <string name="generate_message_saved">Enregistré dans la galerie</string>
 
     <string name="action_share">Partager</string>
@@ -27,6 +29,7 @@
     <string name="scan_viewfinder_cd">Viseur de numérisation QR</string>
     <string name="scan_again">Numériser à nouveau</string>
     <string name="scan_start_scanning">Commencer la numérisation</string>
+    <string name="scan_camera_starting">Démarrage de la caméra…</string>
 
     <string name="content_type_url">URL</string>
     <string name="content_type_text">TEXTE</string>

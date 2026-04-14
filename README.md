@@ -319,10 +319,18 @@ For per-module details, see the nested READMEs linked above.
 
 ### Prerequisites
 
-- **Android**: Android Studio, JDK 11+, Android SDK (compileSdk 36, minSdk 29)
-- **iOS**: Xcode, macOS, XcodeGen (`brew install xcodegen`)
-- **Rust**: Install via [rustup.rs](https://rustup.rs/) — targets for Android + iOS cross-compile
-  (see platform READMEs for first-time setup)
+Run the bootstrap script once after cloning — it verifies (and optionally installs) every tool
+required for both Android and iOS builds:
+
+```bash
+./scripts/bootstrap.sh           # interactive — prompts to install anything missing
+./scripts/bootstrap.sh --check   # report only, non-zero exit if anything missing (CI-friendly)
+./scripts/bootstrap.sh --yes     # non-interactive, auto-install everything it can
+```
+
+What it covers: Rust toolchain + Android/iOS cross-compile targets, `cargo-ndk`, JDK 11+, Android
+SDK/NDK + `ANDROID_NDK_HOME`, Xcode 26.x, `xcodegen`, `swiftlint`, `swiftformat`. iOS checks are
+skipped automatically on non-macOS hosts.
 
 ### Quick commands
 

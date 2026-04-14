@@ -1,0 +1,4 @@
+headers = RustyQrFFIFFI.h
+headerFilter = RustyQrFFI*
+package = rustyqrffi
+staticLibraries = librusty_qr_ffi.a

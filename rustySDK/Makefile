@@ -18,7 +18,7 @@ clean:
 	rm -rf ../composeApp/src/androidMain/kotlin/generated
 	rm -rf ../iosApp/Frameworks/
 	rm -rf ../iosApp/generated/
-	rm -rf ../iosApp/iosApp.xcodeproj/
 	@echo "Cleaned Rust build artifacts and generated bindings"
+	@echo "Note: Xcode project artifacts (.xcodeproj, Info.plist) are cleaned by the Gradle 'cleanXcodeProject' task"
 
 all: test android ios

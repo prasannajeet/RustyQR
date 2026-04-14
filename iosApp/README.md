@@ -10,7 +10,6 @@
   <img alt="XcodeGen" src="https://img.shields.io/badge/XcodeGen-project.yml-147EFB" />
   <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-auto--bindings-3B6FE0" />
   <img alt="XCFramework" src="https://img.shields.io/badge/RustyQR-xcframework-CE422B?logo=rust&logoColor=white" />
-  <img alt="Phase 7" src="https://img.shields.io/badge/Phase%207-In%20Progress-F5A623" />
 </p>
 
 <p><b>Rust <code>.a</code> · Swift bindings · XCFramework · xcodeproj — one Gradle task builds all four</b></p>
@@ -25,13 +24,14 @@
 > See [**`docs/ARCHITECTURE.md`**](../docs/ARCHITECTURE.md) — the single source of truth for how
 > Rust becomes two native apps (both Android and iOS branches, runtime call paths, UniFFI deep dive).
 >
-> For cross-platform architecture, MVI, and shared UI, see the [top-level README](../README.md).
-> Android pipeline lives in [`composeApp/README.md`](../composeApp/README.md); the Rust engine is
-> documented in [`rustySDK/README.md`](../rustySDK/README.md).
+> For cross-platform architecture, MVI, and shared UI, see the [top-level README](../README.md)
+> and the [KMP module README](../composeApp/README.md). The Android pipeline lives in
+> [`composeApp/src/androidMain/README.md`](../composeApp/src/androidMain/README.md); the Rust
+> engine is documented in [`rustySDK/README.md`](../rustySDK/README.md).
 
 ---
 
-## Status — Phase 7 In Progress
+## What's in the Box
 
 | Piece                                                         | State            |
 |---------------------------------------------------------------|------------------|
@@ -40,21 +40,21 @@
 | Swift bindings (`RustyQrFFI.swift` + `.h` + `.modulemap`)     | Generated        |
 | `iosApp.xcodeproj` generated from `project.yml`               | Yes              |
 | Shared Compose UI hosted via `MainViewController`             | Wired            |
-| `iosMain` hardware bridges (camera, haptics, share, save)     | Implemented      |
-| `QrBridge.ios.kt` → UniFFI Swift delegation                   | **TODO stubs**   |
+| `iosMain` hardware bridges (camera, haptics, URL, permission) | Implemented      |
+| `QrBridge.ios.kt` → Rust FFI via Kotlin/Native cinterop       | Implemented      |
 
-`QrBridge.ios.kt` currently returns `TODO("Wired in Phase 7")`. Scan and generate will crash on iOS
-until the Kotlin-side delegation into the generated Swift bindings is finished. Android is fully
-functional today.
+Kotlin/Native consumes the UniFFI-generated C header (`RustyQrFFIFFI.h`) directly via cinterop —
+no Swift round-trip. The generated Swift bindings remain available for any native Swift code in
+`iosApp/` that needs them.
 
 ---
 
 ## Quick Start
 
 ```bash
-# First-time setup
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim
-brew install xcodegen
+# First-time setup — verifies Xcode 26.x, xcodegen, swiftlint, swiftformat,
+# Rust toolchain, iOS Rust targets; prompts to install what's missing
+./scripts/bootstrap.sh
 
 # Compile Rust + generate Swift bindings + create XCFramework + regenerate Xcode project
 ./gradlew :composeApp:buildRustIos
@@ -112,7 +112,7 @@ composeApp/src/iosMain/kotlin/com/p2/apps/rustyqr/
 ├── MainViewController.kt         # fun MainViewController(): UIViewController { ComposeUIViewController { App() } }
 ├── Platform.ios.kt
 └── bridge/
-    ├── QrBridge.ios.kt           # actual — delegates to generated Swift (Phase 7 — see Status above)
+    ├── QrBridge.ios.kt           # actual — calls Rust via Kotlin/Native cinterop on RustyQrFFIFFI.h
     ├── CameraPreview.ios.kt      # actual — AVFoundation via UIKitView
     ├── CameraPermission.ios.kt   # actual — AVCaptureDevice.requestAccess
     ├── HapticFeedback.ios.kt     # actual — UIImpactFeedbackGenerator
@@ -137,12 +137,12 @@ Swift can't call Rust directly — they're different languages. Three things nee
 
 `buildRustIos` is a Gradle `Exec` task that invokes `make ios` in `rustySDK/`. Developers never run
 `make` directly — Gradle is the only entry point. `make ios` calls
-`rustySDK/scripts/build_ios.sh`, which does five things:
+`rustySDK/scripts/build_ios.sh`, which does four things:
 
 ### 1. Dependency check
 
-Verifies `cargo`, `xcodebuild`, `xcodegen`, and the two iOS Rust targets are installed. If anything
-is missing, it prints the exact install command.
+Verifies `cargo`, `xcodebuild`, and the two iOS Rust targets are installed. If anything is missing,
+it prints the exact install command.
 
 ### 2. Cross-compile Rust
 
@@ -193,10 +193,16 @@ iPhone, simulator `.a` for the simulator. You never have to think about which on
 The script also prepares a `headers/` directory with the C header and module map, which get
 embedded into the XCFramework so Xcode can resolve the module imports.
 
-### 5. Regenerate the Xcode project
+### Regenerating the Xcode project
 
-Finally, `xcodegen generate` regenerates `.xcodeproj` from `project.yml`. This ensures the Xcode
-project picks up the newly created XCFramework and generated Swift sources.
+The Xcode project is **not** `make`'s responsibility. `buildRustIos` is wired with
+`finalizedBy("generateXcodeProject")` in `composeApp/build.gradle.kts`, so after `make ios` finishes
+Gradle runs the dedicated `generateXcodeProject` task, which shells out to `xcodegen generate`.
+This keeps Make focused on Rust + bindings + XCFramework; Gradle owns the Xcode project (and the
+auto-generated `Info.plist` it produces).
+
+Fresh-clone sync is handled separately in `settings.gradle.kts`, which runs `xcodegen` before the
+KMP plugin loads if the project file is missing. Prerequisite: `brew install xcodegen`.
 
 ### Full pipeline
 
@@ -209,7 +215,7 @@ sequenceDiagram
     participant Cargo as Rust compiler
     participant UB as uniffi-bindgen
     participant XCB as xcodebuild
-    participant XCG as xcodegen
+    participant XCG as generateXcodeProject<br/>(Gradle → xcodegen)
 
     Dev->>G: buildRustIos
     G->>M: exec make ios
@@ -230,11 +236,13 @@ sequenceDiagram
     S->>XCB: -create-xcframework (2 × .a + headers)
     XCB-->>S: RustyQR.xcframework
 
-    Note over S: Step 5 — regenerate .xcodeproj
-    S->>XCG: xcodegen generate
-    XCG-->>S: iosApp.xcodeproj
+    S-->>G: make ios done
 
-    S-->>Dev: done
+    Note over G: finalizedBy generateXcodeProject
+    G->>XCG: xcodegen generate
+    XCG-->>G: iosApp.xcodeproj + Info.plist
+
+    G-->>Dev: done
 ```
 
 </details>
@@ -358,37 +366,21 @@ source for binding generation.
 </details>
 
 <details>
-<summary><b>Troubleshooting</b> — Gradle sync fails on a fresh clone</summary>
+<summary><b>Fresh-Clone Bootstrap</b> — how Gradle sync survives without a checked-in xcodeproj</summary>
 
 <br/>
 
-**Symptom:**
+The Kotlin Multiplatform Gradle plugin auto-registers `convertPbxprojToJson` whenever iOS targets
+are declared. It reads `iosApp.xcodeproj/project.pbxproj` at **configuration time** to wire Embed &
+Sign phases. On a fresh clone `project.pbxproj` doesn't exist (it's a generated artifact), so the
+plugin would fail validation before any task could regenerate it.
 
-```
-Task :composeApp:convertPbxprojToJson FAILED
-property 'pbxprojFile' specifies file '.../iosApp/iosApp.xcodeproj/project.pbxproj' which doesn't exist.
-```
+`settings.gradle.kts` handles this in a pre-plugin `run { }` block: if `project.yml` exists and
+`project.pbxproj` doesn't, it runs `xcodegen generate` via `providers.exec` (config-cache
+compatible) before the KMP plugin loads. No manual step required.
 
-**Cause:** The Kotlin Multiplatform Gradle plugin auto-registers the `convertPbxprojToJson` task
-whenever iOS targets (`iosArm64`, `iosSimulatorArm64`) are declared in `composeApp/build.gradle.kts`.
-This task reads `iosApp.xcodeproj/project.pbxproj` at **configuration time** to wire framework
-embedding (Embed & Sign build phases) into the Xcode project. If `project.pbxproj` is missing, the
-plugin fails validation before any task can run — including the Gradle task that would regenerate
-it.
-
-This is a chicken-and-egg problem: `./gradlew :composeApp:generateXcodeProject` *would* create the
-file, but Gradle sync fails before it can execute.
-
-**Fix:** regenerate the Xcode project outside Gradle first, then sync.
-
-```bash
-cd iosApp && xcodegen generate
-```
-
-Then re-run Gradle sync or `./gradlew :composeApp:assembleDebug`. For the full iOS build (Rust +
-bindings + XCFramework + xcodeproj), use `./gradlew :composeApp:buildRustIos` once sync succeeds.
-
-Prerequisite: `brew install xcodegen`.
+Prerequisite: `brew install xcodegen`. If it's missing, Gradle sync fails with a clear message
+pointing to the install command.
 
 </details>
 
@@ -425,11 +417,14 @@ open iosApp/iosApp.xcodeproj
 
 This removes:
 
-- `rustySDK/target/` — all Rust compiled objects
-- `iosApp/generated/` — the Swift bindings, C header, and module map
-- `iosApp/Frameworks/` — the XCFramework
-- `iosApp/iosApp.xcodeproj/` — the generated Xcode project (regenerated automatically on next
-  `buildRustIos`)
+- `rustySDK/target/` — all Rust compiled objects (via `make clean`)
+- `iosApp/generated/` — the Swift bindings, C header, and module map (via `make clean`)
+- `iosApp/Frameworks/` — the XCFramework (via `make clean`)
+- `iosApp/iosApp.xcodeproj/` — the generated Xcode project (via the `cleanXcodeProject` Gradle task)
+- `iosApp/iosApp/Info.plist` — xcodegen-generated (via the `cleanXcodeProject` Gradle task)
+
+Everything is regenerated on the next `buildRustIos` — `make ios` handles the Rust side and
+Gradle's `finalizedBy generateXcodeProject` rebuilds the Xcode project and `Info.plist`.
 
 If you only need to regenerate the Xcode project without rebuilding Rust:
 
