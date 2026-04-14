@@ -342,8 +342,11 @@ open iosApp/iosApp.xcodeproj
 ```
 
 Deeper details (what each task does, how the cross-compiler is invoked, how UniFFI generates
-bindings) live in the platform READMEs — see [`composeApp/README.md`](composeApp/README.md) and
-[`iosApp/README.md`](iosApp/README.md).
+bindings) live in the platform READMEs —
+see [`composeApp/src/androidMain/README.md`](composeApp/src/androidMain/README.md) for the Android
+pipeline and [`iosApp/README.md`](iosApp/README.md) for the iOS pipeline. Shared KMP conventions
+(MVI, `bridge/` expect/actual, source-set layout) are covered in
+[`composeApp/README.md`](composeApp/README.md).
 
 ### Rust SDK (standalone)
 

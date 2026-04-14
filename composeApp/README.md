@@ -1,361 +1,244 @@
 <div align="center">
 
-# composeApp — KMP Module (Android Focus)
+# composeApp — Kotlin Multiplatform Module
 
-### Shared Compose UI. CameraX scanner. Rust loaded as a native <code>.so</code> via JNA.
+### Shared Compose UI. One ViewModel per screen. Thin platform actuals call Rust through UniFFI.
 
 <p>
-  <img alt="Android" src="https://img.shields.io/badge/Android-minSdk%2029-3DDC84?logo=android&logoColor=white" />
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
   <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.11.0-4285F4?logo=jetpackcompose&logoColor=white" />
-  <img alt="CameraX" src="https://img.shields.io/badge/CameraX-ImageAnalysis-3DDC84?logo=android&logoColor=white" />
-  <img alt="JNA" src="https://img.shields.io/badge/JNA-5.14.0-777777" />
+  <img alt="KMP" src="https://img.shields.io/badge/KMP-commonMain%20%7C%20androidMain%20%7C%20iosMain-7F52FF?logo=kotlin&logoColor=white" />
+  <img alt="MVI" src="https://img.shields.io/badge/Architecture-MVI-1976D2" />
+  <img alt="ArrowKT" src="https://img.shields.io/badge/ArrowKT-Either-7B3FE4" />
   <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-auto--bindings-3B6FE0" />
-  <img alt="Status" src="https://img.shields.io/badge/Android-End--to--End-brightgreen" />
 </p>
 
-<p><b>Rust <code>.so</code> × 3 ABIs · UniFFI Kotlin · CameraX Y-plane path · Compose MVI</b></p>
+<p><b>One Compose tree · Two native apps · MVI with explicit backing fields · ArrowKT <code>Either</code> at the FFI boundary</b></p>
 
-<sub>This module holds shared Compose UI (<code>commonMain</code>), Android actuals (<code>androidMain</code>), and iOS Kotlin/Native actuals (<code>iosMain</code>). Doc focus: the Android pipeline — from Rust source to installable APK.</sub>
+<sub>This module holds shared Compose UI in <code>commonMain</code> plus platform actuals in
+<code>androidMain</code> and <code>iosMain</code>. Every screen (Scan, Generate, result sheet) is
+written once in Compose and rendered natively on both platforms through Jetpack Compose on Android
+and SKIA on iOS.</sub>
 
 </div>
 
 ---
 
-> **Want the full pipeline end-to-end with sequence diagrams?**
-> See [**`docs/ARCHITECTURE.md`**](../docs/ARCHITECTURE.md) — the single source of truth for how
-> Rust becomes two native apps (both Android and iOS branches, runtime call paths, UniFFI deep dive).
+> **Looking for platform specifics?** This README covers the shared KMP layer — source-set layout,
+> MVI conventions, the `bridge/` expect/actual pattern, shared Gradle tasks.
 >
-> For cross-platform architecture, MVI, and shared UI, see the [top-level README](../README.md).
-> iOS pipeline is in [`iosApp/README.md`](../iosApp/README.md); the Rust engine is documented in
-> [`rustySDK/README.md`](../rustySDK/README.md).
+> - Android pipeline, CameraX wiring, `.so` packaging, JNA loader → [`src/androidMain/README.md`](src/androidMain/README.md)
+> - iOS pipeline, XCFramework, cinterop wiring, AVFoundation → [`../iosApp/README.md`](../iosApp/README.md)
+> - Rust engine (QR encode/decode, UniFFI wrapper crate) → [`../rustySDK/README.md`](../rustySDK/README.md)
+> - End-to-end architecture with sequence diagrams → [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
+> - Top-level project pitch → [`../README.md`](../README.md)
 
 ---
 
 ## Quick Start
 
-```bash
-# First-time setup
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-cargo install cargo-ndk
-export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/$(ls $HOME/Library/Android/sdk/ndk | tail -1)"
+Platform builds are documented in the platform READMEs — each has its own first-time setup:
 
-# Compile Rust + generate Kotlin bindings + build APK
-./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
+```bash
+./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug   # Android — see src/androidMain/README.md
+./gradlew :composeApp:buildRustIos                                 # iOS — see ../iosApp/README.md
 ```
 
-If you're only editing Kotlin / UI, skip `buildRustAndroid` — `assembleDebug` reuses the existing
-`.so` files and generated binding.
+If you're only editing shared Compose UI or ViewModels in `commonMain`, skip the `buildRust*`
+tasks and let Gradle reuse the existing `.so` / `.xcframework`.
 
 ---
 
-## Android-Specific Gradle Tasks
+## Module-Level Gradle Tasks
 
-| Task                                    | What it does                                               |
-|-----------------------------------------|------------------------------------------------------------|
-| `:composeApp:buildRustAndroid`          | `make android` — cross-compile + generate Kotlin bindings  |
-| `:composeApp:assembleDebug`             | Standard Android debug APK build                           |
-| `:composeApp:installDebug`              | Install debug APK to connected device / emulator           |
-| `:composeApp:ktlintCheck` / `...Format` | Kotlin lint / auto-fix                                     |
-| `:composeApp:detekt`                    | Static analysis (max line length 120, Android mode)        |
-| `:composeApp:lintAll`                   | ktlint + detekt + SwiftLint (iOS side)                     |
-| `:composeApp:installGitHooks`           | Install pre-commit + commit-msg hooks                      |
+These apply to the whole module — they work the same way whether you're building for Android or iOS.
+
+| Task                                    | What it does                                                            |
+|-----------------------------------------|-------------------------------------------------------------------------|
+| `:composeApp:lintAll`                   | Runs ktlint + detekt + SwiftLint in one go                              |
+| `:composeApp:ktlintCheck` / `...Format` | Kotlin lint / auto-fix (Android mode, continuation indent 4)            |
+| `:composeApp:detekt`                    | Static analysis (max line length 120)                                   |
+| `:composeApp:swiftlint`                 | SwiftLint on `iosApp/` Swift sources                                    |
+| `:composeApp:installGitHooks`           | Install pre-commit (`lintAll` + `cargo fmt --check`) and commit-msg hooks |
+
+Platform-specific build tasks (`buildRustAndroid`, `buildRustIos`, `cleanBuildIos`,
+`generateXcodeProject`) are documented in their respective platform READMEs.
 
 ---
 
 <details>
-<summary><b>Android Source Set Layout</b> — where actuals, JNI libs, and generated bindings live</summary>
+<summary><b>Source Set Layout</b> — how commonMain, androidMain, and iosMain split work</summary>
 
 <br/>
 
 ```
-composeApp/src/androidMain/
-├── kotlin/com/p2/apps/rustyqr/
-│   ├── MainActivity.kt                 # Single-activity host — sets Compose content + MainActivityHolder
-│   ├── MainActivityHolder.kt           # Weak-ref holder so bridges reach the foreground Activity
-│   ├── RustyQrApplication.kt           # Application subclass — seeds AppContextHolder
-│   ├── AppContextHolder.kt             # Static Application context for bridges (permissions, share, save)
-│   ├── Platform.android.kt             # Platform() actual
-│   └── bridge/
-│       ├── QrBridge.android.kt         # actual — delegates to UniFFI-generated Kotlin
-│       ├── CameraPreview.android.kt    # actual — CameraX PreviewView + ImageAnalysis
-│       ├── CameraPermission.android.kt # actual — ActivityResultLauncher
-│       ├── HapticFeedback.android.kt   # actual — HapticFeedbackType via View
-│       ├── OpenUrl.android.kt          # actual — Intent(ACTION_VIEW)
-│       ├── ShareQrImage.android.kt     # actual — Intent(ACTION_SEND) via FileProvider
-│       ├── SaveQrImage.android.kt      # actual — MediaStore.Images
-│       └── ImageDecoder.android.kt     # actual — BitmapFactory → ImageBitmap
+composeApp/src/
+├── commonMain/
+│   └── kotlin/com/p2/apps/rustyqr/
+│       ├── App.kt                          # Root composable — hosts navigation + theme
+│       ├── Platform.kt                     # expect fun Platform(): String
+│       ├── model/                          # Shared data types (ScanResult, QrError, ...)
+│       ├── ui/
+│       │   ├── screen/                     # ScanScreen, GenerateScreen — shared Compose
+│       │   ├── components/                 # PillTabBar, ScanResultSheet, AmberButton, ...
+│       │   ├── mvi/                        # *State + *Intent sealed types per screen
+│       │   ├── viewmodels/                 # ScanViewModel, GenerateViewModel
+│       │   ├── navigation/                 # Tab sealed hierarchy
+│       │   └── theme/                      # RustyQrTheme, Color, Type, Shape, Motion
+│       └── bridge/                         # expect declarations for everything platform-specific
+│           ├── QrBridge.kt                 # generatePng, decodeQr, decodeQrFromRaw, getLibraryVersion
+│           ├── CameraPreview.kt            # @Composable — platform draws the live preview + decodes frames
+│           ├── CameraPermission.kt         # expect funs — status check, request, permanent-denied, openAppSettings
+│           ├── HapticFeedback.kt           # expect fun — triggerImpactHaptic
+│           ├── OpenUrl.kt                  # expect fun — openUrlExternally
+│           ├── ShareQrImage.kt             # expect fun — system share sheet with PNG bytes
+│           ├── SaveQrImage.kt              # expect fun — save PNG to gallery / photos
+│           └── ImageDecoder.kt             # expect fun — platform image bytes → ImageBitmap
 │
-├── kotlin/generated/                   # GENERATED by UniFFI (do not edit) — gitignored
-│   └── com/p2/apps/rustyqr/rust/rusty_qr_ffi.kt
+├── commonTest/                             # Shared ViewModel tests
 │
-├── jniLibs/                            # GENERATED by cargo-ndk — gitignored
-│   ├── arm64-v8a/librusty_qr_ffi.so
-│   ├── armeabi-v7a/librusty_qr_ffi.so
-│   └── x86_64/librusty_qr_ffi.so
+├── androidMain/                            # Android actuals — CameraX, JNA, ActivityResultLauncher
+│                                           # → src/androidMain/README.md for details
 │
-├── res/xml/                            # FileProvider paths, adaptive icon, etc.
-└── AndroidManifest.xml                 # Permissions, activity, application class
+├── iosMain/                                # iOS Kotlin/Native actuals — AVFoundation, cinterop to UniFFI C header
+│                                           # → ../iosApp/README.md for details
+│
+└── nativeInterop/cinterop/                 # Kotlin/Native cinterop .def — iOS only
+    └── RustyQrFFI.def                      # Points at iosApp/generated/headers/RustyQrFFIFFI.h
 ```
 
-The Android app has no Compose screens of its own — it reuses the shared `commonMain` screens from
-the KMP module. The only Android-specific Compose code is inside the `bridge/` actuals (e.g.
-`AndroidView` wrapping `PreviewView`).
+**Key rule — all expect/actual declarations live in `bridge/`.** Even camera and haptics, which
+arguably belong in a `hardware/` package, live there so that every platform-specific touchpoint is
+in one predictable place. See the inline package comment in `commonMain/.../bridge/` for the
+reasoning.
 
 </details>
 
 <details>
-<summary><b>Scan Feature — Data Flow on Android</b> — CameraX → scan gate → Rust → MVI</summary>
+<summary><b>MVI Pattern</b> — State sealed hierarchy, explicit backing field, Intent fan-in</summary>
 
 <br/>
 
-```mermaid
-sequenceDiagram
-    participant CAM as CameraX<br/>ImageAnalysis
-    participant ANA as Frame Analyzer<br/>(camera thread)
-    participant GATE as scanGate<br/>(@Volatile Boolean)
-    participant JNI as UniFFI Kotlin<br/>→ JNA → .so
-    participant VM as ScanViewModel<br/>(main thread)
-    participant UI as ScanScreen<br/>Composable
+Every screen follows the same shape:
 
-    CAM->>ANA: ImageProxy (Y-plane luma buffer)
-    ANA->>GATE: read isScanning
-    alt gate locked (sheet visible)
-        GATE-->>ANA: skip frame, close proxy
-    else gate open
-        ANA->>JNI: QrBridge.decodeQrFromRaw(pixels, w, h)
-        alt Either.Left (no QR — most frames)
-            JNI-->>ANA: discard silently
-        else Either.Right (QR decoded)
-            JNI-->>ANA: ScanResult(content)
-            ANA->>VM: mainExecutor.execute { onIntent(FrameDecoded) }
-            VM->>GATE: lock — first-write-wins
-            VM->>VM: triggerHaptic()
-            VM->>VM: isScanning=false, sheetContent=result, isSheetVisible=true
-            VM-->>UI: StateFlow emits
-            UI->>UI: scrim + ScanResultSheet
-        end
-    end
+```
+ScreenName/
+├── *State.kt          # sealed interface — data classes for each UI state
+├── *Intent.kt         # sealed interface — every user/system action that can mutate state
+├── *ViewModel.kt      # onIntent(Intent): Unit + field = MutableStateFlow(initial)
+└── *Screen.kt         # @Composable — collectAsState() + onIntent hooks
 ```
 
-Key design decisions on Android:
+### Explicit backing fields (KEEP-278)
 
-- **Gate is `@Volatile Boolean`**, not `AtomicBoolean` — fast read on camera thread, no lock
-  overhead; writes only happen on the main thread.
-- **Camera session binds only while the user is actively scanning** — `CameraPreview` is gated on
-  `isCameraActive`. On decode the analyzer stops reading frames via the scan gate (camera remains
-  bound while the result sheet is open); on dismiss the screen returns to idle and the camera
-  unbinds. The Scan tab opens cold with no preview and no permission prompt until Start Scanning.
-- **`Either.Left` frames are silently discarded** — most frames contain no QR; this is the expected
-  case, not an error path.
-- **JNA is the loader** — the generated `rusty_qr_ffi.kt` calls into `librusty_qr_ffi.so` through
-  the `net.java.dev.jna` runtime library, not `System.loadLibrary`.
+ViewModels expose state through a single `val state: StateFlow<State>` using the explicit backing
+field syntax — no underscore-prefixed mutable twin, no `asStateFlow()` wrapper:
+
+```kotlin
+class ScanViewModel : ViewModel() {
+    val state: StateFlow<ScanScreenState>
+        field = MutableStateFlow(ScanScreenState.Idle)
+
+    fun onIntent(intent: ScanScreenIntent) = when (intent) {
+        is ScanScreenIntent.StartScanning -> state.update { /* ... */ }
+        is ScanScreenIntent.FrameDecoded  -> state.update { /* ... */ }
+        // ...
+    }
+}
+```
+
+Reads are type-safe `StateFlow<T>`; writes stay private to the class. No
+`_state / state.asStateFlow()` boilerplate, no accidental double-publication of the same flow.
+
+### Intent handling — `when` returning `Unit`
+
+`onIntent` is a single `when` over the sealed `Intent` hierarchy. The compiler catches every missed
+branch. No command pattern, no reducer lookup table — just code a human can read top to bottom.
+
+### Tests live in `commonTest`
+
+ViewModel tests stay in `commonTest` and run on both JVM and iOS simulator. State + Intent are pure
+Kotlin, so the tests don't touch a Dispatcher, a Dispatcher Provider, or a Context.
 
 </details>
 
 <details>
-<summary><b>Android Build Pipeline</b> — from Rust source to installable APK</summary>
+<summary><b>Bridge Pattern</b> — how platform code reaches shared code</summary>
 
 <br/>
 
-The QR code logic is written in **Rust**, but Android apps run Kotlin on ART. Kotlin can't call
-Rust directly — they're different languages with different runtimes. Two things need to happen:
-
-1. **A compiled Rust library** (`.so` file per CPU architecture) that Android loads at runtime
-2. **Generated Kotlin code** that knows how to call the functions inside that library
-
-### What `buildRustAndroid` actually does
-
-`buildRustAndroid` is a Gradle `Exec` task that invokes `make android` in `rustySDK/`. Developers
-never run `make` directly — Gradle is the only entry point, so CI, local builds, and IDE sync all
-take the same path.
-
-```makefile
-# rustySDK/Makefile (excerpt)
-android:
-    ./scripts/build_android.sh
-
-clean:
-    cargo clean
-    rm -rf ../composeApp/src/androidMain/jniLibs
-    rm -rf ../composeApp/src/androidMain/kotlin/generated
-```
-
-`build_android.sh` does three things in order:
-
-**1. Dependency check.** Verifies `cargo-ndk`, `ANDROID_NDK_HOME`, and the three Android Rust
-targets are installed. If anything is missing, it prints the exact install command.
-
-**2. Cross-compile Rust.** `cargo-ndk` invokes the Rust compiler once per architecture:
-
-| Architecture  | Who uses it                               | Output                                   |
-|---------------|-------------------------------------------|------------------------------------------|
-| `arm64-v8a`   | All modern Android phones (64-bit ARM)    | `jniLibs/arm64-v8a/librusty_qr_ffi.so`   |
-| `armeabi-v7a` | Older 32-bit ARM devices                  | `jniLibs/armeabi-v7a/librusty_qr_ffi.so` |
-| `x86_64`      | Android emulator on a Mac                 | `jniLibs/x86_64/librusty_qr_ffi.so`      |
-
-All `.so` files are built with **16KB ELF page alignment** (`align 2**14`), compliant with
-[Android's 16KB page size requirement](https://developer.android.com/guide/practices/page-sizes)
-effective November 2025. Handled automatically by NDK 28+ (we use NDK 30) — no extra linker flags.
-AGP 9.1 handles zip alignment at packaging time.
-
-**3. Generate Kotlin bindings.** `uniffi-bindgen` reads UniFFI metadata embedded in the `.so` and
-emits a single `.kt` file:
+Every time shared code needs platform hardware or a platform API, it goes through an
+`expect / actual` declaration in the `bridge/` package:
 
 ```
-Rust:    generate_png(content: &str, size: u32) -> Result<Vec<u8>, QrError>
-         ↓  uniffi-bindgen generates  ↓
-Kotlin:  fun generatePng(content: String, size: UInt): List<UByte>
-         (throws FfiQrException on error)
+commonMain/bridge/QrBridge.kt          expect object QrBridge { fun generatePng(...): Either<...> }
+        │
+        ├─► androidMain/bridge/QrBridge.android.kt   actual object QrBridge → UniFFI-generated Kotlin → JNA → .so
+        └─► iosMain/bridge/QrBridge.ios.kt           actual object QrBridge → cinterop → UniFFI C header → .a
 ```
 
-Output lands at:
+### Conventions
 
-```
-composeApp/src/androidMain/kotlin/generated/com/p2/apps/rustyqr/rust/rusty_qr_ffi.kt
-```
+- **Return type is always `Either<DomainError, Result>`** — never throw across the FFI boundary.
+  ArrowKT `Either` keeps the error path explicit and forces the caller to handle both sides.
+- **Coroutine dispatchers stay out of `bridge/`** — the actual implementations are synchronous
+  functions; ViewModels decide which `Dispatcher` to call them on.
+- **Filename convention is `Name.kt` (expect) + `Name.android.kt` / `Name.ios.kt` (actuals).**
+  Detekt's `MatchingDeclarationName` is disabled globally so the class inside `Name.android.kt` can
+  still be called `QrBridge`.
+- **Every platform actual lives under `bridge/`.** No scattering permission / camera / haptics /
+  share actuals into feature folders. If it crosses the platform boundary, it's a bridge.
 
-### How Gradle picks up the artifacts
+### What's behind each bridge
 
-Gradle needs no special configuration — it uses **convention-based source directories**:
-
-- **`jniLibs/`** is a magic directory name for the Android Gradle Plugin. Any `.so` files inside
-  `jniLibs/<abi>/` are automatically packaged into the APK. At install time the device extracts
-  only the `.so` matching its CPU.
-- **`kotlin/`** under a source set is where Gradle looks for source files to compile. The generated
-  `rusty_qr_ffi.kt` is compiled like any other Kotlin file.
-- **JNA** (Java Native Access) is a runtime library declared in `build.gradle.kts` via the
-  `androidMainImplementation` configuration (a KMP sourceSets DSL workaround). The generated
-  Kotlin uses JNA to load `librusty_qr_ffi.so` and call its functions. Without JNA the generated
-  code would compile but crash at runtime.
-
-### Full pipeline
-
-```mermaid
-sequenceDiagram
-    participant Dev as Developer
-    participant G as ./gradlew buildRustAndroid
-    participant M as make android
-    participant S as build_android.sh
-    participant CNDK as cargo-ndk
-    participant UB as uniffi-bindgen
-    participant GA as ./gradlew assembleDebug
-
-    Dev->>G: buildRustAndroid
-    G->>M: exec make android
-    M->>S: bash build_android.sh
-
-    Note over S: Step 1 — dependency check
-    S->>CNDK: cargo ndk build --release
-
-    CNDK->>CNDK: compile aarch64-linux-android
-    CNDK->>CNDK: compile armv7-linux-androideabi
-    CNDK->>CNDK: compile x86_64-linux-android
-    CNDK-->>S: 3 × librusty_qr_ffi.so
-
-    Note over S: Step 3 — generate Kotlin bindings
-    S->>UB: read .so metadata → emit Kotlin
-    UB-->>S: rusty_qr_ffi.kt
-
-    S-->>Dev: done
-
-    Dev->>GA: assembleDebug
-    Note over GA: Packages .so from jniLibs/<br/>Compiles .kt from kotlin/generated/<br/>Produces app-debug.apk
-```
-
-### Why three `.so` files but one `.kt` file?
-
-**Three `.so` files** because each CPU architecture needs its own machine code. ARM code can't run
-on x86 and vice versa.
-
-**One `.kt` file** because the Kotlin code is architecture-independent — it calls Rust functions by
-name (e.g. `generate_png`), and JNA resolves those names against whichever `.so` was loaded on the
-device. The UniFFI metadata in all three `.so` files is identical, so any one of them can be used
-as the source for binding generation.
+| Expect                | Android actual                             | iOS actual                                 |
+|-----------------------|--------------------------------------------|--------------------------------------------|
+| `QrBridge`            | UniFFI-generated Kotlin → JNA → `.so`      | Kotlin/Native cinterop → UniFFI C → `.a`   |
+| `CameraPreview`       | `AndroidView` wrapping `PreviewView`       | `UIKitView` wrapping `AVCaptureVideoPreviewLayer` |
+| `CameraPermission`    | `ActivityResultLauncher` (activity scope)  | `AVCaptureDevice.requestAccess(for: .video)` |
+| `HapticFeedback`      | `View.performHapticFeedback`               | `UIImpactFeedbackGenerator`                |
+| `OpenUrl`             | `Intent(ACTION_VIEW)`                      | `UIApplication.openURL`                    |
+| `ShareQrImage`        | `Intent(ACTION_SEND)` via `FileProvider`   | `UIActivityViewController`                 |
+| `SaveQrImage`         | `MediaStore.Images`                        | `PHPhotoLibrary`                           |
+| `ImageDecoder`        | `BitmapFactory` → `ImageBitmap`            | `UIImage` → `ImageBitmap`                  |
 
 </details>
 
 <details>
-<summary><b>UniFFI Metadata Under the Hood</b> — proc-macros embed the signature in the <code>.so</code></summary>
+<summary><b>Compose Multiplatform Notes</b> — where shared UI ends and platform rendering begins</summary>
 
 <br/>
 
-`uniffi-bindgen` knows what Kotlin to emit because **proc-macros** in the Rust FFI crate embed
-metadata directly into the `.so` binary at compile time:
-
-```mermaid
-graph LR
-    A["#[uniffi::export]<br/>fn generate_png(content: String, size: u32)<br/>-> Result[Vec u8, FfiQrError]"]
-    B["uniffi proc-macro<br/>reads the signature"]
-    C["Metadata section embedded<br/>into the .so binary"]
-    D["uniffi-bindgen reads<br/>metadata from .so"]
-    E["Generates Kotlin:<br/>fun generatePng(content: String, size: UInt): List[UByte]"]
-
-    A --> B --> C -->|".so file"| D --> E
-```
-
-Change a Rust function signature and the next `buildRustAndroid` regenerates the Kotlin to match —
-no manual bridging code to keep in sync.
+- **Rendering is identical across platforms.** Compose Multiplatform uses the same Compose runtime
+  on Android and iOS; the difference is only the rendering backend (Jetpack Compose on Android,
+  SKIA on iOS). There is no per-platform Compose code in this module outside of `bridge/`.
+- **No native SwiftUI.** `iosApp/iosApp/ContentView.swift` is a `UIViewControllerRepresentable`
+  that wraps `MainViewControllerKt.MainViewController()` — the Compose UI exported from
+  `iosMain`. Every visible screen runs through the shared `commonMain` composables.
+- **Resources live in `commonMain/composeResources/`.** Drawables, fonts, string catalogs (including
+  `values-fr-rCA` and `values-es`) are resolved at runtime via the Compose Multiplatform resource
+  generator. No Android `res/` duplication.
+- **Theme is shared.** `ui/theme/RustyQrTheme.kt` owns colors, typography, shape, and motion tokens.
+  Neither platform overrides them.
 
 </details>
 
 <details>
-<summary><b>First-Time Setup & Cleaning</b> — one-off install and full reset</summary>
+<summary><b>Linting & Formatting</b> — one task, three tools</summary>
 
 <br/>
 
-### First-Time Setup
+`./gradlew :composeApp:lintAll` runs ktlint, detekt, and SwiftLint in a single invocation. The same
+three tools also run automatically as a pre-commit hook (installed by
+`./gradlew :composeApp:installGitHooks`, which also runs on `preBuild` / `clean`).
 
-```bash
-# 1. Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+| Tool       | Scope                   | Config                                           |
+|------------|-------------------------|--------------------------------------------------|
+| ktlint     | Kotlin sources          | `composeApp/.editorconfig` — Android mode, continuation indent 4 |
+| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — max line length 120, `MagicNumber` + `WildcardImport` off |
+| SwiftLint  | `iosApp/` Swift sources | `.swiftlint.yml` — `trailing_whitespace` and `line_length` disabled |
+| rustfmt    | `rustySDK/` Rust sources | `rustySDK/rustfmt.toml` — edition 2024, max line width 120 (separate pre-commit step) |
 
-# 2. Android cross-compilation targets
-rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
-
-# 3. cargo-ndk (the cross-compilation wrapper)
-cargo install cargo-ndk
-
-# 4. ANDROID_NDK_HOME — add to ~/.zshrc or ~/.bashrc
-export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/$(ls $HOME/Library/Android/sdk/ndk | tail -1)"
-```
-
-After that, every build is:
-
-```bash
-./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
-```
-
-### Cleaning Up
-
-```bash
-./gradlew :composeApp:cleanBuildIos    # cleans BOTH platforms' Rust artifacts
-```
-
-This removes:
-
-- `rustySDK/target/` — all Rust compiled objects
-- `composeApp/src/androidMain/jniLibs/` — the `.so` files
-- `composeApp/src/androidMain/kotlin/generated/` — the generated Kotlin binding
-
-After cleaning, rebuild Android with `./gradlew :composeApp:buildRustAndroid`.
-
-</details>
-
-<details>
-<summary><b>Troubleshooting</b> — emulator crashes, detekt complaints, missing haptics</summary>
-
-<br/>
-
-**Emulator crashes on scan launch with `UnsatisfiedLinkError`.** You're running an x86_64 emulator
-and the `.so` is only built for arm64. Run `./gradlew :composeApp:buildRustAndroid` — it always
-builds all three architectures.
-
-**`detekt` complains about `MatchingDeclarationName`.** The `*.android.kt` convention intentionally
-breaks that rule. It's disabled globally in `config/detekt/detekt.yml`.
-
-**Scan works but no haptic on dismissal.** Check the Android system haptics setting. The
-`HapticFeedback.android.kt` actual uses `View.performHapticFeedback` which respects system
-preferences.
+Auto-fix Kotlin formatting with `./gradlew :composeApp:ktlintFormat`.
 
 </details>
