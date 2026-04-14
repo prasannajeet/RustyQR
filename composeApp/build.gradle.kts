@@ -1,4 +1,25 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+// Read centralized version from version.properties — single source of truth for Android + iOS.
+// Duplicated from settings.gradle.kts; buildSrc extraction is out of scope.
+val versionPropsFile = rootProject.projectDir.resolve("version.properties")
+if (!versionPropsFile.exists()) {
+    throw GradleException("version.properties not found at ${versionPropsFile.absolutePath}")
+}
+val versionProps = Properties().apply { versionPropsFile.inputStream().use { load(it) } }
+val rawVersionName = versionProps.getProperty("version_name") ?: ""
+if (rawVersionName.isBlank()) {
+    throw GradleException("version.properties: version_name must not be blank, got '$rawVersionName'")
+}
+val rawBuildNumber = versionProps.getProperty("build_number") ?: ""
+val appBuildNumber: Int =
+    rawBuildNumber.trim().toIntOrNull()
+        ?: throw GradleException("version.properties: build_number must be an integer, got '$rawBuildNumber'")
+if (appBuildNumber <= 0) {
+    throw GradleException("version.properties: build_number must be positive, got $appBuildNumber")
+}
+val appVersionName: String = rawVersionName.trim()
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -98,8 +119,8 @@ android {
             libs.versions.android.targetSdk
                 .get()
                 .toInt()
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appBuildNumber
+        versionName = appVersionName
     }
     packaging {
         resources {
@@ -214,7 +235,10 @@ tasks.register<Exec>("cleanBuildIos") {
 tasks.register<Exec>("generateXcodeProject") {
     group = "xcode"
     description = "Regenerates iosApp.xcodeproj from project.yml via XcodeGen"
+    outputs.upToDateWhen { false }
     workingDir = File(rootDir, "iosApp")
+    environment("VERSION_NAME", appVersionName)
+    environment("BUILD_NUMBER", appBuildNumber.toString())
     commandLine("xcodegen", "generate")
     mustRunAfter("buildRustIos", "cleanBuildIos")
     doLast {

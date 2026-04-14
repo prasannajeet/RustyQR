@@ -1,5 +1,25 @@
+import java.util.Properties
+
 rootProject.name = "RustyQR"
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
+// Read centralized version from version.properties — single source of truth for Android + iOS.
+val versionPropsFile = settingsDir.resolve("version.properties")
+if (!versionPropsFile.exists()) {
+    throw GradleException("version.properties not found at ${versionPropsFile.absolutePath}")
+}
+val versionProps = Properties().apply { versionPropsFile.inputStream().use { load(it) } }
+val rawVersionName = versionProps.getProperty("version_name") ?: ""
+if (rawVersionName.isBlank()) {
+    throw GradleException("version.properties: version_name must not be blank, got '$rawVersionName'")
+}
+val rawBuildNumber = versionProps.getProperty("build_number") ?: ""
+val appBuildNumber: Int = rawBuildNumber.trim().toIntOrNull()
+    ?: throw GradleException("version.properties: build_number must be an integer, got '$rawBuildNumber'")
+if (appBuildNumber <= 0) {
+    throw GradleException("version.properties: build_number must be positive, got $appBuildNumber")
+}
+val appVersionName: String = rawVersionName.trim()
 
 // Bootstrap iosApp.xcodeproj on fresh clones — runs before any build.gradle.kts is parsed,
 // which beats the KMP plugin's configuration-time read of project.pbxproj.
@@ -17,6 +37,8 @@ run {
                 .exec {
                     workingDir = iosApp
                     commandLine("xcodegen", "generate")
+                    environment("VERSION_NAME", appVersionName)
+                    environment("BUILD_NUMBER", appBuildNumber.toString())
                     isIgnoreExitValue = true
                 }
         val exitCode = execResult.result.get().exitValue
