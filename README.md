@@ -113,6 +113,97 @@ clipboard, haptics, share sheet, URL open).
 
 ---
 
+## How to get setup
+
+Steps to clone, build, and run on Android and iOS — in order.
+
+### 1. Install platform IDEs
+
+- **Android**: install [Android Studio](https://developer.android.com/studio), then open SDK
+  Manager → install platform-tools, an SDK platform (API 36), and SDK Tools → NDK (Side by side).
+  Export `ANDROID_NDK_HOME` to point at the NDK directory in your shell rc.
+- **iOS** (macOS only): install Xcode 26.x from the Mac App Store, then run
+  `sudo xcode-select --install`.
+
+### 2. Clone the repo
+
+```bash
+git clone <repo-url>
+cd Rusty-QR
+```
+
+### 3. Run the bootstrap script
+
+Verifies (and optionally installs) every remaining tool: Rust toolchain + Android/iOS
+cross-compile targets, `cargo-ndk`, JDK 11+, `xcodegen`, `swiftlint`, `swiftformat`. iOS checks
+are skipped automatically on non-macOS hosts.
+
+```bash
+./scripts/bootstrap.sh           # interactive — prompts to install anything missing
+./scripts/bootstrap.sh --check   # report only, non-zero exit if anything missing (CI-friendly)
+./scripts/bootstrap.sh --yes     # non-interactive, auto-install everything it can
+```
+
+### 4. Build and run on Android
+
+```bash
+./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
+```
+
+Install the resulting APK from `composeApp/build/outputs/apk/debug/` on an emulator or device.
+
+### 5. Build and run on iOS
+
+```bash
+./gradlew :composeApp:buildRustIos      # or :composeApp:cleanBuildIos for a clean rebuild
+```
+
+This builds the Rust static lib, packages it into `RustyQR.xcframework`, generates the Swift
+UniFFI bindings, and regenerates `iosApp.xcodeproj` from `project.yml`.
+
+Then **sync Gradle in Android Studio** (File → Sync Project with Gradle Files) so the IDE picks
+up the freshly generated Xcode project. Once sync completes, the `iosApp` run configuration
+appears in the run-configurations dropdown — select it, pick a simulator, and hit Run. No need
+to open Xcode separately.
+
+For a **physical iOS device**, set your Team in Xcode → Signing & Capabilities (open
+`iosApp/iosApp.xcodeproj` once), or export `TEAM_ID=<your_team_id>` in your shell rc and re-run
+`./gradlew :composeApp:generateXcodeProject` to bake it into the generated project.
+
+Deeper details on what each Gradle task does (cross-compiler invocation, UniFFI binding
+generation, XCFramework packaging) live in the platform READMEs —
+[`composeApp/src/androidMain/README.md`](composeApp/src/androidMain/README.md) for Android,
+[`iosApp/README.md`](iosApp/README.md) for iOS, and
+[`composeApp/README.md`](composeApp/README.md) for shared KMP conventions.
+
+### Versioning
+
+`version.properties` at the repo root is the single source of truth for the app's `version_name`
+(semver) and `build_number` (monotonically increasing Int). Android reads it for
+`versionName`/`versionCode`; iOS reads it via env-var expansion in `iosApp/project.yml` for
+`MARKETING_VERSION`/`CURRENT_PROJECT_VERSION`. Bump it before each release; on iOS, rerun
+`./gradlew :composeApp:generateXcodeProject` after the bump to propagate the new values into the
+generated `iosApp.xcodeproj`.
+
+<details>
+<summary><b>Rust SDK — standalone commands</b></summary>
+
+<br/>
+
+```bash
+cd rustySDK
+cargo test --workspace                           # all tests
+cargo clippy --workspace -- -D warnings          # lint
+cargo bench -p rusty-qr-core                     # benchmarks
+cargo deny check                                 # supply chain audit
+```
+
+See [`rustySDK/README.md`](rustySDK/README.md) for the full Rust deep dive.
+
+</details>
+
+---
+
 <details>
 <summary><b>Architecture</b> — shared commonMain, thin platform bridges, single Rust core</summary>
 
@@ -290,9 +381,8 @@ Rusty-QR/
 │   └── README.md               # Android build pipeline + androidMain details
 │
 ├── iosApp/                     # iOS Xcode project — hosts Compose UI via UIKit
-│   ├── project.yml             # XcodeGen source of truth
+│   ├── project.yml             # XcodeGen source of truth (identity, signing, versioning)
 │   ├── iosApp/                 # Swift shell (ContentView wraps MainViewController)
-│   ├── Configuration/          # xcconfig files
 │   ├── generated/              # UniFFI Swift bindings (gitignored)
 │   ├── Frameworks/             # RustyQR.xcframework (gitignored)
 │   └── README.md               # iOS build pipeline + Xcode/XcodeGen details
@@ -303,70 +393,13 @@ Rusty-QR/
 │   ├── crates/uniffi-bindgen/  # CLI for generating Kotlin/Swift bindings
 │   └── README.md               # Rust SDK deep dive (ownership, cargo, FFI types)
 │
+├── version.properties          # versionName + buildNumber (single source for Android + iOS)
 ├── config/detekt/              # Detekt static analysis rules
 ├── docs/                       # PRD, implementation plan, ADRs
 └── .husky/                     # Git hooks (pre-commit lint, commit-msg format)
 ```
 
 For per-module details, see the nested READMEs linked above.
-
-</details>
-
-<details>
-<summary><b>Build and Run</b> — prerequisites and Gradle entry points</summary>
-
-<br/>
-
-### Prerequisites
-
-Run the bootstrap script once after cloning — it verifies (and optionally installs) every tool
-required for both Android and iOS builds:
-
-```bash
-./scripts/bootstrap.sh           # interactive — prompts to install anything missing
-./scripts/bootstrap.sh --check   # report only, non-zero exit if anything missing (CI-friendly)
-./scripts/bootstrap.sh --yes     # non-interactive, auto-install everything it can
-```
-
-What it covers: Rust toolchain + Android/iOS cross-compile targets, `cargo-ndk`, JDK 11+, Android
-SDK/NDK + `ANDROID_NDK_HOME`, Xcode 26.x, `xcodegen`, `swiftlint`, `swiftformat`. iOS checks are
-skipped automatically on non-macOS hosts.
-
-### Quick commands
-
-```bash
-# Android — build Rust .so + Kotlin bindings + APK
-./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
-
-# iOS — build Rust .a + XCFramework + Swift bindings + Xcode project
-./gradlew :composeApp:buildRustIos
-open iosApp/iosApp.xcodeproj
-
-# All three Kotlin/Swift linters
-./gradlew :composeApp:lintAll
-
-# Auto-fix Kotlin formatting
-./gradlew :composeApp:ktlintFormat
-```
-
-Deeper details (what each task does, how the cross-compiler is invoked, how UniFFI generates
-bindings) live in the platform READMEs —
-see [`composeApp/src/androidMain/README.md`](composeApp/src/androidMain/README.md) for the Android
-pipeline and [`iosApp/README.md`](iosApp/README.md) for the iOS pipeline. Shared KMP conventions
-(MVI, `bridge/` expect/actual, source-set layout) are covered in
-[`composeApp/README.md`](composeApp/README.md).
-
-### Rust SDK (standalone)
-
-```bash
-cd rustySDK
-cargo test --workspace                           # all tests
-cargo clippy --workspace -- -D warnings          # lint
-cargo bench -p rusty-qr-core                     # benchmarks
-cargo deny check                                 # supply chain audit
-```
-
-See [`rustySDK/README.md`](rustySDK/README.md) for the full Rust deep dive.
 
 </details>
 
