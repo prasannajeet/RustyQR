@@ -12,3 +12,13 @@ clone_on_ref_ptr = "deny"
 redundant_clone = "deny"
 allow_attributes = "deny"
 allow_attributes_without_reason = "deny"
+
+# The UniFFI Gradle plugin builds the dev profile for every debug app build. Optimise
+# dependencies (image, rqrr, qrcode, ...) so debug builds scan at realistic speed, while
+# our FFI crate stays unoptimised and debuggable. rusty-qr-core is optimised too, because the
+# generic decode hot loop (rqrr, image) is monomorphised into it.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.rusty-qr-core]
+opt-level = 3
