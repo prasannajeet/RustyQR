@@ -141,63 +141,89 @@ mod tests {
     const PNG_MAGIC: &[u8] = b"\x89PNG\r\n\x1a\n";
 
     #[test]
-    fn encode_simple_text_produces_valid_png() {
-        let result = generate_png("hello", 256).unwrap();
-        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
+    fn encode_simple_text_produces_valid_png() -> Result<(), Box<dyn std::error::Error>> {
+        let result = generate_png("hello", 256)?;
+        assert_eq!(
+            result.get(..8),
+            Some(PNG_MAGIC),
+            "output must start with PNG magic bytes"
+        );
         assert!(result.len() > 100, "PNG should have meaningful content");
+        Ok(())
     }
 
     #[test]
-    fn encode_url_produces_valid_png() {
-        let result = generate_png("https://example.com?foo=bar", 256).unwrap();
-        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
+    fn encode_url_produces_valid_png() -> Result<(), Box<dyn std::error::Error>> {
+        let result = generate_png("https://example.com?foo=bar", 256)?;
+        assert_eq!(
+            result.get(..8),
+            Some(PNG_MAGIC),
+            "output must start with PNG magic bytes"
+        );
+        Ok(())
     }
 
     #[test]
-    fn encode_unicode_content_succeeds() {
-        let result = generate_png("Hello 世界 🌍", 256).unwrap();
-        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
+    fn encode_unicode_content_succeeds() -> Result<(), Box<dyn std::error::Error>> {
+        let result = generate_png("Hello 世界 🌍", 256)?;
+        assert_eq!(
+            result.get(..8),
+            Some(PNG_MAGIC),
+            "output must start with PNG magic bytes"
+        );
+        Ok(())
     }
 
     #[test]
-    fn encode_output_dimensions_match_requested_size() {
-        let result = generate_png("hello", 256).unwrap();
+    fn encode_output_dimensions_match_requested_size() -> Result<(), Box<dyn std::error::Error>> {
+        let result = generate_png("hello", 256)?;
         // The IHDR chunk starts at byte 8; width is at bytes 16-19 and height at bytes 20-23
         // (both big-endian u32).
-        let width = u32::from_be_bytes(result[16..20].try_into().unwrap());
-        let height = u32::from_be_bytes(result[20..24].try_into().unwrap());
+        let width = u32::from_be_bytes(result.get(16..20).ok_or("PNG too short")?.try_into()?);
+        let height = u32::from_be_bytes(result.get(20..24).ok_or("PNG too short")?.try_into()?);
         assert_eq!(width, 256, "PNG width must match requested size");
         assert_eq!(height, 256, "PNG height must match requested size");
+        Ok(())
     }
 
     #[test]
     fn encode_empty_content_fails() {
-        let err = generate_png("", 256).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = generate_png("", 256);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
     fn encode_size_zero_fails() {
-        let err = generate_png("hello", 0).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = generate_png("hello", 0);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
     fn encode_size_exceeds_max_fails() {
-        let err = generate_png("hello", 5000).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = generate_png("hello", 5000);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
-    fn encode_size_one_succeeds() {
-        let result = generate_png("hello", 1).unwrap();
-        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
+    fn encode_size_one_succeeds() -> Result<(), Box<dyn std::error::Error>> {
+        let result = generate_png("hello", 1)?;
+        assert_eq!(
+            result.get(..8),
+            Some(PNG_MAGIC),
+            "output must start with PNG magic bytes"
+        );
+        Ok(())
     }
 
     #[test]
-    fn encode_size_max_succeeds() {
-        let result = generate_png("hello", 4096).unwrap();
-        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
+    fn encode_size_max_succeeds() -> Result<(), Box<dyn std::error::Error>> {
+        let result = generate_png("hello", 4096)?;
+        assert_eq!(
+            result.get(..8),
+            Some(PNG_MAGIC),
+            "output must start with PNG magic bytes"
+        );
+        Ok(())
     }
 
     #[test]
@@ -206,25 +232,35 @@ mod tests {
     }
 
     #[test]
-    fn encode_with_config_default() {
+    fn encode_with_config_default() -> Result<(), Box<dyn std::error::Error>> {
         let config = QrConfig {
             size: 256,
             error_correction: QrErrorCorrection::Medium,
         };
-        let result = generate_with_config("hello", config).unwrap();
-        assert_eq!(&result[..8], PNG_MAGIC, "output must start with PNG magic bytes");
+        let result = generate_with_config("hello", config)?;
+        assert_eq!(
+            result.get(..8),
+            Some(PNG_MAGIC),
+            "output must start with PNG magic bytes"
+        );
         assert!(result.len() > 100, "PNG should have meaningful content");
+        Ok(())
     }
 
     #[test]
-    fn encode_with_config_high_ec() {
+    fn encode_with_config_high_ec() -> Result<(), Box<dyn std::error::Error>> {
         let config_high = QrConfig {
             size: 256,
             error_correction: QrErrorCorrection::High,
         };
-        let result_high = generate_with_config("hello", config_high).unwrap();
-        assert_eq!(&result_high[..8], PNG_MAGIC, "output must start with PNG magic bytes");
+        let result_high = generate_with_config("hello", config_high)?;
+        assert_eq!(
+            result_high.get(..8),
+            Some(PNG_MAGIC),
+            "output must start with PNG magic bytes"
+        );
         assert!(result_high.len() > 100, "High EC PNG should have meaningful content");
+        Ok(())
     }
 
     #[test]
@@ -233,8 +269,8 @@ mod tests {
             size: 256,
             error_correction: QrErrorCorrection::Medium,
         };
-        let err = generate_with_config("", config).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = generate_with_config("", config);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
@@ -243,12 +279,12 @@ mod tests {
             size: 0,
             error_correction: QrErrorCorrection::Medium,
         };
-        let err = generate_with_config("hello", config).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = generate_with_config("hello", config);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
-    fn encode_all_ecl_levels() {
+    fn encode_all_ecl_levels() -> Result<(), Box<dyn std::error::Error>> {
         let levels = [
             QrErrorCorrection::Low,
             QrErrorCorrection::Medium,
@@ -260,19 +296,24 @@ mod tests {
                 size: 256,
                 error_correction: level,
             };
-            let result = generate_with_config("hello", config).unwrap();
-            assert_eq!(&result[..8], PNG_MAGIC, "EC level {level:?} must produce valid PNG");
+            let result = generate_with_config("hello", config)?;
+            assert_eq!(
+                result.get(..8),
+                Some(PNG_MAGIC),
+                "EC level {level:?} must produce valid PNG"
+            );
         }
+        Ok(())
     }
 
     #[test]
     fn encode_content_exceeds_qr_capacity() {
         // QR codes have a maximum data capacity; 3000+ bytes of data should exceed it.
         let huge_content: String = "A".repeat(3500);
-        let err = generate_png(&huge_content, 256).unwrap_err();
+        let result = generate_png(&huge_content, 256);
         assert!(
-            matches!(err, QrError::EncodingFailed { .. }),
-            "oversized content should return EncodingFailed, got {err:?}"
+            matches!(result, Err(QrError::EncodingFailed { .. })),
+            "oversized content should return EncodingFailed, got {result:?}"
         );
     }
 }

@@ -7,47 +7,49 @@
 use rusty_qr_core::{decoder, encoder, process, QrCommand, QrConfig, QrErrorCorrection, QrResponse};
 
 #[test]
-fn round_trip_preserves_content() {
+fn round_trip_preserves_content() -> Result<(), Box<dyn std::error::Error>> {
     let content = "https://example.com?foo=bar&baz=qux";
-    let png = encoder::generate_png(content, 256).unwrap();
-    let result = decoder::decode(&png).unwrap();
+    let png = encoder::generate_png(content, 256)?;
+    let result = decoder::decode(&png)?;
     assert_eq!(result.content, content);
+    Ok(())
 }
 
 #[test]
-fn round_trip_unicode() {
+fn round_trip_unicode() -> Result<(), Box<dyn std::error::Error>> {
     let content = "Hello 世界 🌍";
-    let png = encoder::generate_png(content, 256).unwrap();
-    let result = decoder::decode(&png).unwrap();
+    let png = encoder::generate_png(content, 256)?;
+    let result = decoder::decode(&png)?;
     assert_eq!(result.content, content);
+    Ok(())
 }
 
 #[test]
-fn round_trip_with_config() {
+fn round_trip_with_config() -> Result<(), Box<dyn std::error::Error>> {
     let content = "configured QR";
     let config = QrConfig {
         size: 512,
         error_correction: QrErrorCorrection::High,
     };
-    let png = encoder::generate_with_config(content, config).unwrap();
-    let result = decoder::decode(&png).unwrap();
+    let png = encoder::generate_with_config(content, config)?;
+    let result = decoder::decode(&png)?;
     assert_eq!(result.content, content);
+    Ok(())
 }
 
 #[test]
-fn round_trip_through_process_dispatcher() {
+fn round_trip_through_process_dispatcher() -> Result<(), Box<dyn std::error::Error>> {
     let content = "dispatcher round-trip";
     let gen_resp = process(QrCommand::GeneratePng {
         content: content.into(),
         size: 256,
-    })
-    .unwrap();
+    })?;
 
     let QrResponse::PngGenerated { data } = gen_resp else {
-        panic!("expected PngGenerated");
+        return Err("expected PngGenerated".into());
     };
 
-    let dec_resp = process(QrCommand::Decode { image_data: data }).unwrap();
+    let dec_resp = process(QrCommand::Decode { image_data: data })?;
     assert_eq!(
         dec_resp,
         QrResponse::Decoded {
@@ -56,23 +58,25 @@ fn round_trip_through_process_dispatcher() {
             },
         }
     );
+    Ok(())
 }
 
 #[test]
-fn round_trip_long_content() {
+fn round_trip_long_content() -> Result<(), Box<dyn std::error::Error>> {
     // PRD 6.6: encode and decode a 2000+ character string.
     let content: String = (0..2100).map(|i| char::from(b'A' + (i % 26) as u8)).collect();
     let config = QrConfig {
         size: 1024,
         error_correction: QrErrorCorrection::Low,
     };
-    let png = encoder::generate_with_config(&content, config).unwrap();
-    let result = decoder::decode(&png).unwrap();
+    let png = encoder::generate_with_config(&content, config)?;
+    let result = decoder::decode(&png)?;
     assert_eq!(result.content, content, "long content must survive round-trip");
+    Ok(())
 }
 
 #[test]
-fn round_trip_all_ecl_levels() {
+fn round_trip_all_ecl_levels() -> Result<(), Box<dyn std::error::Error>> {
     let content = "round-trip ECL test";
     let levels = [
         QrErrorCorrection::Low,
@@ -85,11 +89,12 @@ fn round_trip_all_ecl_levels() {
             size: 512,
             error_correction: level,
         };
-        let png = encoder::generate_with_config(content, config).unwrap();
-        let result = decoder::decode(&png).unwrap();
+        let png = encoder::generate_with_config(content, config)?;
+        let result = decoder::decode(&png)?;
         assert_eq!(
             result.content, content,
             "round-trip must preserve content at EC level {level:?}"
         );
     }
+    Ok(())
 }

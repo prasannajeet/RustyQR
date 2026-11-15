@@ -5,14 +5,15 @@
 use rusty_qr_core::{encoder, QrConfig, QrErrorCorrection};
 
 #[test]
-fn generate_is_deterministic() {
-    let a = encoder::generate_png("test", 256).unwrap();
-    let b = encoder::generate_png("test", 256).unwrap();
+fn generate_is_deterministic() -> Result<(), Box<dyn std::error::Error>> {
+    let a = encoder::generate_png("test", 256)?;
+    let b = encoder::generate_png("test", 256)?;
     assert_eq!(a, b, "generate_png must be deterministic for identical inputs");
+    Ok(())
 }
 
 #[test]
-fn generate_with_config_is_deterministic() {
+fn generate_with_config_is_deterministic() -> Result<(), Box<dyn std::error::Error>> {
     let config_a = QrConfig {
         size: 512,
         error_correction: QrErrorCorrection::Quartile,
@@ -21,7 +22,8 @@ fn generate_with_config_is_deterministic() {
         size: 512,
         error_correction: QrErrorCorrection::Quartile,
     };
-    let a = encoder::generate_with_config("determinism check", config_a).unwrap();
-    let b = encoder::generate_with_config("determinism check", config_b).unwrap();
+    let a = encoder::generate_with_config("determinism check", config_a)?;
+    let b = encoder::generate_with_config("determinism check", config_b)?;
     assert_eq!(a, b, "generate_with_config must be deterministic for identical inputs");
+    Ok(())
 }

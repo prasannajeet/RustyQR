@@ -333,7 +333,7 @@ mod tests {
         let png = rusty_qr_core::encoder::generate_png("raw delegation", 256).map_err(FfiQrError::from)?;
 
         // Convert PNG to raw grayscale pixels via the image crate (dev-dependency).
-        let img = image::load_from_memory(&png).expect("PNG must be loadable");
+        let img = image::load_from_memory(&png).map_err(|e| FfiQrError::ImageError { reason: e.to_string() })?;
         let luma = img.to_luma8();
         let (w, h) = (luma.width(), luma.height());
 
@@ -355,46 +355,46 @@ mod tests {
 
     #[test]
     fn generate_png_empty_content_returns_invalid_input() {
-        let err = generate_png(String::new(), 256).unwrap_err();
+        let result = generate_png(String::new(), 256);
         assert!(
-            matches!(err, FfiQrError::InvalidInput { .. }),
-            "expected InvalidInput, got {err:?}"
+            matches!(result, Err(FfiQrError::InvalidInput { .. })),
+            "expected InvalidInput, got {result:?}"
         );
     }
 
     #[test]
     fn generate_png_zero_size_returns_invalid_input() {
-        let err = generate_png("test".into(), 0).unwrap_err();
+        let result = generate_png("test".into(), 0);
         assert!(
-            matches!(err, FfiQrError::InvalidInput { .. }),
-            "expected InvalidInput, got {err:?}"
+            matches!(result, Err(FfiQrError::InvalidInput { .. })),
+            "expected InvalidInput, got {result:?}"
         );
     }
 
     #[test]
     fn decode_qr_empty_data_returns_invalid_input() {
-        let err = decode_qr(vec![]).unwrap_err();
+        let result = decode_qr(vec![]);
         assert!(
-            matches!(err, FfiQrError::InvalidInput { .. }),
-            "expected InvalidInput, got {err:?}"
+            matches!(result, Err(FfiQrError::InvalidInput { .. })),
+            "expected InvalidInput, got {result:?}"
         );
     }
 
     #[test]
     fn decode_qr_invalid_image_returns_error() {
-        let err = decode_qr(vec![0xFF, 0x00]).unwrap_err();
+        let result = decode_qr(vec![0xFF, 0x00]);
         assert!(
-            matches!(err, FfiQrError::ImageError { .. }),
-            "expected ImageError, got {err:?}"
+            matches!(result, Err(FfiQrError::ImageError { .. })),
+            "expected ImageError, got {result:?}"
         );
     }
 
     #[test]
     fn decode_qr_from_raw_empty_returns_invalid_input() {
-        let err = decode_qr_from_raw(vec![], 0, 0).unwrap_err();
+        let result = decode_qr_from_raw(vec![], 0, 0);
         assert!(
-            matches!(err, FfiQrError::InvalidInput { .. }),
-            "expected InvalidInput, got {err:?}"
+            matches!(result, Err(FfiQrError::InvalidInput { .. })),
+            "expected InvalidInput, got {result:?}"
         );
     }
 }

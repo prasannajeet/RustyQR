@@ -864,7 +864,7 @@ cargo fmt --check
 cargo fmt
 
 # Run Clippy (Rust's linter) — all warnings treated as errors
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ### Benchmark
@@ -912,7 +912,7 @@ cargo deny check
 
 ```bash
 cargo fmt --check && \
-cargo clippy --workspace -- -D warnings && \
+cargo clippy --workspace --all-targets -- -D warnings && \
 cargo test --workspace && \
 cargo deny check
 ```
