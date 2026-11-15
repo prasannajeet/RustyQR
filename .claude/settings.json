@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "discover@claude-code-discover": true
-  },
   "hooks": {
     "PostToolUse": [
       {
@@ -15,5 +12,9 @@
         ]
       }
     ]
+  },
+  "enabledPlugins": {
+    "discover@claude-code-discover": true,
+    "rust-analyzer-lsp@claude-plugins-official": true
   }
 }
