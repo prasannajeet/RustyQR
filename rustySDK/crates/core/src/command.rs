@@ -158,10 +158,10 @@ mod tests {
         };
 
         let dec_resp = process(QrCommand::Decode { image_data: png })?;
-        assert!(matches!(dec_resp, QrResponse::Decoded { .. }));
-        if let QrResponse::Decoded { result } = dec_resp {
-            assert_eq!(result.content, "dispatch-test");
-        }
+        let QrResponse::Decoded { result } = dec_resp else {
+            return Err(format!("expected Decoded, got {dec_resp:?}").into());
+        };
+        assert_eq!(result.content, "dispatch-test");
         Ok(())
     }
 
@@ -179,10 +179,10 @@ mod tests {
             height: h,
         })?;
 
-        assert!(matches!(resp, QrResponse::Decoded { .. }));
-        if let QrResponse::Decoded { result } = resp {
-            assert_eq!(result.content, "raw-dispatch");
-        }
+        let QrResponse::Decoded { result } = resp else {
+            return Err(format!("expected Decoded, got {resp:?}").into());
+        };
+        assert_eq!(result.content, "raw-dispatch");
         Ok(())
     }
 
