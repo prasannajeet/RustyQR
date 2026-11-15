@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! `rusty-qr-core` — pure-Rust QR code generation and decoding engine.
 //!
 //! This crate contains all business logic for encoding QR codes to PNG bytes
