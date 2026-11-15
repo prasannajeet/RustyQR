@@ -30,15 +30,16 @@ fun ContentTypeBadge(
         color = primary.copy(alpha = 0.15f),
         border = BorderStroke(width = 1.dp, color = primary.copy(alpha = 0.3f)),
     ) {
+        val textStyle =
+            MaterialTheme.typography.labelSmall.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 10.sp,
+                color = primary,
+            )
         Text(
             text = stringResource(contentType.labelRes),
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            style =
-                MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 10.sp,
-                    color = primary,
-                ),
+            style = textStyle,
         )
     }
 }

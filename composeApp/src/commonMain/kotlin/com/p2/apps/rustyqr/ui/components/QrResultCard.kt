@@ -28,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -57,25 +58,28 @@ fun QrResultCard(
 ) {
     val bitmap = remember(qrImageBytes) { qrImageBytes.toImageBitmap() }
 
+    val cardColors =
+        CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        )
+    val outlinedCardBorder =
+        BorderStroke(
+            width = 1.5.dp,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+        )
     OutlinedCard(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
-        colors =
-            CardDefaults.outlinedCardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            ),
-        border =
-            BorderStroke(
-                width = 1.5.dp,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-            ),
+        colors = cardColors,
+        border = outlinedCardBorder,
         elevation = CardDefaults.outlinedCardElevation(defaultElevation = 1.dp),
     ) {
+        val columnModifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(24.dp)
         Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
+            modifier = columnModifier,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(
@@ -87,44 +91,58 @@ fun QrResultCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // White QR image container — functional white background for the scannable code,
-            // intentionally not themed (scanner requires high contrast white background).
-            Surface(
-                shape = MaterialTheme.shapes.small,
-                color = Color.White,
-            ) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = stringResource(Res.string.generate_qr_content_description),
-                    modifier =
-                        Modifier
-                            .size(240.dp)
-                            .padding(8.dp),
-                    contentScale = ContentScale.Fit,
-                )
-            }
+            QrImagePanel(bitmap = bitmap)
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            val shareLabel = stringResource(Res.string.action_share)
-            val saveLabel = stringResource(Res.string.action_save)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                IconActionButton(
-                    icon = Icons.Outlined.IosShare,
-                    contentDescription = shareLabel,
-                    label = shareLabel,
-                    onClick = onShare,
-                )
-                IconActionButton(
-                    icon = Icons.Outlined.Save,
-                    contentDescription = saveLabel,
-                    label = saveLabel,
-                    onClick = onSave,
-                )
-            }
+            QrActionRow(onShare = onShare, onSave = onSave)
         }
+    }
+}
+
+// White QR image container — functional white background for the scannable code,
+// intentionally not themed (scanner requires high contrast white background).
+@Composable
+private fun QrImagePanel(bitmap: ImageBitmap) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = Color.White,
+    ) {
+        val imageModifier =
+            Modifier
+                .size(240.dp)
+                .padding(8.dp)
+        Image(
+            bitmap = bitmap,
+            contentDescription = stringResource(Res.string.generate_qr_content_description),
+            modifier = imageModifier,
+            contentScale = ContentScale.Fit,
+        )
+    }
+}
+
+@Composable
+private fun QrActionRow(
+    onShare: () -> Unit,
+    onSave: () -> Unit,
+) {
+    val shareLabel = stringResource(Res.string.action_share)
+    val saveLabel = stringResource(Res.string.action_save)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        IconActionButton(
+            icon = Icons.Outlined.IosShare,
+            contentDescription = shareLabel,
+            label = shareLabel,
+            onClick = onShare,
+        )
+        IconActionButton(
+            icon = Icons.Outlined.Save,
+            contentDescription = saveLabel,
+            label = saveLabel,
+            onClick = onSave,
+        )
     }
 }
 
@@ -171,14 +189,15 @@ private fun IconActionButton(
             }
         }
         Spacer(modifier = Modifier.height(4.dp))
+        val textStyle =
+            MaterialTheme.typography.bodySmall.copy(
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Normal,
+            )
         Text(
             text = label,
-            style =
-                MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Normal,
-                ),
+            style = textStyle,
         )
     }
 }

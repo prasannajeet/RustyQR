@@ -52,11 +52,12 @@ private fun AppContent(
         color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize(),
     ) {
+        val columnModifier =
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
         Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)),
+            modifier = columnModifier,
         ) {
             // Screen content fills remaining space
             Box(modifier = Modifier.weight(1f)) {

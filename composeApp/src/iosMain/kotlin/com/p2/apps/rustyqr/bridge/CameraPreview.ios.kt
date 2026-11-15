@@ -37,6 +37,7 @@ import platform.CoreVideo.CVPixelBufferGetBytesPerRowOfPlane
 import platform.CoreVideo.CVPixelBufferGetHeightOfPlane
 import platform.CoreVideo.CVPixelBufferGetWidthOfPlane
 import platform.CoreVideo.CVPixelBufferLockBaseAddress
+import platform.CoreVideo.CVPixelBufferRef
 import platform.CoreVideo.CVPixelBufferUnlockBaseAddress
 import platform.CoreVideo.kCVPixelBufferLock_ReadOnly
 import platform.CoreVideo.kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
@@ -158,30 +159,16 @@ private class FrameDelegate(
             dispatch_async(dispatch_get_main_queue()) { onCameraReady() }
         }
         if (!isScanning) return
-        val sampleBuffer = didOutputSampleBuffer ?: return
-        val pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) ?: return
+        val pixelBuffer = didOutputSampleBuffer?.let { CMSampleBufferGetImageBuffer(it) } ?: return
+        decodeFrame(pixelBuffer)
+    }
 
+    private fun decodeFrame(pixelBuffer: CVPixelBufferRef) {
         CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
         try {
-            val baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0u) ?: return
-            val width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0u).toInt()
-            val height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0u).toInt()
-            val bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0u).toInt()
-
-            if (width <= 0 || height <= 0) return
-
-            // Row-by-row copy: bytesPerRow >= width due to row-stride padding.
-            // Advance the pointer per row to avoid reading the entire buffer from index 0
-            // on each iteration (which would be O(n²) in frame size).
-            val dst = ByteArray(width * height)
-            val bytePtr = baseAddress.reinterpret<ByteVar>()
-            for (row in 0 until height) {
-                val rowStart = (bytePtr + row.toLong() * bytesPerRow.toLong()) ?: continue
-                rowStart.readBytes(width).copyInto(dst, destinationOffset = row * width)
-            }
-
+            val frame = copyLumaPlane(pixelBuffer) ?: return
             QrBridge
-                .decodeQrFromRaw(dst, width, height)
+                .decodeQrFromRaw(frame.bytes, frame.width, frame.height)
                 .onRight { result ->
                     dispatch_async(dispatch_get_main_queue()) { onQrDecoded(result) }
                 }
@@ -189,30 +176,60 @@ private class FrameDelegate(
             CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
         }
     }
+
+    /** Copies plane 0 of the (locked) [pixelBuffer] into a tightly packed luma array, or null if unusable. */
+    private fun copyLumaPlane(pixelBuffer: CVPixelBufferRef): LumaFrame? {
+        val baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0u)
+        val width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0u).toInt()
+        val height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0u).toInt()
+        val bytesPerRow = CVPixelBufferGetBytesPerRowOfPlane(pixelBuffer, 0u).toInt()
+
+        if (baseAddress == null || width <= 0 || height <= 0) return null
+
+        // Row-by-row copy: bytesPerRow >= width due to row-stride padding.
+        // Advance the pointer per row to avoid reading the entire buffer from index 0
+        // on each iteration (which would be O(n²) in frame size).
+        val dst = ByteArray(width * height)
+        val bytePtr = baseAddress.reinterpret<ByteVar>()
+        for (row in 0 until height) {
+            val rowStart = (bytePtr + row.toLong() * bytesPerRow.toLong()) ?: continue
+            rowStart.readBytes(width).copyInto(dst, destinationOffset = row * width)
+        }
+        return LumaFrame(dst, width, height)
+    }
 }
+
+private class LumaFrame(
+    val bytes: ByteArray,
+    val width: Int,
+    val height: Int,
+)
 
 // ---------------------------------------------------------------------------
 // Session configuration
 // ---------------------------------------------------------------------------
 
+private fun authorizedVideoDevice(): AVCaptureDevice? {
+    val authStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+    if (authStatus != AVAuthorizationStatusAuthorized) return null
+    return AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo)
+}
+
+/** Returns null when the OS reports an error (e.g. device access denied after the authorization check). */
+private fun createDeviceInput(device: AVCaptureDevice): AVCaptureDeviceInput? =
+    // AVCaptureDeviceInput throws a Kotlin exception when Objective-C sets the NSError out-param.
+    try {
+        AVCaptureDeviceInput(device = device, error = null)
+    } catch (ignored: Exception) {
+        null
+    }
+
 private fun configureSession(
     session: AVCaptureSession,
     delegate: FrameDelegate,
 ) {
-    val authStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
-    if (authStatus != AVAuthorizationStatusAuthorized) return
-
-    val device = AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo) ?: return
-
-    // AVCaptureDeviceInput throws a Kotlin exception when Objective-C sets the NSError out-param.
-    val input =
-        try {
-            AVCaptureDeviceInput(device = device, error = null)
-        } catch (e: Exception) {
-            // The OS reported an error (e.g. device access denied after authorization check).
-            // Session will have no input; abort configuration.
-            return
-        }
+    val device = authorizedVideoDevice() ?: return
+    val input = createDeviceInput(device) ?: return
 
     session.beginConfiguration()
     session.sessionPreset = AVCaptureSessionPresetPhoto

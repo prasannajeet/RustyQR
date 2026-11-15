@@ -92,13 +92,14 @@ fun GenerateScreen(viewModel: GenerateViewModel = viewModel { GenerateViewModel(
             state = state,
             onIntent = viewModel::onIntent,
         )
+        val snackbarHostModifier =
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 16.dp)
+                .imePadding()
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 16.dp)
-                    .imePadding(),
+            modifier = snackbarHostModifier,
             snackbar = { data ->
                 Snackbar(
                     snackbarData = data,
@@ -115,11 +116,12 @@ private fun GenerateContent(
     state: GenerateScreenState,
     onIntent: (GenerateQRCodeScreenIntent) -> Unit,
 ) {
+    val contentModifier =
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+        modifier = contentModifier,
     ) {
         AnimatedGenerateContent(
             animationPhase = state.animationPhase,
@@ -158,87 +160,122 @@ private fun InputForm(
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val columnModifier =
+        Modifier
+            .fillMaxWidth()
+            .imePadding()
     Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .imePadding(),
+        modifier = columnModifier,
     ) {
-        Text(
-            text = stringResource(Res.string.generate_input_hint),
-            style =
-                MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    letterSpacing = 1.sp,
-                ),
-        )
+        InputHint()
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        val isInputTooLong = state.inputText.length > MAX_QR_VISIBLE_LENGTH
-
-        OutlinedTextField(
-            value = state.inputText,
-            onValueChange = { onIntent(GenerateQRCodeScreenIntent.UpdateText(it)) },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = {
-                Text(
-                    text = stringResource(Res.string.generate_input_placeholder),
-                    style =
-                        MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                )
-            },
-            keyboardOptions =
-                KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                ),
-            shape = MaterialTheme.shapes.medium,
-            colors =
-                OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    cursorColor = MaterialTheme.colorScheme.primary,
-                    focusedTextColor = MaterialTheme.colorScheme.onBackground,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
-                ),
-            isError = isInputTooLong,
-            supportingText =
-                if (isInputTooLong) {
-                    {
-                        Text(
-                            stringResource(Res.string.generate_error_too_long),
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                } else {
-                    null
-                },
-            minLines = 3,
+        QrInputField(
+            inputText = state.inputText,
+            onTextChange = { onIntent(GenerateQRCodeScreenIntent.UpdateText(it)) },
         )
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        AmberButton(
-            text =
-                stringResource(
-                    if (state.isGenerating) Res.string.generate_loading else Res.string.generate_button,
-                ),
-            onClick = {
+        GenerateButton(
+            state = state,
+            onGenerate = {
                 keyboardController?.hide()
                 focusManager.clearFocus(force = true)
                 onIntent(GenerateQRCodeScreenIntent.Generate)
             },
-            enabled =
-                state.inputText.isNotBlank() &&
-                    state.inputText.length <= MAX_QR_VISIBLE_LENGTH,
-            loading = state.isGenerating,
         )
     }
+}
+
+@Composable
+private fun InputHint() {
+    val hintStyle =
+        MaterialTheme.typography.labelSmall.copy(
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 1.sp,
+        )
+    Text(
+        text = stringResource(Res.string.generate_input_hint),
+        style = hintStyle,
+    )
+}
+
+@Composable
+private fun QrInputField(
+    inputText: String,
+    onTextChange: (String) -> Unit,
+) {
+    val isInputTooLong = inputText.length > MAX_QR_VISIBLE_LENGTH
+
+    val keyboardOptions =
+        KeyboardOptions(
+            capitalization = KeyboardCapitalization.None,
+        )
+    val fieldColors =
+        OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            focusedBorderColor = MaterialTheme.colorScheme.primary,
+            unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+            cursorColor = MaterialTheme.colorScheme.primary,
+            focusedTextColor = MaterialTheme.colorScheme.onBackground,
+            unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+        )
+    val tooLongSupportingText: (@Composable () -> Unit)? =
+        if (isInputTooLong) {
+            {
+                Text(
+                    stringResource(Res.string.generate_error_too_long),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        } else {
+            null
+        }
+    OutlinedTextField(
+        value = inputText,
+        onValueChange = onTextChange,
+        modifier = Modifier.fillMaxWidth(),
+        placeholder = {
+            val placeholderStyle =
+                MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            Text(
+                text = stringResource(Res.string.generate_input_placeholder),
+                style = placeholderStyle,
+            )
+        },
+        keyboardOptions = keyboardOptions,
+        shape = MaterialTheme.shapes.medium,
+        colors = fieldColors,
+        isError = isInputTooLong,
+        supportingText = tooLongSupportingText,
+        minLines = 3,
+    )
+}
+
+@Composable
+private fun GenerateButton(
+    state: GenerateScreenState,
+    onGenerate: () -> Unit,
+) {
+    val buttonText =
+        stringResource(
+            if (state.isGenerating) Res.string.generate_loading else Res.string.generate_button,
+        )
+    val buttonEnabled =
+        state.inputText.isNotBlank() &&
+            state.inputText.length <= MAX_QR_VISIBLE_LENGTH
+    AmberButton(
+        text = buttonText,
+        onClick = onGenerate,
+        enabled = buttonEnabled,
+        loading = state.isGenerating,
+    )
 }
 
 @Composable
@@ -255,14 +292,15 @@ private fun CompactInputPill(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         onClick = onClearResult,
     ) {
+        val pillTextStyle =
+            MaterialTheme.typography.bodySmall.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+            )
         Text(
             text = stringResource(Res.string.generate_preview_format, preview),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            style =
-                MaterialTheme.typography.bodySmall.copy(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
-                ),
+            style = pillTextStyle,
         )
     }
 }

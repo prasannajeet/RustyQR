@@ -225,11 +225,9 @@ private fun liftRawString(rb: RustBuffer): String {
  * Mirrors FfiConverterData.read in [RustyQrFFI.swift].
  */
 private fun liftData(rb: RustBuffer): ByteArray {
-    if (rb.len == 0uL || rb.data == null) return ByteArray(0)
-    val all = rb.data!!.reinterpret<ByteVar>().readBytes(rb.len.toInt())
-    val dataLen = readInt32BigEndianFromArray(all, 0)
-    if (dataLen <= 0) return ByteArray(0)
-    return all.copyOfRange(4, 4 + dataLen)
+    val all = readRustBufferBytes(rb)
+    val dataLen = if (all.isEmpty()) 0 else readInt32BigEndianFromArray(all, 0)
+    return if (dataLen > 0) all.copyOfRange(4, 4 + dataLen) else ByteArray(0)
 }
 
 /**
@@ -258,30 +256,36 @@ private fun liftScanResult(rb: RustBuffer): ScanResult {
 private fun checkStatus(status: RustCallStatus) {
     when (status.code.toInt()) {
         0 -> return
-        1 -> {
-            val eb = status.errorBuf
-            val bytes = readRustBufferBytes(eb)
-            freeRustBuffer(eb.readValue())
-            if (bytes.size < 4) throw RustCallException.Panic("Truncated error buffer")
-            val discriminant = readInt32BigEndianFromArray(bytes, 0)
-            val message = if (bytes.size > 4) readFfiStringFromArray(bytes, 4) else "Unknown"
-            throw RustCallException.UserError(discriminant, message)
-        }
-        else -> {
-            val eb = status.errorBuf
-            val message =
-                if (eb.len > 0uL && eb.data != null) {
-                    eb.data!!
-                        .reinterpret<ByteVar>()
-                        .readBytes(eb.len.toInt())
-                        .decodeToString()
-                } else {
-                    "Rust panic (no message)"
-                }
-            freeRustBuffer(eb.readValue())
-            throw RustCallException.Panic("Rust panic: $message")
-        }
+        1 -> throw userError(status)
+        else -> throw panicError(status)
     }
+}
+
+/** Reads and frees [RustCallStatus.errorBuf], returning the exception for a Rust user error (code 1). */
+private fun userError(status: RustCallStatus): RustCallException {
+    val eb = status.errorBuf
+    val bytes = readRustBufferBytes(eb)
+    freeRustBuffer(eb.readValue())
+    if (bytes.size < 4) return RustCallException.Panic("Truncated error buffer")
+    val discriminant = readInt32BigEndianFromArray(bytes, 0)
+    val message = if (bytes.size > 4) readFfiStringFromArray(bytes, 4) else "Unknown"
+    return RustCallException.UserError(discriminant, message)
+}
+
+/** Reads and frees [RustCallStatus.errorBuf], returning the exception for a Rust panic. */
+private fun panicError(status: RustCallStatus): RustCallException {
+    val eb = status.errorBuf
+    val message =
+        if (eb.len > 0uL && eb.data != null) {
+            eb.data!!
+                .reinterpret<ByteVar>()
+                .readBytes(eb.len.toInt())
+                .decodeToString()
+        } else {
+            "Rust panic (no message)"
+        }
+    freeRustBuffer(eb.readValue())
+    return RustCallException.Panic("Rust panic: $message")
 }
 
 // ---------------------------------------------------------------------------
@@ -318,10 +322,8 @@ private fun readFfiStringFromArray(
 ): String {
     if (offset + 4 > bytes.size) return ""
     val strLen = readInt32BigEndianFromArray(bytes, offset)
-    if (strLen <= 0) return ""
     val end = offset + 4 + strLen
-    if (end > bytes.size) return ""
-    return bytes.decodeToString(startIndex = offset + 4, endIndex = end)
+    return if (strLen > 0 && end <= bytes.size) bytes.decodeToString(startIndex = offset + 4, endIndex = end) else ""
 }
 
 // ---------------------------------------------------------------------------

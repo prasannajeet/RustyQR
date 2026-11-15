@@ -27,18 +27,15 @@ data class GenerateScreenState(
     val error: UiText? = null,
     val message: UiText? = null,
 ) {
-    @Suppress("ReturnCount")
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other == null || other !is GenerateScreenState) return false
-        if (inputText != other.inputText) return false
-        if (!qrImageBytes.contentEquals(other.qrImageBytes)) return false
-        if (isGenerating != other.isGenerating) return false
-        if (animationPhase != other.animationPhase) return false
-        if (error != other.error) return false
-        if (message != other.message) return false
-        return true
-    }
+    override fun equals(other: Any?): Boolean =
+        this === other ||
+            other is GenerateScreenState &&
+            inputText == other.inputText &&
+            qrImageBytes.contentEquals(other.qrImageBytes) &&
+            isGenerating == other.isGenerating &&
+            animationPhase == other.animationPhase &&
+            error == other.error &&
+            message == other.message
 
     override fun hashCode(): Int {
         var result = inputText.hashCode()

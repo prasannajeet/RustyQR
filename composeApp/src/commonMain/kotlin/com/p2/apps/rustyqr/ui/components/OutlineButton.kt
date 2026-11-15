@@ -24,33 +24,37 @@ fun OutlineButton(
     enabled: Boolean = true,
 ) {
     val primary = MaterialTheme.colorScheme.primary
+    val outlinedButtonModifier =
+        modifier
+            .fillMaxWidth()
+            .height(52.dp)
+    val outlinedButtonBorder =
+        BorderStroke(
+            width = 1.5.dp,
+            color = if (enabled) primary else primary.copy(alpha = 0.4f),
+        )
+    val outlineButtonColors =
+        ButtonDefaults.outlinedButtonColors(
+            contentColor = primary,
+            containerColor = Color.Transparent,
+            disabledContentColor = primary.copy(alpha = 0.4f),
+        )
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(52.dp),
+        modifier = outlinedButtonModifier,
         shape = MaterialTheme.shapes.medium,
-        border =
-            BorderStroke(
-                width = 1.5.dp,
-                color = if (enabled) primary else primary.copy(alpha = 0.4f),
-            ),
-        colors =
-            ButtonDefaults.outlinedButtonColors(
-                contentColor = primary,
-                containerColor = Color.Transparent,
-                disabledContentColor = primary.copy(alpha = 0.4f),
-            ),
+        border = outlinedButtonBorder,
+        colors = outlineButtonColors,
     ) {
+        val textStyle =
+            MaterialTheme.typography.labelLarge.copy(
+                fontWeight = FontWeight.Bold,
+                color = if (enabled) primary else primary.copy(alpha = 0.4f),
+            )
         Text(
             text = text,
-            style =
-                MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    color = if (enabled) primary else primary.copy(alpha = 0.4f),
-                ),
+            style = textStyle,
         )
     }
 }

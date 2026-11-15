@@ -54,35 +54,28 @@ fun ScanResultSheet(
     val clipboard = LocalClipboardManager.current
     val contentType = detectContentType(result.content)
 
+    val copyAndDismiss: () -> Unit = {
+        clipboard.setText(AnnotatedString(result.content))
+        scope.launch {
+            sheetState.hide()
+            onDismiss()
+        }
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         tonalElevation = 3.dp,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        dragHandle = {
-            // Standard drag handle — 2dp radius intentional (small pill per MD3 drag handle spec)
-            Surface(
-                modifier =
-                    Modifier
-                        .padding(vertical = 8.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                shape = RoundedCornerShape(2.dp),
-            ) {
-                Spacer(
-                    modifier =
-                        Modifier
-                            .height(4.dp)
-                            .padding(horizontal = 16.dp),
-                )
-            }
-        },
+        dragHandle = { ScanResultDragHandle() },
     ) {
+        val columnModifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp)
         Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 32.dp),
+            modifier = columnModifier,
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             // Content type badge
@@ -91,65 +84,16 @@ fun ScanResultSheet(
                 modifier = Modifier.align(Alignment.Start),
             )
 
-            // Decoded content — selectable, scrollable for long content
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = MaterialTheme.shapes.medium,
-            ) {
-                Text(
-                    text = result.content,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .verticalScroll(rememberScrollState()),
-                    style =
-                        MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                    maxLines = 8,
-                )
-            }
+            ScanResultContent(content = result.content)
 
-            // Action row
-            if (contentType == QrContentType.URL) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    AmberButton(
-                        text = stringResource(Res.string.action_open),
-                        onClick = { openUrl(result.content) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    OutlineButton(
-                        text = stringResource(Res.string.action_copy),
-                        onClick = {
-                            clipboard.setText(AnnotatedString(result.content))
-                            scope.launch {
-                                sheetState.hide()
-                                onDismiss()
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            } else {
-                AmberButton(
-                    text = stringResource(Res.string.action_copy),
-                    onClick = {
-                        clipboard.setText(AnnotatedString(result.content))
-                        scope.launch {
-                            sheetState.hide()
-                            onDismiss()
-                        }
-                    },
-                )
-            }
+            ScanResultActions(
+                content = result.content,
+                isUrl = contentType == QrContentType.URL,
+                onCopy = copyAndDismiss,
+            )
 
             // Scan Again
-            TextButton(
+            ScanAgainButton(
                 onClick = {
                     scope.launch {
                         sheetState.hide()
@@ -157,15 +101,105 @@ fun ScanResultSheet(
                     }
                 },
                 modifier = Modifier.align(Alignment.CenterHorizontally),
-            ) {
-                Text(
-                    text = stringResource(Res.string.scan_again),
-                    style =
-                        MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        ),
-                )
-            }
+            )
         }
+    }
+}
+
+// Standard drag handle — 2dp radius intentional (small pill per MD3 drag handle spec)
+@Composable
+private fun ScanResultDragHandle() {
+    val surfaceModifier =
+        Modifier
+            .padding(vertical = 8.dp)
+    Surface(
+        modifier = surfaceModifier,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+        shape = RoundedCornerShape(2.dp),
+    ) {
+        val spacerModifier =
+            Modifier
+                .height(4.dp)
+                .padding(horizontal = 16.dp)
+        Spacer(
+            modifier = spacerModifier,
+        )
+    }
+}
+
+// Decoded content — selectable, scrollable for long content
+@Composable
+private fun ScanResultContent(content: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = MaterialTheme.shapes.medium,
+    ) {
+        val textModifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+        val textStyle =
+            MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = FontFamily.Monospace,
+            )
+        Text(
+            text = content,
+            modifier = textModifier,
+            style = textStyle,
+            maxLines = 8,
+        )
+    }
+}
+
+// Action row
+@Composable
+private fun ScanResultActions(
+    content: String,
+    isUrl: Boolean,
+    onCopy: () -> Unit,
+) {
+    if (isUrl) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AmberButton(
+                text = stringResource(Res.string.action_open),
+                onClick = { openUrl(content) },
+                modifier = Modifier.weight(1f),
+            )
+            OutlineButton(
+                text = stringResource(Res.string.action_copy),
+                onClick = onCopy,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    } else {
+        AmberButton(
+            text = stringResource(Res.string.action_copy),
+            onClick = onCopy,
+        )
+    }
+}
+
+@Composable
+private fun ScanAgainButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TextButton(
+        onClick = onClick,
+        modifier = modifier,
+    ) {
+        val scanAgainStyle =
+            MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        Text(
+            text = stringResource(Res.string.scan_again),
+            style = scanAgainStyle,
+        )
     }
 }

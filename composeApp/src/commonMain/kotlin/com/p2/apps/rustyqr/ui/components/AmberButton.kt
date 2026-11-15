@@ -38,33 +38,36 @@ fun AmberButton(
     val primary = MaterialTheme.colorScheme.primary
     val onPrimary = MaterialTheme.colorScheme.onPrimary
     val effectiveEnabled = enabled && !loading
+    val buttonModifier =
+        modifier
+            .fillMaxWidth()
+            .height(52.dp)
+    val amberButtonColors =
+        ButtonDefaults.buttonColors(
+            containerColor = primary,
+            contentColor = onPrimary,
+            disabledContainerColor = primary.copy(alpha = 0.4f),
+            disabledContentColor = onPrimary.copy(alpha = 0.4f),
+        )
     Button(
         onClick = onClick,
         enabled = effectiveEnabled,
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(52.dp),
+        modifier = buttonModifier,
         shape = MaterialTheme.shapes.medium,
-        colors =
-            ButtonDefaults.buttonColors(
-                containerColor = primary,
-                contentColor = onPrimary,
-                disabledContainerColor = primary.copy(alpha = 0.4f),
-                disabledContentColor = onPrimary.copy(alpha = 0.4f),
-            ),
+        colors = amberButtonColors,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
+            val textStyle =
+                MaterialTheme.typography.labelLarge.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = if (effectiveEnabled) onPrimary else onPrimary.copy(alpha = 0.6f),
+                )
             Text(
                 text = text,
-                style =
-                    MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = if (effectiveEnabled) onPrimary else onPrimary.copy(alpha = 0.6f),
-                    ),
+                style = textStyle,
             )
             if (loading) {
                 androidx.compose.foundation.layout.Spacer(

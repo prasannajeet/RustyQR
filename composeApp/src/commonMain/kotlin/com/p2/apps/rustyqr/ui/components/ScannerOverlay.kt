@@ -32,11 +32,12 @@ fun ScannerOverlay(
     color: Color = MaterialTheme.colorScheme.primary,
 ) {
     val viewfinderLabel = stringResource(Res.string.scan_viewfinder_cd)
+    val overlayModifier =
+        modifier
+            .fillMaxSize()
+            .semantics { contentDescription = viewfinderLabel }
     Box(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .semantics { contentDescription = viewfinderLabel },
+        modifier = overlayModifier,
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
