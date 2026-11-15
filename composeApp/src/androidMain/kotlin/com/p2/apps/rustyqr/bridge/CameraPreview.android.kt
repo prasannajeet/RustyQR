@@ -1,6 +1,5 @@
 package com.p2.apps.rustyqr.bridge
 
-import android.content.Context
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
@@ -55,7 +54,6 @@ actual fun CameraPreview(
         factory = { ctx ->
             val previewView = PreviewView(ctx)
             bindCamera(
-                context = ctx,
                 previewView = previewView,
                 lifecycleOwner = lifecycleOwner,
                 analysisExecutor = analysisExecutor,
@@ -71,7 +69,6 @@ actual fun CameraPreview(
 }
 
 private fun bindCamera(
-    context: Context,
     previewView: PreviewView,
     lifecycleOwner: androidx.lifecycle.LifecycleOwner,
     analysisExecutor: java.util.concurrent.ExecutorService,
@@ -80,6 +77,7 @@ private fun bindCamera(
     readyFired: AtomicBoolean,
     onCameraReady: () -> Unit,
 ) {
+    val context = previewView.context
     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
     cameraProviderFuture.addListener({
         val cameraProvider = cameraProviderFuture.get()

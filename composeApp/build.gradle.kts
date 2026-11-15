@@ -151,7 +151,14 @@ dependencies {
 detekt {
     buildUponDefaultConfig = true
     config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
-    baseline = file("detekt-baseline.xml")
+    // The plain `detekt` task defaults to src/main/kotlin, which does not exist in a KMP layout. Point it at every
+    // KMP Kotlin source set (commonMain, androidMain, iosMain, commonTest, ...) and skip the UniFFI-generated bindings.
+    source.setFrom(
+        fileTree("src") {
+            include("*Main/kotlin/**/*.kt", "*Test/kotlin/**/*.kt")
+            exclude("androidMain/kotlin/generated/**")
+        },
+    )
 }
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
