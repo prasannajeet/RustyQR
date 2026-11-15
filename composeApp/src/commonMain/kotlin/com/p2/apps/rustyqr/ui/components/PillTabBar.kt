@@ -92,7 +92,7 @@ fun PillTabBar(
 }
 
 /** 1-based [number] of a tab out of [count] tabs, announced to accessibility services. */
-private class TabPosition(
+private data class TabPosition(
     val number: Int,
     val count: Int,
 )

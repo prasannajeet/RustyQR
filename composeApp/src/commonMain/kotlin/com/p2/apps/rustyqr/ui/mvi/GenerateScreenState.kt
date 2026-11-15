@@ -2,6 +2,9 @@ package com.p2.apps.rustyqr.ui.mvi
 
 import com.p2.apps.rustyqr.ui.UiText
 
+/** Maximum number of characters a QR code can encode in this app. */
+const val MAX_QR_INPUT_LENGTH = 4296
+
 /**
  * Animation phase for the Generate screen.
  */
