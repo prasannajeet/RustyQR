@@ -69,6 +69,26 @@ pub fn decode_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<ScanRes
             reason: "width and height must be greater than 0".into(),
         });
     }
+    decode_grayscale(width, height, pixels)
+}
+
+/// Shared grayscale-decode logic used by both public decode paths.
+///
+/// Validates that `pixels.len() == width * height`, prepares an `rqrr` image
+/// from the grayscale buffer, detects grids, and decodes the first one found.
+///
+/// # Errors
+///
+/// * [`QrError::InvalidInput`] – the length check fails or overflows.
+/// * [`QrError::DecodingFailed`] – no QR code found or it could not be decoded.
+///
+/// # Performance
+///
+/// `prepare_from_greyscale` invokes the closure once per pixel (O(width×height)).
+/// This is `rqrr`'s API — there is no zero-copy alternative. For a 640×480
+/// camera frame (~307 K pixels) the overhead is sub-millisecond on modern
+/// hardware, well within the PRD's 20 ms target for the camera decode path.
+fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult, QrError> {
     let expected = (width as usize)
         .checked_mul(height as usize)
         .ok_or_else(|| QrError::InvalidInput {
@@ -84,30 +104,9 @@ pub fn decode_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<ScanRes
         });
     }
 
-    decode_grayscale(width, height, pixels)
-}
-
-/// Shared grayscale-decode logic used by both public decode paths.
-///
-/// Prepares an `rqrr` image from a grayscale pixel buffer, detects grids,
-/// and decodes the first one found.
-///
-/// # Performance
-///
-/// `prepare_from_greyscale` invokes the closure once per pixel (O(width×height)).
-/// This is `rqrr`'s API — there is no zero-copy alternative. For a 640×480
-/// camera frame (~307 K pixels) the overhead is sub-millisecond on modern
-/// hardware, well within the PRD's 20 ms target for the camera decode path.
-fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult, QrError> {
-    #[expect(
-        clippy::indexing_slicing,
-        reason = "rqrr calls the closure only with x < width and y < height, and both callers guarantee \
-                  pixels.len() == width * height (checked at decode_from_raw's length check; \
-                  image::to_luma8 buffers are exactly width * height)"
-    )]
-    let mut prepared = rqrr::PreparedImage::prepare_from_greyscale(width as usize, height as usize, |x, y| {
-        pixels[y * width as usize + x]
-    });
+    let (w, h) = (width as usize, height as usize);
+    let mut prepared =
+        rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| pixels.get(y * w + x).copied().unwrap_or(0));
 
     let grids = prepared.detect_grids();
     let grid = grids.first().ok_or_else(|| QrError::DecodingFailed {
@@ -128,26 +127,27 @@ mod tests {
     use crate::types::{QrConfig, QrErrorCorrection};
 
     #[test]
-    fn decode_valid_qr_png() {
-        let png = encoder::generate_png("test", 256).unwrap();
-        let result = decode(&png).unwrap();
+    fn decode_valid_qr_png() -> Result<(), Box<dyn std::error::Error>> {
+        let png = encoder::generate_png("test", 256)?;
+        let result = decode(&png)?;
         assert_eq!(result.content, "test");
+        Ok(())
     }
 
     #[test]
     fn decode_empty_data_fails() {
-        let err = decode(&[]).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = decode(&[]);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
     fn decode_invalid_image_data_fails() {
-        let err = decode(&[0xFF, 0x00, 0x42]).unwrap_err();
-        assert!(matches!(err, QrError::ImageError { .. }));
+        let result = decode(&[0xFF, 0x00, 0x42]);
+        assert!(matches!(result, Err(QrError::ImageError { .. })));
     }
 
     #[test]
-    fn decode_image_without_qr_fails() {
+    fn decode_image_without_qr_fails() -> Result<(), Box<dyn std::error::Error>> {
         // Generate a valid QR PNG and then replace its pixel data with white pixels
         // by creating a plain white 16x16 PNG via the image crate.
         use image::codecs::png::PngEncoder;
@@ -155,51 +155,72 @@ mod tests {
 
         let white_pixels = vec![255u8; 16 * 16];
         let mut buf: Vec<u8> = Vec::new();
-        PngEncoder::new(&mut buf)
-            .write_image(&white_pixels, 16, 16, ExtendedColorType::L8)
-            .unwrap();
+        PngEncoder::new(&mut buf).write_image(&white_pixels, 16, 16, ExtendedColorType::L8)?;
 
-        let err = decode(&buf).unwrap_err();
-        assert!(matches!(err, QrError::DecodingFailed { .. }));
+        let result = decode(&buf);
+        assert!(matches!(result, Err(QrError::DecodingFailed { .. })));
+        Ok(())
     }
 
     #[test]
-    fn decode_from_raw_valid() {
-        let png = encoder::generate_png("hello raw", 256).unwrap();
-        let img = image::load_from_memory(&png).unwrap();
+    fn decode_from_raw_valid() -> Result<(), Box<dyn std::error::Error>> {
+        let png = encoder::generate_png("hello raw", 256)?;
+        let img = image::load_from_memory(&png)?;
         let luma = img.to_luma8();
         let (w, h) = (luma.width(), luma.height());
-        let result = decode_from_raw(luma.as_raw(), w, h).unwrap();
+        let result = decode_from_raw(luma.as_raw(), w, h)?;
         assert_eq!(result.content, "hello raw");
+        Ok(())
     }
 
     #[test]
     fn decode_from_raw_empty_fails() {
-        let err = decode_from_raw(&[], 0, 0).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = decode_from_raw(&[], 0, 0);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
     fn decode_from_raw_size_mismatch_fails() {
         // 10 pixels but claiming 100x100
-        let err = decode_from_raw(&[0u8; 10], 100, 100).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = decode_from_raw(&[0u8; 10], 100, 100);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
     fn decode_from_raw_zero_dimensions_fails() {
-        let err = decode_from_raw(&[128u8; 100], 0, 100).unwrap_err();
-        assert!(matches!(err, QrError::InvalidInput { .. }));
+        let result = decode_from_raw(&[128u8; 100], 0, 100);
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
     }
 
     #[test]
-    fn decode_with_config_high_ec() {
+    fn decode_from_raw_reports_each_invalid_input_reason() {
+        let reason = |result: Result<ScanResult, QrError>| match result {
+            Err(QrError::InvalidInput { reason }) => Some(reason),
+            _ => None,
+        };
+        assert_eq!(
+            reason(decode_from_raw(&[], 0, 0)).as_deref(),
+            Some("pixels must not be empty")
+        );
+        assert_eq!(
+            reason(decode_from_raw(&[1u8; 4], 0, 4)).as_deref(),
+            Some("width and height must be greater than 0")
+        );
+        assert_eq!(
+            reason(decode_from_raw(&[1u8; 10], 100, 100)).as_deref(),
+            Some("pixels.len() (10) must equal width * height (10000)")
+        );
+    }
+
+    #[test]
+    fn decode_with_config_high_ec() -> Result<(), Box<dyn std::error::Error>> {
         let config = QrConfig {
             size: 512,
             error_correction: QrErrorCorrection::High,
         };
-        let png = encoder::generate_with_config("hi", config).unwrap();
-        let result = decode(&png).unwrap();
+        let png = encoder::generate_with_config("hi", config)?;
+        let result = decode(&png)?;
         assert_eq!(result.content, "hi");
+        Ok(())
     }
 }

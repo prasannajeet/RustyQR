@@ -7,7 +7,7 @@ use std::thread;
 use rusty_qr_core::{decoder, encoder};
 
 #[test]
-fn concurrent_generate_does_not_panic() {
+fn concurrent_generate_does_not_panic() -> Result<(), Box<dyn std::error::Error>> {
     let handles: Vec<_> = (0..8)
         .map(|i| {
             thread::spawn(move || {
@@ -18,14 +18,15 @@ fn concurrent_generate_does_not_panic() {
         .collect();
 
     for handle in handles {
-        let result = handle.join().expect("thread must not panic");
+        let result = handle.join().map_err(|_| "thread must not panic")?;
         assert!(result.is_ok(), "generate_png must succeed: {:?}", result.err());
     }
+    Ok(())
 }
 
 #[test]
-fn concurrent_decode_does_not_panic() {
-    let png = encoder::generate_png("concurrent decode", 256).unwrap();
+fn concurrent_decode_does_not_panic() -> Result<(), Box<dyn std::error::Error>> {
+    let png = encoder::generate_png("concurrent decode", 256)?;
 
     let handles: Vec<_> = (0..8)
         .map(|_| {
@@ -35,15 +36,16 @@ fn concurrent_decode_does_not_panic() {
         .collect();
 
     for handle in handles {
-        let result = handle.join().expect("thread must not panic");
-        let scan = result.unwrap();
+        let result = handle.join().map_err(|_| "thread must not panic")?;
+        let scan = result?;
         assert_eq!(scan.content, "concurrent decode");
     }
+    Ok(())
 }
 
 #[test]
-fn concurrent_mixed_operations() {
-    let png = encoder::generate_png("mixed ops", 256).unwrap();
+fn concurrent_mixed_operations() -> Result<(), Box<dyn std::error::Error>> {
+    let png = encoder::generate_png("mixed ops", 256)?;
 
     let handles: Vec<_> = (0..8)
         .map(|i| {
@@ -60,7 +62,8 @@ fn concurrent_mixed_operations() {
         .collect();
 
     for handle in handles {
-        let result = handle.join().expect("thread must not panic");
+        let result = handle.join().map_err(|_| "thread must not panic")?;
         assert!(result.is_ok(), "mixed operation must succeed: {:?}", result.err());
     }
+    Ok(())
 }
