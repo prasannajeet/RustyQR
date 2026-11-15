@@ -1,6 +1,6 @@
-//! UniFFI binding generator binary.
+//! `UniFFI` binding generator binary.
 //!
-//! This is a tiny CLI entry point that invokes UniFFI's built-in `uniffi_bindgen_main`.
+//! This is a tiny CLI entry point that invokes `UniFFI`'s built-in `uniffi_bindgen_main`.
 //! Running this binary generates the Kotlin and Swift binding source files from
 //! the UDL / proc-macro metadata defined in the `rusty-qr-ffi` crate.
 //!
@@ -13,5 +13,5 @@
 //!     --out-dir generated/
 //! ```
 fn main() {
-    uniffi::uniffi_bindgen_main()
+    uniffi::uniffi_bindgen_main();
 }

@@ -2,12 +2,12 @@
 //!
 //! All fallible operations in this crate return [`QrError`].
 //! The variants use named fields (not tuple variants) to stay compatible
-//! with UniFFI, which maps named fields to foreign-language record types
+//! with `UniFFI`, which maps named fields to foreign-language record types
 //! in the FFI crate.
 
 /// Errors that can occur during QR code operations.
 ///
-/// All variants use named fields to remain compatible with UniFFI, which will
+/// All variants use named fields to remain compatible with `UniFFI`, which will
 /// be added in Phase 3 when the FFI crate is wired up.
 #[derive(Debug, thiserror::Error)]
 pub enum QrError {
