@@ -53,14 +53,18 @@ actual fun CameraPreview(
         modifier = Modifier,
         factory = { ctx ->
             val previewView = PreviewView(ctx)
+            val frameAnalysis =
+                FrameAnalysis(
+                    executor = analysisExecutor,
+                    isScanning = { scanningFlag.get() },
+                    onQrDecoded = onQrDecoded,
+                    readyFired = readyFired,
+                    onCameraReady = onCameraReady,
+                )
             bindCamera(
                 previewView = previewView,
                 lifecycleOwner = lifecycleOwner,
-                analysisExecutor = analysisExecutor,
-                isScanning = { scanningFlag.get() },
-                onQrDecoded = onQrDecoded,
-                readyFired = readyFired,
-                onCameraReady = onCameraReady,
+                analysis = frameAnalysis,
             )
             previewView
         },
@@ -68,14 +72,19 @@ actual fun CameraPreview(
     )
 }
 
+/** Everything the per-frame analyzer needs: where it runs and how it reports back. */
+private class FrameAnalysis(
+    val executor: java.util.concurrent.ExecutorService,
+    val isScanning: () -> Boolean,
+    val onQrDecoded: (ScanResult) -> Unit,
+    val readyFired: AtomicBoolean,
+    val onCameraReady: () -> Unit,
+)
+
 private fun bindCamera(
     previewView: PreviewView,
     lifecycleOwner: androidx.lifecycle.LifecycleOwner,
-    analysisExecutor: java.util.concurrent.ExecutorService,
-    isScanning: () -> Boolean,
-    onQrDecoded: (ScanResult) -> Unit,
-    readyFired: AtomicBoolean,
-    onCameraReady: () -> Unit,
+    analysis: FrameAnalysis,
 ) {
     val context = previewView.context
     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -92,14 +101,14 @@ private fun bindCamera(
                 .Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
-                .also { analysis ->
-                    analysis.setAnalyzer(analysisExecutor) { imageProxy ->
+                .also { useCase ->
+                    useCase.setAnalyzer(analysis.executor) { imageProxy ->
                         // Fire the ready callback on the first delivered frame (even if not scanning),
                         // so the "Starting camera…" overlay clears as soon as the preview is live.
-                        if (readyFired.compareAndSet(false, true)) {
-                            ContextCompat.getMainExecutor(context).execute { onCameraReady() }
+                        if (analysis.readyFired.compareAndSet(false, true)) {
+                            ContextCompat.getMainExecutor(context).execute { analysis.onCameraReady() }
                         }
-                        if (!isScanning()) {
+                        if (!analysis.isScanning()) {
                             imageProxy.close()
                             return@setAnalyzer
                         }
@@ -128,7 +137,7 @@ private fun bindCamera(
                             ).onRight { result ->
                                 // Left (no QR found) is silently discarded — expected for most frames
                                 val mainExecutor = ContextCompat.getMainExecutor(context)
-                                mainExecutor.execute { onQrDecoded(result) }
+                                mainExecutor.execute { analysis.onQrDecoded(result) }
                             }
                         imageProxy.close()
                     }

@@ -5,8 +5,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import arrow.core.Either
 import com.p2.apps.rustyqr.AppContextHolder
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 private const val PICTURES_SUBDIR = "RustyQR"
 
@@ -15,7 +13,7 @@ actual suspend fun saveQrImage(
     suggestedName: String,
 ): Either<String, Unit> {
     val resolver = AppContextHolder.context.contentResolver
-    return withContext(Dispatchers.IO) {
+    return bridgeIo.run {
         Either
             .catch {
                 val pending =
