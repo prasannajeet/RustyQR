@@ -85,9 +85,13 @@ pub fn decode_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<ScanRes
 /// # Performance
 ///
 /// `prepare_from_greyscale` invokes the closure once per pixel (O(width×height)).
-/// This is `rqrr`'s API — there is no zero-copy alternative. For a 640×480
-/// camera frame (~307 K pixels) the overhead is sub-millisecond on modern
-/// hardware, well within the PRD's 20 ms target for the camera decode path.
+/// With `rqrr`'s default features off, as this crate builds it, this copies
+/// each pixel into `rqrr`'s own buffer. `rqrr`'s optional `img` feature
+/// (`GrayImage::from_raw` + `PreparedImage::prepare`) would avoid that copy at
+/// the cost of taking ownership of a `Vec<u8>`; it is not adopted pending the
+/// benchmark in spec 2.2. For a 640×480 camera frame (~307 K pixels) the
+/// overhead is expected to be sub-millisecond on modern hardware, well within
+/// the PRD's 20 ms target for the camera decode path.
 fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult, QrError> {
     let (w, h) = (width as usize, height as usize);
     let expected = w.checked_mul(h).ok_or_else(|| QrError::InvalidInput {
@@ -136,13 +140,22 @@ mod tests {
     #[test]
     fn decode_empty_data_fails() {
         let result = decode(&[]);
-        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })), "got {result:?}");
+    }
+
+    #[test]
+    fn decode_empty_data_reports_reason() {
+        let result = decode(&[]);
+        assert!(
+            matches!(&result, Err(QrError::InvalidInput { reason }) if reason == "image_data must not be empty"),
+            "got {result:?}"
+        );
     }
 
     #[test]
     fn decode_invalid_image_data_fails() {
         let result = decode(&[0xFF, 0x00, 0x42]);
-        assert!(matches!(result, Err(QrError::ImageError { .. })));
+        assert!(matches!(result, Err(QrError::ImageError { .. })), "got {result:?}");
     }
 
     #[test]
@@ -157,7 +170,7 @@ mod tests {
         PngEncoder::new(&mut buf).write_image(&white_pixels, 16, 16, ExtendedColorType::L8)?;
 
         let result = decode(&buf);
-        assert!(matches!(result, Err(QrError::DecodingFailed { .. })));
+        assert!(matches!(result, Err(QrError::DecodingFailed { .. })), "got {result:?}");
         Ok(())
     }
 
@@ -175,20 +188,20 @@ mod tests {
     #[test]
     fn decode_from_raw_empty_fails() {
         let result = decode_from_raw(&[], 0, 0);
-        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })), "got {result:?}");
     }
 
     #[test]
     fn decode_from_raw_size_mismatch_fails() {
         // 10 pixels but claiming 100x100
         let result = decode_from_raw(&[0u8; 10], 100, 100);
-        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })), "got {result:?}");
     }
 
     #[test]
     fn decode_from_raw_zero_dimensions_fails() {
         let result = decode_from_raw(&[128u8; 100], 0, 100);
-        assert!(matches!(result, Err(QrError::InvalidInput { .. })));
+        assert!(matches!(result, Err(QrError::InvalidInput { .. })), "got {result:?}");
     }
 
     #[test]
