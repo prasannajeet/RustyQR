@@ -77,9 +77,6 @@ targets:
       - path: iosApp
         excludes:
           - Info.plist
-      - path: generated
-        optional: true
-        type: group
     resources:
       - path: iosApp/Preview Content
       - path: iosApp/Assets.xcassets
@@ -108,17 +105,12 @@ targets:
         DEVELOPMENT_ASSET_PATHS: '"iosApp/Preview Content"'
 
         TARGETED_DEVICE_FAMILY: "1,2"
-        SWIFT_IMPORT_PATHS: "$(PROJECT_DIR)/generated"
         SWIFT_EMIT_LOC_STRINGS: "YES"
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: "YES"
 
         LD_RUNPATH_SEARCH_PATHS:
           - "$(inherited)"
           - "@executable_path/Frameworks"
-    dependencies:
-      - framework: Frameworks/RustyQR.xcframework
-        optional: true
-        embed: false
     preBuildScripts:
       - name: "Compile Kotlin Framework"
         script: |
