@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.p2.apps.rustyqr.camera.packLumaRows
 import com.p2.apps.rustyqr.model.ScanResult
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -104,13 +105,25 @@ private fun bindCamera(
                             return@setAnalyzer
                         }
                         val planeProxy = imageProxy.planes[0]
+                        if (planeProxy.pixelStride != 1) {
+                            imageProxy.close()
+                            return@setAnalyzer
+                        }
                         val buffer = planeProxy.buffer
                         val bytes = ByteArray(buffer.remaining())
                         buffer.get(bytes)
 
+                        val packed =
+                            packLumaRows(bytes, imageProxy.width, imageProxy.height, planeProxy.rowStride)
+                                .getOrNull()
+                        if (packed == null) {
+                            imageProxy.close()
+                            return@setAnalyzer
+                        }
+
                         QrBridge
                             .decodeQrFromRaw(
-                                pixels = bytes,
+                                pixels = packed,
                                 width = imageProxy.width,
                                 height = imageProxy.height,
                             ).onRight { result ->
