@@ -14,11 +14,13 @@ import com.p2.apps.rustyqr.rust.getLibraryVersion as ffiGetLibraryVersion
  *
  * Delegates to the UniFFI-generated bindings in the `:rustyqr-bindings` module.
  *
- * All functions are synchronous and MUST be called from [kotlinx.coroutines.Dispatchers.IO],
- * never the main thread, because each call crosses into native code.
+ * All functions are synchronous and blocking, because each call crosses into native code, so call
+ * them off the main thread. The caller chooses the context, for example a ViewModel's injected
+ * `ioDispatcher`, or the camera analysis executor or queue.
  *
- * Error contract: functions return [Either.Left] with a [QrError] on domain errors.
- * Callers use [Either.fold] or [Either.onRight] — no try/catch required.
+ * Error contract: [generateQrPng], [decodeQr] and [decodeQrFromRaw] return [Either.Left] with a
+ * [QrError] on failure, so callers use [Either.fold] or [Either.onRight] and need no try/catch.
+ * [getLibraryVersion] is the exception: it returns a plain [String] and can throw.
  */
 object QrBridge {
     /**
@@ -69,7 +71,9 @@ object QrBridge {
             .mapLeft { ffiErrorToQrError(it) }
 
     /**
-     * Returns the Rust library version string (from [rusty_qr_core] Cargo.toml).
+     * Returns the Rust library version string (from the `rusty_qr_core` Cargo.toml).
+     *
+     * Unlike the other functions this returns a plain [String], not an [Either], and can throw.
      */
     fun getLibraryVersion(): String = ffiGetLibraryVersion()
 }
@@ -80,9 +84,12 @@ object QrBridge {
  */
 private fun ffiErrorToQrError(throwable: Throwable): QrError =
     when (throwable) {
-        is FfiQrException.InvalidInput -> QrError.InvalidInput(throwable.message ?: "Invalid input")
-        is FfiQrException.EncodingFailed -> QrError.EncodingFailed(throwable.message ?: "Encoding failed")
-        is FfiQrException.DecodingFailed -> QrError.DecodingFailed(throwable.message ?: "Decoding failed")
-        is FfiQrException.ImageException -> QrError.ImageError(throwable.message ?: "Image error")
+        is FfiQrException ->
+            when (throwable) {
+                is FfiQrException.InvalidInput -> QrError.InvalidInput(throwable.message ?: "Invalid input")
+                is FfiQrException.EncodingFailed -> QrError.EncodingFailed(throwable.message ?: "Encoding failed")
+                is FfiQrException.DecodingFailed -> QrError.DecodingFailed(throwable.message ?: "Decoding failed")
+                is FfiQrException.ImageException -> QrError.ImageError(throwable.message ?: "Image error")
+            }
         else -> QrError.from(throwable)
     }
