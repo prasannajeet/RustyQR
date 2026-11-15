@@ -45,7 +45,8 @@ impl QrErrorCorrection {
 ///     size: 512,
 ///     error_correction: QrErrorCorrection::High,
 /// };
-/// let png = encoder::generate_with_config("hello", config).unwrap();
+/// let png = encoder::generate_with_config("hello", config)?;
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 // AUDIT: both fields are Copy — could derive Copy here
 #[derive(Debug, Clone, PartialEq, Eq)]

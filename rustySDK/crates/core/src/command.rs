@@ -153,9 +153,7 @@ mod tests {
             size: 256,
         })?;
 
-        let png = if let QrResponse::PngGenerated { data } = gen_resp {
-            data
-        } else {
+        let QrResponse::PngGenerated { data: png } = gen_resp else {
             return Err("expected PngGenerated".into());
         };
 
@@ -176,7 +174,7 @@ mod tests {
         let (w, h) = (luma.width(), luma.height());
 
         let resp = process(QrCommand::DecodeFromRaw {
-            pixels: luma.as_raw().to_vec(),
+            pixels: luma.into_raw(),
             width: w,
             height: h,
         })?;

@@ -917,6 +917,8 @@ cargo test --workspace && \
 cargo deny check
 ```
 
+`cargo deny check` currently fails with exactly three advisories: RUSTSEC-2025-0141, RUSTSEC-2024-0436 and RUSTSEC-2026-0374 (see `deny.toml`). Anything else is a real failure.
+
 </details>
 
 <details>
