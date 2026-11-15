@@ -12,6 +12,10 @@ plugins {
 // cover the shipped targets only: desktop JVM libraries are never shipped and need cross toolchains.
 val isReleaseBuild = providers.gradleProperty("releaseBuild").orNull == "true"
 
+if (isReleaseBuild) {
+    logger.lifecycle("releaseBuild=true: the JVM target and the type-resolved detektJvmTest are skipped.")
+}
+
 kotlin {
     android {
         namespace = "com.p2.apps.rustyqr.bindings"

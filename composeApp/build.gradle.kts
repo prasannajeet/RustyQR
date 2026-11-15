@@ -1,5 +1,7 @@
 import ch.ubique.uniffi.plugin.model.RustHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink
 import java.util.Properties
 
 // Read centralized version from version.properties — single source of truth for Android + iOS.
@@ -21,6 +23,9 @@ if (appBuildNumber <= 0) {
     throw GradleException("version.properties: build_number must be positive, got $appBuildNumber")
 }
 val appVersionName: String = rawVersionName.trim()
+
+// The ABIs that ship librusty_qr_ffi.so. Keep gradle.properties `androidAbis` in step with this list.
+val shippedAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -111,7 +116,7 @@ android {
         versionName = appVersionName
         ndk {
             // Only the ABIs that ship librusty_qr_ffi.so. Other ABIs from CameraX or JNA would install and then crash.
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            abiFilters += shippedAbis
         }
     }
     packaging {
@@ -239,18 +244,42 @@ tasks.register("lintAll") {
     dependsOn("ktlintCheck", "detekt", "swiftlint", ":rustyqr-bindings:ktlintCheck", ":rustyqr-bindings:detekt")
 }
 
-// An Android release variant must ship the optimised Rust library, which only -PreleaseBuild=true builds.
-val releaseBuildFlag = providers.gradleProperty("releaseBuild")
-
-tasks.matching { it.name == "preReleaseBuild" }.configureEach {
-    val flag = releaseBuildFlag
-    doFirst {
-        if (flag.orNull != "true") {
-            throw GradleException(
-                "Android release builds need -PreleaseBuild=true so the Rust library is built optimised " +
-                    "for arm64-v8a, armeabi-v7a and x86_64.",
-            )
+// Anything that ships (non-debuggable Android variants, Kotlin/Native release frameworks) must carry the optimised
+// Rust library, which only -PreleaseBuild=true builds. This task has no outputs, so it always runs when it is in the
+// graph and can never be skipped or restored from the build cache.
+val verifyReleaseRustProfile =
+    tasks.register("verifyReleaseRustProfile") {
+        group = "verification"
+        description = "Fails unless -PreleaseBuild=true, so shipped artifacts never embed the debug Rust library."
+        val flag = providers.gradleProperty("releaseBuild")
+        val abis = shippedAbis.joinToString(", ")
+        doLast {
+            if (flag.orNull != "true") {
+                throw GradleException(
+                    "Release builds need -PreleaseBuild=true so the Rust library is built optimised for $abis.",
+                )
+            }
         }
+    }
+
+// Guard only packaging: the native-library merge is shared by APK and AAB, while test, check and lint tasks never
+// reach it. Covers every non-debuggable variant, including future flavours and release-like build types.
+androidComponents {
+    onVariants { variant ->
+        if (!variant.debuggable) {
+            val mergeTaskName = "merge${variant.name.replaceFirstChar { it.uppercase() }}NativeLibs"
+            tasks
+                .matching { it.name == mergeTaskName }
+                .configureEach { dependsOn(verifyReleaseRustProfile) }
+        }
+    }
+}
+
+// Release frameworks reach Xcode through paths that skip the Xcode script (OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED,
+// direct Gradle runs). dependsOn on a no-output task, not doFirst: link tasks are cacheable and could be FROM-CACHE.
+tasks.withType<KotlinNativeLink>().configureEach {
+    if (binary.buildType == NativeBuildType.RELEASE) {
+        dependsOn(verifyReleaseRustProfile)
     }
 }
 

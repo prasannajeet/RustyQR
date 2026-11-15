@@ -119,9 +119,9 @@ targets:
             exit 0
           fi
           cd "$SRCROOT/.."
-          if [ "Release" = "$CONFIGURATION" ]; then
-            ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode -PreleaseBuild=true
-          else
-            ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
-          fi
+          # Only Debug gets the debug Rust library; every other configuration ships release Rust.
+          case "$(printf '%s' "$CONFIGURATION" | tr '[:upper:]' '[:lower:]')" in
+            debug) ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode ;;
+            *) ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode -PreleaseBuild=true ;;
+          esac
         basedOnDependencyAnalysis: false
