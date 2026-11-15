@@ -8,6 +8,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -36,6 +37,8 @@ actual fun CameraPreview(
     val lifecycleOwner = LocalLifecycleOwner.current
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
     val readyFired = remember { AtomicBoolean(false) }
+    val scanningFlag = remember { AtomicBoolean(isScanning) }
+    SideEffect { scanningFlag.set(isScanning) }
 
     DisposableEffect(lifecycleOwner) {
         onDispose {
@@ -56,16 +59,14 @@ actual fun CameraPreview(
                 previewView = previewView,
                 lifecycleOwner = lifecycleOwner,
                 analysisExecutor = analysisExecutor,
-                isScanning = { isScanning },
+                isScanning = { scanningFlag.get() },
                 onQrDecoded = onQrDecoded,
                 readyFired = readyFired,
                 onCameraReady = onCameraReady,
             )
             previewView
         },
-        update = { _ ->
-            // isScanning changes are read directly in the analyzer lambda
-        },
+        update = { _ -> },
     )
 }
 
