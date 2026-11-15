@@ -119,5 +119,9 @@ targets:
             exit 0
           fi
           cd "$SRCROOT/.."
-          ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+          if [ "Release" = "$CONFIGURATION" ]; then
+            ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode -PreleaseBuild=true
+          else
+            ./gradlew :composeApp:embedAndSignAppleFrameworkForXcode
+          fi
         basedOnDependencyAnalysis: false

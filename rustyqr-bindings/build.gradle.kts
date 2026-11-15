@@ -1,3 +1,5 @@
+import ch.ubique.uniffi.plugin.model.RustHost
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidKotlinMultiplatformLibrary)
@@ -5,6 +7,10 @@ plugins {
     alias(libs.plugins.detekt)
     alias(libs.plugins.ktlint)
 }
+
+// The Rust profile follows -PreleaseBuild=true, not the AGP build type or the Xcode configuration. Release builds
+// cover the shipped targets only: desktop JVM libraries are never shipped and need cross toolchains.
+val isReleaseBuild = providers.gradleProperty("releaseBuild").orNull == "true"
 
 kotlin {
     android {
@@ -18,9 +24,14 @@ kotlin {
                 .get()
                 .toInt()
     }
-    iosArm64()
-    iosSimulatorArm64()
-    jvm()
+    if (RustHost.Platform.MacOS.isCurrent) {
+        iosArm64()
+        iosSimulatorArm64()
+    }
+    if (!isReleaseBuild) {
+        // Exists only so the host can run the bindings tests.
+        jvm()
+    }
 
     sourceSets {
         commonTest.dependencies {
@@ -77,12 +88,16 @@ ktlint {
 // task. commonTest is added to it so the shared tests are type-checked against the JVM classpath.
 // The plugin registers its per-compilation tasks and sets their sources late, so add commonTest afterwards.
 afterEvaluate {
-    tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektJvmTest") {
-        source(file("src/commonTest/kotlin"))
+    if (!isReleaseBuild) {
+        tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektJvmTest") {
+            source(file("src/commonTest/kotlin"))
+        }
     }
 }
 
 // `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved task.
 tasks.named("detekt") {
-    dependsOn("detektJvmTest")
+    if (!isReleaseBuild) {
+        dependsOn("detektJvmTest")
+    }
 }

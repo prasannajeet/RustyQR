@@ -1,3 +1,4 @@
+import ch.ubique.uniffi.plugin.model.RustHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.util.Properties
 
@@ -44,17 +45,19 @@ kotlin {
         }
     }
 
-    iosArm64().apply {
-        binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = true
+    if (RustHost.Platform.MacOS.isCurrent) {
+        iosArm64().apply {
+            binaries.framework {
+                baseName = "ComposeApp"
+                isStatic = true
+            }
         }
-    }
 
-    iosSimulatorArm64().apply {
-        binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = true
+        iosSimulatorArm64().apply {
+            binaries.framework {
+                baseName = "ComposeApp"
+                isStatic = true
+            }
         }
     }
 
@@ -106,6 +109,10 @@ android {
                 .toInt()
         versionCode = appBuildNumber
         versionName = appVersionName
+        ndk {
+            // Only the ABIs that ship librusty_qr_ffi.so. Other ABIs from CameraX or JNA would install and then crash.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
     }
     packaging {
         resources {
@@ -230,6 +237,21 @@ tasks.register("lintAll") {
     group = "verification"
     description = "Runs all linters: ktlint, detekt, and swiftlint"
     dependsOn("ktlintCheck", "detekt", "swiftlint", ":rustyqr-bindings:ktlintCheck", ":rustyqr-bindings:detekt")
+}
+
+// An Android release variant must ship the optimised Rust library, which only -PreleaseBuild=true builds.
+val releaseBuildFlag = providers.gradleProperty("releaseBuild")
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    val flag = releaseBuildFlag
+    doFirst {
+        if (flag.orNull != "true") {
+            throw GradleException(
+                "Android release builds need -PreleaseBuild=true so the Rust library is built optimised " +
+                    "for arm64-v8a, armeabi-v7a and x86_64.",
+            )
+        }
+    }
 }
 
 // Make both preBuild and project sync tasks depend on installGitHooks
