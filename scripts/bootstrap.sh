@@ -160,6 +160,15 @@ else
     fail "cargo-ndk missing"
     maybe_install "cargo-ndk" "cargo install cargo-ndk" || true
 fi
+
+# rust-analyzer — rustup ships a proxy that fails until the component is added,
+# so run it rather than relying on `command -v`
+if rust-analyzer --version &>/dev/null; then
+    pass "rust-analyzer $(rust-analyzer --version 2>/dev/null | awk '{print $2}')"
+else
+    fail "rust-analyzer missing"
+    maybe_install "rust-analyzer" "rustup component add rust-analyzer" || true
+fi
 echo
 
 # ---------------------------------------------------------------------------
@@ -262,6 +271,30 @@ else
     skipped "iOS build requires macOS — skipping Xcode / xcodegen / swiftlint / swiftformat checks"
     echo
 fi
+
+# ---------------------------------------------------------------------------
+# Claude Code — rust-analyzer LSP plugin (enabled in .claude/settings.json)
+# ---------------------------------------------------------------------------
+section "Claude Code"
+CLAUDE_PLUGIN="rust-analyzer-lsp@claude-plugins-official"
+if command -v claude &>/dev/null; then
+    # Project-scope plugins resolve from the working directory, so run from the repo root
+    pushd "$(dirname "$0")/.." >/dev/null
+    CLAUDE_PLUGINS="$(claude plugin list 2>/dev/null || true)"
+    if grep -qF "$CLAUDE_PLUGIN" <<<"$CLAUDE_PLUGINS"; then
+        pass "claude plugin $CLAUDE_PLUGIN"
+    else
+        fail "claude plugin $CLAUDE_PLUGIN missing"
+        maybe_install "claude plugin $CLAUDE_PLUGIN" \
+            "{ claude plugin marketplace list | grep -q claude-plugins-official || claude plugin marketplace add anthropics/claude-plugins-official; } && claude plugin install $CLAUDE_PLUGIN --scope project" \
+            || true
+    fi
+    popd >/dev/null
+else
+    warn "claude command not installed — install Claude Code, then re-run to check $CLAUDE_PLUGIN"
+    skipped "claude plugin $CLAUDE_PLUGIN"
+fi
+echo
 
 # ---------------------------------------------------------------------------
 # Summary
