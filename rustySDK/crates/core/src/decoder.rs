@@ -99,18 +99,22 @@ pub fn decode_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<ScanRes
 /// camera frame (~307 K pixels) the overhead is sub-millisecond on modern
 /// hardware, well within the PRD's 20 ms target for the camera decode path.
 fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult, QrError> {
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "rqrr calls the closure only with x < width and y < height, and both callers guarantee \
+                  pixels.len() == width * height (checked at decode_from_raw's length check; \
+                  image::to_luma8 buffers are exactly width * height)"
+    )]
     let mut prepared = rqrr::PreparedImage::prepare_from_greyscale(width as usize, height as usize, |x, y| {
         pixels[y * width as usize + x]
     });
 
     let grids = prepared.detect_grids();
-    if grids.is_empty() {
-        return Err(QrError::DecodingFailed {
-            reason: "no QR code found in image".into(),
-        });
-    }
+    let grid = grids.first().ok_or_else(|| QrError::DecodingFailed {
+        reason: "no QR code found in image".into(),
+    })?;
 
-    let (_, content) = grids[0]
+    let (_, content) = grid
         .decode()
         .map_err(|e| QrError::DecodingFailed { reason: e.to_string() })?;
 
