@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -305,7 +306,7 @@ private fun CameraDeniedIcon() {
 }
 
 @Composable
-private fun PermissionMessage() {
+private fun ColumnScope.PermissionMessage() {
     val titleStyle =
         MaterialTheme.typography.bodyLarge.copy(
             fontWeight = FontWeight.SemiBold,

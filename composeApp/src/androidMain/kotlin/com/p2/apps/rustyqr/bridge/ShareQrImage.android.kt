@@ -14,24 +14,22 @@ actual suspend fun shareQrImage(
     suggestedName: String,
 ): Either<String, Unit> {
     val context = AppContextHolder.context
-    return bridgeIo.run {
-        Either
-            .catch {
-                val dir = File(context.cacheDir, SHARE_CACHE_DIR).apply { mkdirs() }
-                val file = File(dir, "$suggestedName.png")
-                file.writeBytes(bytes)
-                val uri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file)
-                val send =
-                    Intent(Intent.ACTION_SEND).apply {
-                        type = "image/png"
-                        putExtra(Intent.EXTRA_STREAM, uri)
-                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                val chooser =
-                    Intent.createChooser(send, "Share QR code").apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                context.startActivity(chooser)
-            }.mapLeft { it.message ?: "Unable to share QR code" }
-    }
+    return Either
+        .catch {
+            val dir = File(context.cacheDir, SHARE_CACHE_DIR).apply { mkdirs() }
+            val file = File(dir, "$suggestedName.png")
+            file.writeBytes(bytes)
+            val uri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file)
+            val send =
+                Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            val chooser =
+                Intent.createChooser(send, "Share QR code").apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+            context.startActivity(chooser)
+        }.mapLeft { it.message ?: "Unable to share QR code" }
 }

@@ -119,6 +119,8 @@ composeApp/src/iosMain/kotlin/com/p2/apps/rustyqr/
     ├── OpenUrl.ios.kt            # actual — UIApplication.openURL
     ├── ShareQrImage.ios.kt       # actual — UIActivityViewController
     ├── SaveQrImage.ios.kt        # actual — PHPhotoLibrary
+    ├── RustBufferCodec.ios.kt    # internal — UniFFI RustBuffer lower/lift and wire-format helpers
+    ├── RustCallErrors.ios.kt     # internal — RustCallStatus checks and Rust error to QrError mapping
     └── ImageDecoder.ios.kt       # actual — UIImage → ImageBitmap
 ```
 

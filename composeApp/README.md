@@ -181,8 +181,9 @@ commonMain/bridge/QrBridge.kt          expect object QrBridge { fun generatePng(
 
 - **Return type is always `Either<DomainError, Result>`** — never throw across the FFI boundary.
   ArrowKT `Either` keeps the error path explicit and forces the caller to handle both sides.
-- **Coroutine dispatchers stay out of `bridge/`** — the actual implementations are synchronous
-  functions; ViewModels decide which `Dispatcher` to call them on.
+- **Bridge actuals do not choose a dispatcher** — they are plain blocking (or callback) functions;
+  the ViewModel owns an injectable `ioDispatcher` (default `Dispatchers.IO`) and wraps the calls
+  that must stay off the main thread.
 - **Filename convention is `Name.kt` (expect) + `Name.android.kt` / `Name.ios.kt` (actuals).**
   Detekt's `MatchingDeclarationName` is enabled and accepts the `.android.kt` / `.ios.kt` suffixes,
   so the class inside `Name.android.kt` can still be called `QrBridge`.
@@ -235,10 +236,15 @@ three tools also run automatically as a pre-commit hook (installed by
 | Tool       | Scope                   | Config                                           |
 |------------|-------------------------|--------------------------------------------------|
 | ktlint     | Kotlin sources          | `composeApp/.editorconfig` — Android mode, continuation indent 4 |
-| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — max line length 120; `MagicNumber`, `WildcardImport` and `MatchingDeclarationName` are on; no suppressions |
-| SwiftLint  | `iosApp/` Swift sources | `.swiftlint.yml` — `trailing_whitespace` and `line_length` disabled |
+| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — detekt defaults (max line length 120) plus the Compose `FunctionNaming` allowance; no suppressions. Type resolution covers androidMain and commonMain (detekt 1.x cannot type-resolve Kotlin/Native), iosMain and commonTest get the untyped scan |
+| SwiftLint  | `iosApp/` Swift sources | `.swiftlint.yml` — `trailing_whitespace` and `line_length` enabled |
 | rustfmt    | `rustySDK/` Rust sources | `rustySDK/rustfmt.toml` — edition 2024, max line width 120 (separate pre-commit step) |
 
 Auto-fix Kotlin formatting with `./gradlew :composeApp:ktlintFormat`.
+
+**Prerequisite:** `detekt` (and therefore `lintAll` and the pre-commit hook) also runs the type-resolved
+`detektAndroidDebug` task, which compiles the Android target. On a fresh checkout the gitignored
+`composeApp/src/androidMain/kotlin/generated` UniFFI bindings do not exist yet, so run
+`./gradlew :composeApp:buildRustAndroid` once before linting.
 
 </details>

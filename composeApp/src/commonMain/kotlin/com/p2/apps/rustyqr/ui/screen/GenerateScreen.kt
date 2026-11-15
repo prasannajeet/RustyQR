@@ -39,9 +39,9 @@ import com.p2.apps.rustyqr.ui.components.QrResultCard
 import com.p2.apps.rustyqr.ui.mvi.AnimationPhase
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.GenerateScreenState
+import com.p2.apps.rustyqr.ui.mvi.MAX_QR_INPUT_LENGTH
 import com.p2.apps.rustyqr.ui.resolve
 import com.p2.apps.rustyqr.ui.viewmodels.GenerateViewModel
-import com.p2.apps.rustyqr.ui.viewmodels.MAX_QR_INPUT_LENGTH
 import org.jetbrains.compose.resources.stringResource
 import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.generate_button
