@@ -3,6 +3,7 @@
 package com.p2.apps.rustyqr.bridge
 
 import arrow.core.Either
+import arrow.core.flatten
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -25,10 +26,8 @@ actual suspend fun shareQrImage(
     withContext(Dispatchers.Main) {
         Either
             .catch { presentShareSheet(bytes) }
-            .fold(
-                ifLeft = { Either.Left(it.message ?: "Unable to share QR code") },
-                ifRight = { it },
-            )
+            .mapLeft { it.message ?: "Unable to share QR code" }
+            .flatten()
     }
 
 private fun presentShareSheet(bytes: ByteArray): Either<String, Unit> {
@@ -63,7 +62,7 @@ internal fun topViewController(): UIViewController? {
         UIApplication.sharedApplication.connectedScenes
             .filterIsInstance<UIWindowScene>()
             .flatMap { scene -> scene.windows.filterIsInstance<UIWindow>() }
-    val window: UIWindow? = windows.firstOrNull { it.keyWindow } ?: windows.firstOrNull()
+    val window: UIWindow? = windows.firstOrNull { it.keyWindow }
     var vc = window?.rootViewController
     while (vc?.presentedViewController != null) {
         vc = vc.presentedViewController

@@ -24,11 +24,11 @@ fun OutlineButton(
     enabled: Boolean = true,
 ) {
     val primary = MaterialTheme.colorScheme.primary
-    val outlinedButtonModifier =
+    val outlineButtonModifier =
         modifier
             .fillMaxWidth()
             .height(52.dp)
-    val outlinedButtonBorder =
+    val outlineButtonBorder =
         BorderStroke(
             width = 1.5.dp,
             color = if (enabled) primary else primary.copy(alpha = 0.4f),
@@ -42,9 +42,9 @@ fun OutlineButton(
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = outlinedButtonModifier,
+        modifier = outlineButtonModifier,
         shape = MaterialTheme.shapes.medium,
-        border = outlinedButtonBorder,
+        border = outlineButtonBorder,
         colors = outlineButtonColors,
     ) {
         val textStyle =

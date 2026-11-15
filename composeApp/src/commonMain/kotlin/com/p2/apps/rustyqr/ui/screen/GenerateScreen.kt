@@ -41,6 +41,7 @@ import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.GenerateScreenState
 import com.p2.apps.rustyqr.ui.resolve
 import com.p2.apps.rustyqr.ui.viewmodels.GenerateViewModel
+import com.p2.apps.rustyqr.ui.viewmodels.MAX_QR_INPUT_LENGTH
 import org.jetbrains.compose.resources.stringResource
 import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.generate_button
@@ -50,7 +51,6 @@ import rustyqr.composeapp.generated.resources.generate_input_placeholder
 import rustyqr.composeapp.generated.resources.generate_loading
 import rustyqr.composeapp.generated.resources.generate_preview_format
 
-private const val MAX_QR_VISIBLE_LENGTH = 4296
 private const val PILL_PREVIEW_MAX_CHARS = 40
 
 /**
@@ -168,7 +168,16 @@ private fun InputForm(
     Column(
         modifier = columnModifier,
     ) {
-        InputHint()
+        val hintStyle =
+            MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                letterSpacing = 1.sp,
+            )
+        Text(
+            text = stringResource(Res.string.generate_input_hint),
+            style = hintStyle,
+        )
 
         Spacer(modifier = Modifier.height(8.dp))
 
@@ -180,7 +189,8 @@ private fun InputForm(
         Spacer(modifier = Modifier.height(16.dp))
 
         GenerateButton(
-            state = state,
+            isGenerating = state.isGenerating,
+            inputText = state.inputText,
             onGenerate = {
                 keyboardController?.hide()
                 focusManager.clearFocus(force = true)
@@ -191,25 +201,11 @@ private fun InputForm(
 }
 
 @Composable
-private fun InputHint() {
-    val hintStyle =
-        MaterialTheme.typography.labelSmall.copy(
-            fontSize = 12.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            letterSpacing = 1.sp,
-        )
-    Text(
-        text = stringResource(Res.string.generate_input_hint),
-        style = hintStyle,
-    )
-}
-
-@Composable
 private fun QrInputField(
     inputText: String,
     onTextChange: (String) -> Unit,
 ) {
-    val isInputTooLong = inputText.length > MAX_QR_VISIBLE_LENGTH
+    val isInputTooLong = inputText.length > MAX_QR_INPUT_LENGTH
 
     val keyboardOptions =
         KeyboardOptions(
@@ -261,21 +257,22 @@ private fun QrInputField(
 
 @Composable
 private fun GenerateButton(
-    state: GenerateScreenState,
+    isGenerating: Boolean,
+    inputText: String,
     onGenerate: () -> Unit,
 ) {
     val buttonText =
         stringResource(
-            if (state.isGenerating) Res.string.generate_loading else Res.string.generate_button,
+            if (isGenerating) Res.string.generate_loading else Res.string.generate_button,
         )
     val buttonEnabled =
-        state.inputText.isNotBlank() &&
-            state.inputText.length <= MAX_QR_VISIBLE_LENGTH
+        inputText.isNotBlank() &&
+            inputText.length <= MAX_QR_INPUT_LENGTH
     AmberButton(
         text = buttonText,
         onClick = onGenerate,
         enabled = buttonEnabled,
-        loading = state.isGenerating,
+        loading = isGenerating,
     )
 }
 

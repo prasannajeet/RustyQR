@@ -184,8 +184,8 @@ commonMain/bridge/QrBridge.kt          expect object QrBridge { fun generatePng(
 - **Coroutine dispatchers stay out of `bridge/`** — the actual implementations are synchronous
   functions; ViewModels decide which `Dispatcher` to call them on.
 - **Filename convention is `Name.kt` (expect) + `Name.android.kt` / `Name.ios.kt` (actuals).**
-  Detekt's `MatchingDeclarationName` is disabled globally so the class inside `Name.android.kt` can
-  still be called `QrBridge`.
+  Detekt's `MatchingDeclarationName` is enabled and accepts the `.android.kt` / `.ios.kt` suffixes,
+  so the class inside `Name.android.kt` can still be called `QrBridge`.
 - **Every platform actual lives under `bridge/`.** No scattering permission / camera / haptics /
   share actuals into feature folders. If it crosses the platform boundary, it's a bridge.
 
@@ -213,7 +213,7 @@ commonMain/bridge/QrBridge.kt          expect object QrBridge { fun generatePng(
   on Android and iOS; the difference is only the rendering backend (Jetpack Compose on Android,
   SKIA on iOS). There is no per-platform Compose code in this module outside of `bridge/`.
 - **No native SwiftUI.** `iosApp/iosApp/ContentView.swift` is a `UIViewControllerRepresentable`
-  that wraps `MainViewControllerKt.MainViewController()` — the Compose UI exported from
+  that wraps `MainViewControllerKt.mainViewController()` — the Compose UI exported from
   `iosMain`. Every visible screen runs through the shared `commonMain` composables.
 - **Resources live in `commonMain/composeResources/`.** Drawables, fonts, string catalogs (including
   `values-fr-rCA` and `values-es`) are resolved at runtime via the Compose Multiplatform resource
@@ -235,7 +235,7 @@ three tools also run automatically as a pre-commit hook (installed by
 | Tool       | Scope                   | Config                                           |
 |------------|-------------------------|--------------------------------------------------|
 | ktlint     | Kotlin sources          | `composeApp/.editorconfig` — Android mode, continuation indent 4 |
-| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — max line length 120, `MagicNumber` + `WildcardImport` off |
+| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — max line length 120; `MagicNumber`, `WildcardImport` and `MatchingDeclarationName` are on; no suppressions |
 | SwiftLint  | `iosApp/` Swift sources | `.swiftlint.yml` — `trailing_whitespace` and `line_length` disabled |
 | rustfmt    | `rustySDK/` Rust sources | `rustySDK/rustfmt.toml` — edition 2024, max line width 120 (separate pre-commit step) |
 

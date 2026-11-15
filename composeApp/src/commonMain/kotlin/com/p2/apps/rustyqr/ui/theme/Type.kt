@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.Font
 import rustyqr.composeapp.generated.resources.Res
@@ -29,79 +30,17 @@ fun interFontFamily() =
         Font(Res.font.inter_bold, weight = FontWeight.Bold),
     )
 
-private fun monoTypography(mono: FontFamily): Typography {
-    val titleLarge =
-        TextStyle(
-            fontFamily = mono,
-            fontWeight = FontWeight.Bold,
-            fontSize = 20.sp,
-        )
-    val labelSmall =
-        TextStyle(
-            fontFamily = mono,
-            fontWeight = FontWeight.Bold,
-            fontSize = 11.sp,
-            letterSpacing = 1.sp,
-        )
-    val labelMedium =
-        TextStyle(
-            fontFamily = mono,
-            fontWeight = FontWeight.Normal,
-            fontSize = 12.sp,
-        )
-    val labelLarge =
-        TextStyle(
-            fontFamily = mono,
-            fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
-        )
-    return Typography(
-        titleLarge = titleLarge,
-        labelSmall = labelSmall,
-        labelMedium = labelMedium,
-        labelLarge = labelLarge,
-    )
-}
-
-private fun interTypography(inter: FontFamily): Typography {
-    val bodySmall =
-        TextStyle(
-            fontFamily = inter,
-            fontWeight = FontWeight.Normal,
-            fontSize = 13.sp,
-        )
-    val bodyMedium =
-        TextStyle(
-            fontFamily = inter,
-            fontWeight = FontWeight.Normal,
-            fontSize = 15.sp,
-        )
-    val bodyLarge =
-        TextStyle(
-            fontFamily = inter,
-            fontWeight = FontWeight.Normal,
-            fontSize = 16.sp,
-        )
-    val titleMedium =
-        TextStyle(
-            fontFamily = inter,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 16.sp,
-        )
-    val titleSmall =
-        TextStyle(
-            fontFamily = inter,
-            fontWeight = FontWeight.Normal,
-            fontSize = 14.sp,
-        )
-    return Typography(
-        bodySmall = bodySmall,
-        bodyMedium = bodyMedium,
-        bodyLarge = bodyLarge,
-        titleMedium = titleMedium,
-        titleSmall = titleSmall,
-    )
-}
+private fun brandTextStyle(
+    fontFamily: FontFamily,
+    fontWeight: FontWeight,
+    fontSize: TextUnit,
+    letterSpacing: TextUnit = TextUnit.Unspecified,
+) = TextStyle(
+    fontFamily = fontFamily,
+    fontWeight = fontWeight,
+    fontSize = fontSize,
+    letterSpacing = letterSpacing,
+)
 
 /**
  * Rusty QR typography scale.
@@ -111,22 +50,22 @@ private fun interTypography(inter: FontFamily): Typography {
  */
 @Composable
 fun rustyQrTypography(): Typography {
-    val monoStyles = monoTypography(jetBrainsMonoFontFamily())
-    val interStyles = interTypography(interFontFamily())
+    val mono = jetBrainsMonoFontFamily()
+    val inter = interFontFamily()
     return Typography(
         // App title bar — JetBrains Mono
-        titleLarge = monoStyles.titleLarge,
+        titleLarge = brandTextStyle(mono, FontWeight.Bold, 20.sp),
         // Section labels, badges — JetBrains Mono
-        labelSmall = monoStyles.labelSmall,
-        labelMedium = monoStyles.labelMedium,
+        labelSmall = brandTextStyle(mono, FontWeight.Bold, 11.sp, letterSpacing = 1.sp),
+        labelMedium = brandTextStyle(mono, FontWeight.Normal, 12.sp),
         // Button labels — JetBrains Mono bold
-        labelLarge = monoStyles.labelLarge,
+        labelLarge = brandTextStyle(mono, FontWeight.Bold, 14.sp),
         // Body text — Inter
-        bodySmall = interStyles.bodySmall,
-        bodyMedium = interStyles.bodyMedium,
-        bodyLarge = interStyles.bodyLarge,
+        bodySmall = brandTextStyle(inter, FontWeight.Normal, 13.sp),
+        bodyMedium = brandTextStyle(inter, FontWeight.Normal, 15.sp),
+        bodyLarge = brandTextStyle(inter, FontWeight.Normal, 16.sp),
         // Input fields, hint text — Inter
-        titleMedium = interStyles.titleMedium,
-        titleSmall = interStyles.titleSmall,
+        titleMedium = brandTextStyle(inter, FontWeight.SemiBold, 16.sp),
+        titleSmall = brandTextStyle(inter, FontWeight.Normal, 14.sp),
     )
 }

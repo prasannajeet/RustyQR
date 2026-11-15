@@ -227,8 +227,9 @@ private fun MemScope.lowerData(bytes: ByteArray): CValue<RustBuffer> {
  * Mirrors FfiConverterString.lift in [RustyQrFFI.swift].
  */
 private fun liftRawString(rb: RustBuffer): String {
-    if (rb.len == 0uL || rb.data == null) return ""
-    return rb.data!!
+    val data = rb.data
+    if (rb.len == 0uL || data == null) return ""
+    return data
         .reinterpret<ByteVar>()
         .readBytes(rb.len.toInt())
         .decodeToString()
@@ -250,8 +251,8 @@ private fun liftData(rb: RustBuffer): ByteArray {
  * Mirrors FfiConverterTypeFfiScanResult.read in [RustyQrFFI.swift].
  */
 private fun liftScanResult(rb: RustBuffer): ScanResult {
-    if (rb.len == 0uL || rb.data == null) return ScanResult(content = "")
-    val all = rb.data!!.reinterpret<ByteVar>().readBytes(rb.len.toInt())
+    val all = readRustBufferBytes(rb)
+    if (all.isEmpty()) return ScanResult(content = "")
     return ScanResult(content = readFfiStringFromArray(all, offset = 0))
 }
 
@@ -289,15 +290,8 @@ private fun userError(status: RustCallStatus): RustCallException {
 /** Reads and frees [RustCallStatus.errorBuf], returning the exception for a Rust panic. */
 private fun panicError(status: RustCallStatus): RustCallException {
     val eb = status.errorBuf
-    val message =
-        if (eb.len > 0uL && eb.data != null) {
-            eb.data!!
-                .reinterpret<ByteVar>()
-                .readBytes(eb.len.toInt())
-                .decodeToString()
-        } else {
-            "Rust panic (no message)"
-        }
+    val bytes = readRustBufferBytes(eb)
+    val message = if (bytes.isNotEmpty()) bytes.decodeToString() else "Rust panic (no message)"
     freeRustBuffer(eb.readValue())
     return RustCallException.Panic("Rust panic: $message")
 }
@@ -313,8 +307,9 @@ private fun freeRustBuffer(rb: CValue<RustBuffer>) =
     }
 
 private fun readRustBufferBytes(rb: RustBuffer): ByteArray {
-    if (rb.len == 0uL || rb.data == null) return ByteArray(0)
-    return rb.data!!.reinterpret<ByteVar>().readBytes(rb.len.toInt())
+    val data = rb.data
+    if (rb.len == 0uL || data == null) return ByteArray(0)
+    return data.reinterpret<ByteVar>().readBytes(rb.len.toInt())
 }
 
 // ---------------------------------------------------------------------------

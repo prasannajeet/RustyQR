@@ -21,7 +21,7 @@ import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.generate_error_too_long
 import rustyqr.composeapp.generated.resources.generate_message_saved
 
-private const val MAX_QR_INPUT_LENGTH = 4296
+internal const val MAX_QR_INPUT_LENGTH = 4296
 private const val QR_IMAGE_SIZE_PX = 512
 private const val SHARE_FILE_PREFIX = "rusty-qr"
 private const val SHARE_FILE_NAME_MAX_INPUT_CHARS = 24
