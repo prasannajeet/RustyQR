@@ -51,6 +51,7 @@ import rustyqr.composeapp.generated.resources.generate_loading
 import rustyqr.composeapp.generated.resources.generate_preview_format
 
 private const val MAX_QR_VISIBLE_LENGTH = 4296
+private const val PILL_PREVIEW_MAX_CHARS = 40
 
 /**
  * Generate screen — input field + QR generation with animated card result.
@@ -285,7 +286,7 @@ private fun CompactInputPill(
     modifier: Modifier = Modifier,
 ) {
     // Brand pill shape — intentional MD3 deviation (20dp radius pill for compact input summary)
-    val preview = if (text.length > 40) text.take(40) + "…" else text
+    val preview = if (text.length > PILL_PREVIEW_MAX_CHARS) text.take(PILL_PREVIEW_MAX_CHARS) + "…" else text
     androidx.compose.material3.Surface(
         modifier = modifier,
         shape = MaterialTheme.shapes.large,

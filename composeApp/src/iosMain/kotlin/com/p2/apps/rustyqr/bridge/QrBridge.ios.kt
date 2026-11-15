@@ -28,6 +28,20 @@ import rustyqrffi.uniffi_rusty_qr_ffi_fn_func_decode_qr_from_raw
 import rustyqrffi.uniffi_rusty_qr_ffi_fn_func_generate_png
 import rustyqrffi.uniffi_rusty_qr_ffi_fn_func_get_library_version
 
+// UniFFI wire format: lengths are big-endian Int32 values (4 bytes) followed by the payload.
+private const val INT32_SIZE_BYTES = 4
+private const val LAST_INT32_BYTE_INDEX = 3
+private const val BYTE_MASK = 0xFF
+private const val SHIFT_TO_BYTE_0 = 24
+private const val SHIFT_TO_BYTE_1 = 16
+private const val SHIFT_TO_BYTE_2 = 8
+
+// Discriminants of the Rust QrError enum as serialised by UniFFI (keep in sync with rustySDK).
+private const val DISCRIMINANT_INVALID_INPUT = 1
+private const val DISCRIMINANT_ENCODING_FAILED = 2
+private const val DISCRIMINANT_DECODING_FAILED = 3
+private const val DISCRIMINANT_IMAGE_ERROR = 4
+
 /**
  * iOS actual — calls UniFFI-generated C functions via Kotlin/Native cinterop.
  *
@@ -186,12 +200,12 @@ private fun MemScope.lowerString(value: String): CValue<RustBuffer> {
  */
 private fun MemScope.lowerData(bytes: ByteArray): CValue<RustBuffer> {
     val len = bytes.size
-    val payload = ByteArray(4 + len)
-    payload[0] = (len ushr 24).toByte()
-    payload[1] = (len ushr 16).toByte()
-    payload[2] = (len ushr 8).toByte()
-    payload[3] = len.toByte()
-    bytes.copyInto(payload, destinationOffset = 4)
+    val payload = ByteArray(INT32_SIZE_BYTES + len)
+    payload[0] = (len ushr SHIFT_TO_BYTE_0).toByte()
+    payload[1] = (len ushr SHIFT_TO_BYTE_1).toByte()
+    payload[2] = (len ushr SHIFT_TO_BYTE_2).toByte()
+    payload[LAST_INT32_BYTE_INDEX] = len.toByte()
+    bytes.copyInto(payload, destinationOffset = INT32_SIZE_BYTES)
     val uBytes = payload.asUByteArray().toCValues()
     val fb =
         alloc<ForeignBytes>().apply {
@@ -227,7 +241,7 @@ private fun liftRawString(rb: RustBuffer): String {
 private fun liftData(rb: RustBuffer): ByteArray {
     val all = readRustBufferBytes(rb)
     val dataLen = if (all.isEmpty()) 0 else readInt32BigEndianFromArray(all, 0)
-    return if (dataLen > 0) all.copyOfRange(4, 4 + dataLen) else ByteArray(0)
+    return if (dataLen > 0) all.copyOfRange(INT32_SIZE_BYTES, INT32_SIZE_BYTES + dataLen) else ByteArray(0)
 }
 
 /**
@@ -266,9 +280,9 @@ private fun userError(status: RustCallStatus): RustCallException {
     val eb = status.errorBuf
     val bytes = readRustBufferBytes(eb)
     freeRustBuffer(eb.readValue())
-    if (bytes.size < 4) return RustCallException.Panic("Truncated error buffer")
+    if (bytes.size < INT32_SIZE_BYTES) return RustCallException.Panic("Truncated error buffer")
     val discriminant = readInt32BigEndianFromArray(bytes, 0)
-    val message = if (bytes.size > 4) readFfiStringFromArray(bytes, 4) else "Unknown"
+    val message = if (bytes.size > INT32_SIZE_BYTES) readFfiStringFromArray(bytes, INT32_SIZE_BYTES) else "Unknown"
     return RustCallException.UserError(discriminant, message)
 }
 
@@ -311,19 +325,20 @@ private fun readInt32BigEndianFromArray(
     bytes: ByteArray,
     offset: Int,
 ): Int =
-    ((bytes[offset].toInt() and 0xFF) shl 24) or
-        ((bytes[offset + 1].toInt() and 0xFF) shl 16) or
-        ((bytes[offset + 2].toInt() and 0xFF) shl 8) or
-        (bytes[offset + 3].toInt() and 0xFF)
+    ((bytes[offset].toInt() and BYTE_MASK) shl SHIFT_TO_BYTE_0) or
+        ((bytes[offset + 1].toInt() and BYTE_MASK) shl SHIFT_TO_BYTE_1) or
+        ((bytes[offset + 2].toInt() and BYTE_MASK) shl SHIFT_TO_BYTE_2) or
+        (bytes[offset + LAST_INT32_BYTE_INDEX].toInt() and BYTE_MASK)
 
 private fun readFfiStringFromArray(
     bytes: ByteArray,
     offset: Int,
 ): String {
-    if (offset + 4 > bytes.size) return ""
+    if (offset + INT32_SIZE_BYTES > bytes.size) return ""
     val strLen = readInt32BigEndianFromArray(bytes, offset)
-    val end = offset + 4 + strLen
-    return if (strLen > 0 && end <= bytes.size) bytes.decodeToString(startIndex = offset + 4, endIndex = end) else ""
+    val start = offset + INT32_SIZE_BYTES
+    val end = start + strLen
+    return if (strLen > 0 && end <= bytes.size) bytes.decodeToString(startIndex = start, endIndex = end) else ""
 }
 
 // ---------------------------------------------------------------------------
@@ -358,10 +373,10 @@ private fun rustThrowableToQrError(throwable: Throwable): QrError =
     when (throwable) {
         is RustCallException.UserError ->
             when (throwable.discriminant) {
-                1 -> QrError.InvalidInput(throwable.errorMessage)
-                2 -> QrError.EncodingFailed(throwable.errorMessage)
-                3 -> QrError.DecodingFailed(throwable.errorMessage)
-                4 -> QrError.ImageError(throwable.errorMessage)
+                DISCRIMINANT_INVALID_INPUT -> QrError.InvalidInput(throwable.errorMessage)
+                DISCRIMINANT_ENCODING_FAILED -> QrError.EncodingFailed(throwable.errorMessage)
+                DISCRIMINANT_DECODING_FAILED -> QrError.DecodingFailed(throwable.errorMessage)
+                DISCRIMINANT_IMAGE_ERROR -> QrError.ImageError(throwable.errorMessage)
                 else -> QrError.DecodingFailed(throwable.errorMessage)
             }
         else -> QrError.from(throwable)

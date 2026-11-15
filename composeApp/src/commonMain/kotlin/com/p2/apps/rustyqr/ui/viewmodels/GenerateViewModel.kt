@@ -24,6 +24,7 @@ import rustyqr.composeapp.generated.resources.generate_message_saved
 private const val MAX_QR_INPUT_LENGTH = 4296
 private const val QR_IMAGE_SIZE_PX = 512
 private const val SHARE_FILE_PREFIX = "rusty-qr"
+private const val SHARE_FILE_NAME_MAX_INPUT_CHARS = 24
 private const val KEY_INPUT_TEXT = "generate.inputText"
 
 /**
@@ -132,7 +133,7 @@ class GenerateViewModel(
     private fun suggestedName(): String {
         val safe =
             state.value.inputText
-                .take(24)
+                .take(SHARE_FILE_NAME_MAX_INPUT_CHARS)
                 .replace(Regex("[^A-Za-z0-9_-]"), "_")
         return if (safe.isBlank()) SHARE_FILE_PREFIX else "$SHARE_FILE_PREFIX-$safe"
     }
