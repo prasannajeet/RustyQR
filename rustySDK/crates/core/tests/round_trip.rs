@@ -64,7 +64,7 @@ fn round_trip_through_process_dispatcher() -> Result<(), Box<dyn std::error::Err
 #[test]
 fn round_trip_long_content() -> Result<(), Box<dyn std::error::Error>> {
     // PRD 6.6: encode and decode a 2000+ character string.
-    let content: String = (0..2100).map(|i| char::from(b'A' + (i % 26) as u8)).collect();
+    let content: String = (b'A'..=b'Z').cycle().take(2100).map(char::from).collect();
     let config = QrConfig {
         size: 1024,
         error_correction: QrErrorCorrection::Low,

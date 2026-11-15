@@ -102,6 +102,7 @@ pub fn generate_with_config(content: &str, config: QrConfig) -> Result<Vec<u8>, 
 /// Returns the version of this library as declared in `Cargo.toml`.
 ///
 /// This function is infallible and always returns a non-empty string.
+#[must_use]
 pub fn get_library_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }

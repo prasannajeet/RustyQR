@@ -2,7 +2,7 @@
 //!
 //! This module defines the configuration and result types used across
 //! the encoder and decoder modules. All types are plain Rust structs/enums
-//! with no UniFFI annotations — the FFI crate mirrors them with its own
+//! with no `UniFFI` annotations — the FFI crate mirrors them with its own
 //! `Ffi`-prefixed wrappers and `From` conversions.
 
 /// Error correction level for QR code generation.
@@ -48,8 +48,7 @@ impl QrErrorCorrection {
 /// let png = encoder::generate_with_config("hello", config)?;
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-// AUDIT: both fields are Copy — could derive Copy here
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub struct QrConfig {
     /// Output image size in pixels (width = height). Must be 1..=4096.

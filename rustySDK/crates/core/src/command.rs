@@ -7,7 +7,7 @@
 //!
 //! **Note:** The command dispatcher is intended for internal use and testing.
 //! The FFI layer (Phase 3) deliberately exports individual functions rather
-//! than `process()` because UniFFI works better with simple function
+//! than `process()` because `UniFFI` works better with simple function
 //! signatures than enum dispatch. Mobile callers use the generated bindings;
 //! Rust-side consumers can use either the dispatcher or the direct functions.
 

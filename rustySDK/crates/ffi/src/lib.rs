@@ -5,10 +5,10 @@
 //!
 //! # Why mirror types?
 //!
-//! The core crate is intentionally free of UniFFI annotations so it can be
+//! The core crate is intentionally free of `UniFFI` annotations so it can be
 //! used as a plain Rust library. This FFI crate re-declares each public type
 //! with `uniffi::` derives (e.g. `FfiQrConfig`, `FfiQrError`) and provides
-//! `From` conversions in both directions. The UniFFI code generator reads
+//! `From` conversions in both directions. The `UniFFI` code generator reads
 //! these derives to produce Kotlin and Swift bindings.
 //!
 //! # Exported functions
@@ -29,8 +29,8 @@ uniffi::setup_scaffolding!();
 
 /// QR error-correction level exposed to foreign callers.
 ///
-/// Mirrors [`rusty_qr_core::QrErrorCorrection`] with UniFFI derives so the
-/// core crate stays free of UniFFI dependencies.
+/// Mirrors [`rusty_qr_core::QrErrorCorrection`] with `UniFFI` derives so the
+/// core crate stays free of `UniFFI` dependencies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
 pub enum FfiQrErrorCorrection {
     /// ~7 % recovery capacity. Produces the smallest QR code.
@@ -151,20 +151,20 @@ impl From<rusty_qr_core::QrError> for FfiQrError {
 /// This is the simplest entry point — uses the default (Medium) error-correction
 /// level. The output is a `Vec<u8>` containing valid PNG bytes.
 #[uniffi::export]
-fn generate_png(content: String, size: u32) -> Result<Vec<u8>, FfiQrError> {
-    rusty_qr_core::encoder::generate_png(&content, size).map_err(FfiQrError::from)
+fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, FfiQrError> {
+    rusty_qr_core::encoder::generate_png(content, size).map_err(FfiQrError::from)
 }
 
 /// Generates a QR code PNG with custom configuration (size + error-correction).
 #[uniffi::export]
-fn generate_with_config(content: String, config: FfiQrConfig) -> Result<Vec<u8>, FfiQrError> {
-    rusty_qr_core::encoder::generate_with_config(&content, config.into()).map_err(FfiQrError::from)
+fn generate_with_config(content: &str, config: FfiQrConfig) -> Result<Vec<u8>, FfiQrError> {
+    rusty_qr_core::encoder::generate_with_config(content, config.into()).map_err(FfiQrError::from)
 }
 
 /// Decodes a QR code from PNG or JPEG image bytes.
 #[uniffi::export]
-fn decode_qr(image_data: Vec<u8>) -> Result<FfiScanResult, FfiQrError> {
-    rusty_qr_core::decoder::decode(&image_data)
+fn decode_qr(image_data: &[u8]) -> Result<FfiScanResult, FfiQrError> {
+    rusty_qr_core::decoder::decode(image_data)
         .map(FfiScanResult::from)
         .map_err(FfiQrError::from)
 }
@@ -174,8 +174,8 @@ fn decode_qr(image_data: Vec<u8>) -> Result<FfiScanResult, FfiQrError> {
 /// This is the camera-frame path — the caller provides the Y (luma) plane
 /// directly so no PNG round-trip is needed.
 #[uniffi::export]
-fn decode_qr_from_raw(pixels: Vec<u8>, width: u32, height: u32) -> Result<FfiScanResult, FfiQrError> {
-    rusty_qr_core::decoder::decode_from_raw(&pixels, width, height)
+fn decode_qr_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<FfiScanResult, FfiQrError> {
+    rusty_qr_core::decoder::decode_from_raw(pixels, width, height)
         .map(FfiScanResult::from)
         .map_err(FfiQrError::from)
 }
@@ -260,20 +260,11 @@ mod tests {
 
         for (core_err, expected_reason) in cases {
             let ffi_err: FfiQrError = core_err.into();
-            match ffi_err {
-                FfiQrError::InvalidInput { ref reason } => {
-                    assert_eq!(reason, expected_reason);
-                }
-                FfiQrError::EncodingFailed { ref reason } => {
-                    assert_eq!(reason, expected_reason);
-                }
-                FfiQrError::DecodingFailed { ref reason } => {
-                    assert_eq!(reason, expected_reason);
-                }
-                FfiQrError::ImageError { ref reason } => {
-                    assert_eq!(reason, expected_reason);
-                }
-            }
+            let (FfiQrError::InvalidInput { reason }
+            | FfiQrError::EncodingFailed { reason }
+            | FfiQrError::DecodingFailed { reason }
+            | FfiQrError::ImageError { reason }) = ffi_err;
+            assert_eq!(reason, expected_reason);
         }
 
         // Also verify variant matching specifically
@@ -296,7 +287,7 @@ mod tests {
 
     #[test]
     fn generate_png_delegates_to_core() -> Result<(), FfiQrError> {
-        let ffi_result = generate_png("hello".into(), 256)?;
+        let ffi_result = generate_png("hello", 256)?;
         let core_result = rusty_qr_core::encoder::generate_png("hello", 256).map_err(FfiQrError::from)?;
         assert_eq!(ffi_result, core_result, "FFI and core must produce identical bytes");
         Ok(())
@@ -313,7 +304,7 @@ mod tests {
             error_correction: rusty_qr_core::QrErrorCorrection::High,
         };
 
-        let ffi_result = generate_with_config("hello".into(), ffi_config)?;
+        let ffi_result = generate_with_config("hello", ffi_config)?;
         let core_result =
             rusty_qr_core::encoder::generate_with_config("hello", core_config).map_err(FfiQrError::from)?;
         assert_eq!(ffi_result, core_result, "FFI and core must produce identical bytes");
@@ -323,7 +314,7 @@ mod tests {
     #[test]
     fn decode_qr_delegates_to_core() -> Result<(), FfiQrError> {
         let png = rusty_qr_core::encoder::generate_png("delegation test", 256).map_err(FfiQrError::from)?;
-        let ffi_result = decode_qr(png)?;
+        let ffi_result = decode_qr(&png)?;
         assert_eq!(ffi_result.content, "delegation test");
         Ok(())
     }
@@ -337,7 +328,7 @@ mod tests {
         let luma = img.to_luma8();
         let (w, h) = (luma.width(), luma.height());
 
-        let ffi_result = decode_qr_from_raw(luma.into_raw(), w, h)?;
+        let ffi_result = decode_qr_from_raw(&luma.into_raw(), w, h)?;
         assert_eq!(ffi_result.content, "raw delegation");
         Ok(())
     }
@@ -355,7 +346,7 @@ mod tests {
 
     #[test]
     fn generate_png_empty_content_returns_invalid_input() {
-        let result = generate_png(String::new(), 256);
+        let result = generate_png("", 256);
         assert!(
             matches!(result, Err(FfiQrError::InvalidInput { .. })),
             "expected InvalidInput, got {result:?}"
@@ -364,7 +355,7 @@ mod tests {
 
     #[test]
     fn generate_png_zero_size_returns_invalid_input() {
-        let result = generate_png("test".into(), 0);
+        let result = generate_png("test", 0);
         assert!(
             matches!(result, Err(FfiQrError::InvalidInput { .. })),
             "expected InvalidInput, got {result:?}"
@@ -373,7 +364,7 @@ mod tests {
 
     #[test]
     fn decode_qr_empty_data_returns_invalid_input() {
-        let result = decode_qr(vec![]);
+        let result = decode_qr(&[]);
         assert!(
             matches!(result, Err(FfiQrError::InvalidInput { .. })),
             "expected InvalidInput, got {result:?}"
@@ -382,7 +373,7 @@ mod tests {
 
     #[test]
     fn decode_qr_invalid_image_returns_error() {
-        let result = decode_qr(vec![0xFF, 0x00]);
+        let result = decode_qr(&[0xFF, 0x00]);
         assert!(
             matches!(result, Err(FfiQrError::ImageError { .. })),
             "expected ImageError, got {result:?}"
@@ -391,7 +382,7 @@ mod tests {
 
     #[test]
     fn decode_qr_from_raw_empty_returns_invalid_input() {
-        let result = decode_qr_from_raw(vec![], 0, 0);
+        let result = decode_qr_from_raw(&[], 0, 0);
         assert!(
             matches!(result, Err(FfiQrError::InvalidInput { .. })),
             "expected InvalidInput, got {result:?}"
