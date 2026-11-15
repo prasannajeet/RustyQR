@@ -281,7 +281,7 @@ tasks.register<Exec>("swiftlint") {
 tasks.register("lintAll") {
     group = "verification"
     description = "Runs all linters: ktlint, detekt, and swiftlint"
-    dependsOn("ktlintCheck", "detekt", "swiftlint")
+    dependsOn("ktlintCheck", "detekt", "swiftlint", ":rustyqr-bindings:ktlintCheck", ":rustyqr-bindings:detekt")
 }
 
 // Make both preBuild and project sync tasks depend on installGitHooks

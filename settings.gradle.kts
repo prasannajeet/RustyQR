@@ -83,3 +83,4 @@ dependencyResolutionManagement {
 }
 
 include(":composeApp")
+include(":rustyqr-bindings")

@@ -5,12 +5,12 @@ edition = "2021"
 
 [lib]
 name = "rusty_qr_ffi"
-crate-type = ["cdylib", "staticlib"]
+crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
 rusty-qr-core = { path = "../core" }
 thiserror = "2"
-uniffi = { version = "0.28", features = ["cli"] }
+uniffi = { version = "=0.32.0", features = ["cli"] }
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png"] }
