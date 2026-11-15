@@ -47,6 +47,17 @@ Platform builds are documented in the platform READMEs — each has its own firs
 If you're only editing shared Compose UI or ViewModels in `commonMain`, skip the `buildRust*`
 tasks and let Gradle reuse the existing `.so` / `.xcframework`.
 
+### Release builds
+
+The Rust profile follows the `releaseBuild` Gradle property, not the build type. Release builds
+need `-PreleaseBuild=true`:
+
+```bash
+./gradlew :composeApp:assembleRelease -PreleaseBuild=true   # or bundleRelease
+```
+
+Android release builds fail fast without the flag. Xcode Release passes it automatically.
+
 ---
 
 ## Module-Level Gradle Tasks
@@ -245,6 +256,6 @@ Auto-fix Kotlin formatting with `./gradlew :composeApp:ktlintFormat`.
 **Prerequisite:** `detekt` (and therefore `lintAll` and the pre-commit hook) also runs the type-resolved
 `detektAndroidDebug` task, which compiles the Android target. On a fresh checkout the gitignored
 `composeApp/src/androidMain/kotlin/generated` UniFFI bindings do not exist yet, so run
-`./gradlew :composeApp:buildRustAndroid` once before linting.
+`./gradlew :rustyqr-bindings:assemble` once before linting.
 
 </details>
