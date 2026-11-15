@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.update
 /**
  * Processes [ScanQRCodeScreenIntent]s and manages [ScanScreenState].
  *
- * The [scanGate] [@Volatile] Boolean is read directly on the camera thread (fast path).
+ * The [scanGate] Boolean is read and written only on the main thread.
  * State mutations always happen on the main thread via [kotlinx.coroutines.Dispatchers.Main].
  *
  * Gate lifecycle:
@@ -28,12 +28,8 @@ class ScanViewModel : ViewModel() {
         field = MutableStateFlow(ScanScreenState())
 
     /**
-     * First-write-wins gate. Written on main thread, read on camera thread.
+     * First-write-wins gate. Read and written only on the main thread.
      * true = gate locked (sheet showing), false = gate open (analyzing frames).
-     *
-     * Note: The camera analyzer uses [ScanScreenState.isScanning] which is a
-     * StateFlow value — the gate here is a fast-path duplicate that avoids
-     * StateFlow overhead on the hot camera path.
      */
     var scanGate: Boolean = false
         private set
