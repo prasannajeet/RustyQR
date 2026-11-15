@@ -72,19 +72,13 @@ fun AnimatedGenerateContent(
     }
 }
 
-// QR Result card — fades in with scale from 0.8 using EmphasizedDecelerate (enter)
+/** QR result card — fades in with scale from 0.8 using EmphasizedDecelerate (enter). */
 @Composable
 private fun BoxScope.ResultCardReveal(
     animationPhase: AnimationPhase,
     resultContent: @Composable () -> Unit,
 ) {
-    val scaleInAnimationSpec =
-        tween<Float>(
-            durationMillis = 200,
-            delayMillis = 100,
-            easing = EmphasizedDecelerate,
-        )
-    val fadeInAnimationSpec =
+    val revealSpec =
         tween<Float>(
             durationMillis = 200,
             delayMillis = 100,
@@ -93,10 +87,10 @@ private fun BoxScope.ResultCardReveal(
     val revealEnter =
         scaleIn(
             initialScale = 0.8f,
-            animationSpec = scaleInAnimationSpec,
+            animationSpec = revealSpec,
         ) +
             fadeIn(
-                animationSpec = fadeInAnimationSpec,
+                animationSpec = revealSpec,
             )
     AnimatedVisibility(
         visible = animationPhase != AnimationPhase.Input,
@@ -115,7 +109,7 @@ private fun BoxScope.ResultCardReveal(
     }
 }
 
-// Input text — scales down and moves toward bottom
+/** Input text — scales down and moves toward bottom. */
 @Composable
 private fun BoxScope.InputTextLayer(
     animationPhase: AnimationPhase,

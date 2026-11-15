@@ -27,10 +27,10 @@ data class GenerateScreenState(
     val error: UiText? = null,
     val message: UiText? = null,
 ) {
-    override fun equals(other: Any?): Boolean =
-        this === other ||
-            other is GenerateScreenState &&
-            inputText == other.inputText &&
+    override fun equals(other: Any?): Boolean = this === other || (other is GenerateScreenState && sameContentAs(other))
+
+    private fun sameContentAs(other: GenerateScreenState): Boolean =
+        inputText == other.inputText &&
             qrImageBytes.contentEquals(other.qrImageBytes) &&
             isGenerating == other.isGenerating &&
             animationPhase == other.animationPhase &&

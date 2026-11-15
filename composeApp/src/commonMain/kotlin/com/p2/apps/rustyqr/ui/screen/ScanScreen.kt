@@ -69,9 +69,10 @@ fun ScanScreen(viewModel: ScanViewModel = viewModel { ScanViewModel() }) {
     )
 
     // Show result sheet when QR decoded
-    if (state.isSheetVisible && state.sheetContent != null) {
+    val sheetContent = state.sheetContent
+    if (state.isSheetVisible && sheetContent != null) {
         ScanResultSheet(
-            result = state.sheetContent!!,
+            result = sheetContent,
             onDismiss = { viewModel.onIntent(ScanQRCodeScreenIntent.DismissSheet) },
             onScanAgain = { viewModel.onIntent(ScanQRCodeScreenIntent.ResumeScanning) },
         )
@@ -254,11 +255,7 @@ private fun PermissionDeniedContent(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        PermissionTitle()
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        PermissionBody()
+        PermissionMessage()
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -278,7 +275,7 @@ private fun PermissionDeniedContent(
     }
 }
 
-// Camera icon with strike-through
+/** Camera icon with a strike-through line. */
 @Composable
 private fun CameraDeniedIcon() {
     Box(contentAlignment = Alignment.Center) {
@@ -308,7 +305,7 @@ private fun CameraDeniedIcon() {
 }
 
 @Composable
-private fun PermissionTitle() {
+private fun PermissionMessage() {
     val titleStyle =
         MaterialTheme.typography.bodyLarge.copy(
             fontWeight = FontWeight.SemiBold,
@@ -320,10 +317,9 @@ private fun PermissionTitle() {
         style = titleStyle,
         textAlign = TextAlign.Center,
     )
-}
 
-@Composable
-private fun PermissionBody() {
+    Spacer(modifier = Modifier.height(8.dp))
+
     val bodyStyle =
         MaterialTheme.typography.bodySmall.copy(
             color = MaterialTheme.colorScheme.onSurfaceVariant,

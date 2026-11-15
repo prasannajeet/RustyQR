@@ -38,7 +38,7 @@ fun AmberButton(
     val primary = MaterialTheme.colorScheme.primary
     val onPrimary = MaterialTheme.colorScheme.onPrimary
     val effectiveEnabled = enabled && !loading
-    val buttonModifier =
+    val amberButtonModifier =
         modifier
             .fillMaxWidth()
             .height(52.dp)
@@ -52,7 +52,7 @@ fun AmberButton(
     Button(
         onClick = onClick,
         enabled = effectiveEnabled,
-        modifier = buttonModifier,
+        modifier = amberButtonModifier,
         shape = MaterialTheme.shapes.medium,
         colors = amberButtonColors,
     ) {

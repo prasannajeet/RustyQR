@@ -153,7 +153,7 @@ private fun ScanResultContent(content: String) {
     }
 }
 
-// Action row
+/** Open and copy actions for URLs; a single copy action otherwise. */
 @Composable
 private fun ScanResultActions(
     content: String,

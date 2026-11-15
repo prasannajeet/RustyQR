@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.interop.UIKitView
+import arrow.core.Either
 import com.p2.apps.rustyqr.model.ScanResult
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ByteVar
@@ -218,11 +219,7 @@ private fun authorizedVideoDevice(): AVCaptureDevice? {
 /** Returns null when the OS reports an error (e.g. device access denied after the authorization check). */
 private fun createDeviceInput(device: AVCaptureDevice): AVCaptureDeviceInput? =
     // AVCaptureDeviceInput throws a Kotlin exception when Objective-C sets the NSError out-param.
-    try {
-        AVCaptureDeviceInput(device = device, error = null)
-    } catch (ignored: Exception) {
-        null
-    }
+    Either.catch { AVCaptureDeviceInput(device = device, error = null) }.getOrNull()
 
 private fun configureSession(
     session: AVCaptureSession,

@@ -312,8 +312,9 @@ commonMain/kotlin/com/p2/apps/rustyqr/bridge/
 ```
 
 Each has a matching `*.android.kt` and `*.ios.kt` actual. The `MatchingDeclarationName` detekt rule
-is disabled because actual files follow the `*.android.kt` / `*.ios.kt` naming convention rather
-than matching the top-level class name.
+is enabled; it accepts the `*.android.kt` / `*.ios.kt` actual naming convention, and actual-only
+helper classes are kept `private` so they do not need to match the file name. No lint
+suppressions are used.
 
 </details>
 
@@ -382,7 +383,7 @@ Rusty-QR/
 │
 ├── iosApp/                     # iOS Xcode project — hosts Compose UI via UIKit
 │   ├── project.yml             # XcodeGen source of truth (identity, signing, versioning)
-│   ├── iosApp/                 # Swift shell (ContentView wraps MainViewController)
+│   ├── iosApp/                 # Swift shell (ContentView wraps mainViewController)
 │   ├── generated/              # UniFFI Swift bindings (gitignored)
 │   ├── Frameworks/             # RustyQR.xcframework (gitignored)
 │   └── README.md               # iOS build pipeline + Xcode/XcodeGen details
