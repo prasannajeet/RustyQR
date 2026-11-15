@@ -89,11 +89,10 @@ pub fn decode_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<ScanRes
 /// camera frame (~307 K pixels) the overhead is sub-millisecond on modern
 /// hardware, well within the PRD's 20 ms target for the camera decode path.
 fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult, QrError> {
-    let expected = (width as usize)
-        .checked_mul(height as usize)
-        .ok_or_else(|| QrError::InvalidInput {
-            reason: "width * height overflows usize".into(),
-        })?;
+    let (w, h) = (width as usize, height as usize);
+    let expected = w.checked_mul(h).ok_or_else(|| QrError::InvalidInput {
+        reason: "width * height overflows usize".into(),
+    })?;
     if pixels.len() != expected {
         return Err(QrError::InvalidInput {
             reason: format!(
@@ -104,7 +103,7 @@ fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult
         });
     }
 
-    let (w, h) = (width as usize, height as usize);
+    // Unreachable fallback: pixels.len() == w * h is checked above, and rqrr calls fill only with x < w and y < h.
     let mut prepared =
         rqrr::PreparedImage::prepare_from_greyscale(w, h, |x, y| pixels.get(y * w + x).copied().unwrap_or(0));
 

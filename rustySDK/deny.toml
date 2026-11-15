@@ -2,6 +2,12 @@
 # Run: cargo deny check
 
 [advisories]
+# Tolerated unmaintained-crate advisories (deliberately NOT in `ignore`; no fix is available yet):
+#   RUSTSEC-2025-0141  bincode     via UniFFI 0.28; removed by the UniFFI 0.32 upgrade (spec 1.2)
+#   RUSTSEC-2024-0436  paste       via UniFFI 0.28; removed by the UniFFI 0.32 upgrade (spec 1.2)
+#   RUSTSEC-2026-0374  basic-toml  via uniffi_bindgen -> askama; removed when crates/uniffi-bindgen
+#                                  and the `cli` feature go (spec 1.4)
+# Any other advisory, licence, ban or source failure is real.
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 
