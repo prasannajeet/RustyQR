@@ -44,19 +44,10 @@ kotlin {
         }
     }
 
-    val rootDirPath = rootProject.projectDir.absolutePath
-
     iosArm64().apply {
         binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-        }
-        compilations["main"].cinterops {
-            create("RustyQrFFI") {
-                defFile = file("src/nativeInterop/cinterop/RustyQrFFI.def")
-                includeDirs(file("$rootDirPath/iosApp/generated/headers"))
-                extraOpts("-libraryPath", "$rootDirPath/iosApp/Frameworks/RustyQR.xcframework/ios-arm64")
-            }
         }
     }
 
@@ -64,13 +55,6 @@ kotlin {
         binaries.framework {
             baseName = "ComposeApp"
             isStatic = true
-        }
-        compilations["main"].cinterops {
-            create("RustyQrFFI") {
-                defFile = file("src/nativeInterop/cinterop/RustyQrFFI.def")
-                includeDirs(file("$rootDirPath/iosApp/generated/headers"))
-                extraOpts("-libraryPath", "$rootDirPath/iosApp/Frameworks/RustyQR.xcframework/ios-arm64-simulator")
-            }
         }
     }
 
@@ -94,6 +78,7 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.arrow.core)
+            implementation(project(":rustyqr-bindings"))
             implementation(libs.compose.material.icons.extended)
         }
         commonTest.dependencies {
@@ -141,22 +126,16 @@ android {
 dependencies {
     debugImplementation(libs.compose.uiTooling)
     detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:${libs.versions.detekt.get()}")
-    // artifact { type = "aar" } requires the standard DependencyHandlerScope, which is available here.
-    // Do NOT move this into kotlin { sourceSets { androidMain.dependencies { } } } — the KMP
-    // sourceSets DSL uses KotlinDependencyHandler which lacks the artifact{} closure overload.
-    // Moving it there silently drops the @aar specifier and causes runtime class-not-found errors.
-    "androidMainImplementation"(libs.jna) { artifact { type = "aar" } }
 }
 
 detekt {
     buildUponDefaultConfig = true
     config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
     // The plain `detekt` task defaults to src/main/kotlin, which does not exist in a KMP layout. Point it at every
-    // KMP Kotlin source set (commonMain, androidMain, iosMain, commonTest, ...) and skip the UniFFI-generated bindings.
+    // KMP Kotlin source set (commonMain, androidMain, iosMain, commonTest, ...).
     source.setFrom(
         fileTree("src") {
             include("*Main/kotlin/**/*.kt", "*Test/kotlin/**/*.kt")
-            exclude("androidMain/kotlin/generated/**")
         },
     )
 }
@@ -166,7 +145,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     val moduleRoot = project.projectDir
     exclude {
         val path = it.file.relativeTo(moduleRoot).invariantSeparatorsPath
-        path.startsWith("build/") || path.contains("/build/") || path.startsWith("src/androidMain/kotlin/generated/")
+        path.startsWith("build/") || path.contains("/build/")
     }
 }
 
@@ -182,7 +161,7 @@ afterEvaluate {
 }
 
 // `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved task, which
-// compiles the Android target (needs the gitignored androidMain/kotlin/generated bindings: buildRustAndroid).
+// compiles the Android target, which needs the UniFFI bindings from :rustyqr-bindings.
 tasks.named("detekt") {
     dependsOn("detektAndroidDebug")
 }
@@ -192,7 +171,6 @@ ktlint {
     verbose.set(true)
     filter {
         exclude { it.file.path.contains("/build/") }
-        exclude { it.file.path.contains("/generated/") }
     }
 }
 
@@ -219,23 +197,6 @@ tasks.register<Exec>("installGitHooks") {
     )
 }
 
-tasks.register<Exec>("buildRustAndroid") {
-    group = "rust"
-    description = "Cross-compiles Rust FFI for Android and generates Kotlin bindings (runs make android)"
-    workingDir = File(rootDir, "rustySDK")
-    commandLine("make", "android")
-}
-
-tasks.register<Exec>("buildRustIos") {
-    group = "rust"
-    description = "Cross-compiles Rust FFI for iOS, creates the XCFramework, and regenerates iosApp.xcodeproj"
-    workingDir = File(rootDir, "rustySDK")
-    commandLine("make", "ios")
-    // Make owns Rust + bindings + XCFramework. Gradle owns the Xcode project.
-    // Chain them so a single buildRustIos invocation still produces a fully buildable iOS tree.
-    finalizedBy("generateXcodeProject")
-}
-
 tasks.register<Delete>("cleanXcodeProject") {
     group = "xcode"
     description = "Deletes xcodegen-generated artifacts (iosApp.xcodeproj + Info.plist)"
@@ -243,18 +204,6 @@ tasks.register<Delete>("cleanXcodeProject") {
         File(rootDir, "iosApp/iosApp.xcodeproj"),
         File(rootDir, "iosApp/iosApp/Info.plist"),
     )
-}
-
-tasks.register<Exec>("cleanBuildIos") {
-    group = "rust"
-    description = "Cleans all Rust/iOS artifacts (including the Xcode project) and rebuilds from scratch"
-    workingDir = File(rootDir, "rustySDK")
-    commandLine("make", "clean")
-    dependsOn("cleanXcodeProject")
-    finalizedBy("buildRustIos")
-    doLast {
-        println("Make sure to run a gradle sync after")
-    }
 }
 
 tasks.register<Exec>("generateXcodeProject") {
@@ -265,7 +214,6 @@ tasks.register<Exec>("generateXcodeProject") {
     environment("VERSION_NAME", appVersionName)
     environment("BUILD_NUMBER", appBuildNumber.toString())
     commandLine("xcodegen", "generate")
-    mustRunAfter("buildRustIos", "cleanBuildIos")
     doLast {
         logger.lifecycle("\n⚠️  If the iOS run configuration is missing in Android Studio, run: File > Sync Project with Gradle Files")
     }
