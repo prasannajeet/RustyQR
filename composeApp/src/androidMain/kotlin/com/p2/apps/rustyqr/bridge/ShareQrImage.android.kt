@@ -4,8 +4,6 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import arrow.core.Either
 import com.p2.apps.rustyqr.AppContextHolder
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val FILE_PROVIDER_AUTHORITY = "com.p2.apps.rustyqr.fileprovider"
@@ -16,7 +14,7 @@ actual suspend fun shareQrImage(
     suggestedName: String,
 ): Either<String, Unit> {
     val context = AppContextHolder.context
-    return withContext(Dispatchers.IO) {
+    return bridgeIo.run {
         Either
             .catch {
                 val dir = File(context.cacheDir, SHARE_CACHE_DIR).apply { mkdirs() }

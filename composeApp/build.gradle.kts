@@ -163,6 +163,17 @@ detekt {
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     exclude { it.file.absolutePath.contains("/build/") }
+    exclude { it.file.absolutePath.contains("/androidMain/kotlin/generated/") }
+}
+
+// `detekt` is the entry point for lintAll and the pre-commit hook. Besides the source-set scan above (no type
+// resolution), it runs the type-resolved KMP tasks. One task per compilation, no duplicates:
+//  - detektMetadataCommonMain: commonMain (detektMetadataMain analyses the same files)
+//  - detektMetadataIosMain:    iosMain (the per-target iosArm64/iosSimulatorArm64 tasks have no sources of their own)
+//  - detektAndroidDebug:       androidMain (detektAndroidRelease analyses the same files)
+// commonTest has no type-resolved task in the Kotlin Gradle plugin; the source-set scan covers it.
+tasks.named("detekt") {
+    dependsOn("detektMetadataCommonMain", "detektMetadataIosMain", "detektAndroidDebug")
 }
 
 tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach {

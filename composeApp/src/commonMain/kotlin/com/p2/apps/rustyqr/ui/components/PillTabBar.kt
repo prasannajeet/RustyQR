@@ -82,8 +82,7 @@ fun PillTabBar(
                 PillTabItem(
                     tab = tab,
                     isSelected = tab == selectedTab,
-                    tabIndex = index + 1,
-                    totalTabs = Tab.entries.size,
+                    position = TabPosition(number = index + 1, count = Tab.entries.size),
                     onSelected = { onTabSelected(tab) },
                     modifier = pillTabItemModifier,
                 )
@@ -92,12 +91,17 @@ fun PillTabBar(
     }
 }
 
+/** 1-based [number] of a tab out of [count] tabs, announced to accessibility services. */
+private class TabPosition(
+    val number: Int,
+    val count: Int,
+)
+
 @Composable
 private fun PillTabItem(
     tab: Tab,
     isSelected: Boolean,
-    tabIndex: Int,
-    totalTabs: Int,
+    position: TabPosition,
     onSelected: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -131,7 +135,7 @@ private fun PillTabItem(
             .semantics {
                 // stateDescription is merged into the selectable node below so
                 // TalkBack announces e.g. "Scan tab, selected, 1 of 2".
-                stateDescription = "$tabStateDescription, $tabIndex of $totalTabs"
+                stateDescription = "$tabStateDescription, ${position.number} of ${position.count}"
             }.selectable(
                 selected = isSelected,
                 role = Role.Tab,
