@@ -18,6 +18,8 @@ private const val NUMERIC_CAPACITY = 5596
 private const val ALPHANUMERIC_CAPACITY = 3391
 private const val BYTE_CAPACITY = 2331
 private const val MIXED_UNIT = "id=0123456789012345678901234567890123456789;"
+private const val EMOJI = "\uD83D\uDE00"
+private val EMOJI_COUNTS = listOf(500, 582, 583, 1000, 1500)
 private val MIXED_CONTENT_LENGTHS = listOf(BYTE_CAPACITY, 3000, 3500, 4000, 4500)
 
 class BindingsSmokeTest {
@@ -75,20 +77,31 @@ class BindingsSmokeTest {
     @Test
     fun contentFitsAgreesWithGenerationForMixedContent() {
         for (length in MIXED_CONTENT_LENGTHS) {
-            val content = MIXED_UNIT.repeat(length).take(length)
-            if (contentFits(content)) {
-                assertTrue(generatePng(content, QR_SIZE_PX).isNotEmpty(), "length $length")
-            } else {
-                assertFailsWith<FfiQrException.ContentTooLong>("length $length") {
-                    generatePng(content, QR_SIZE_PX)
-                }
-            }
+            assertAgreesWithGeneration(MIXED_UNIT.repeat(length).take(length), "length $length")
+        }
+    }
+
+    @Test
+    fun contentFitsAgreesWithGenerationForSurrogatePairs() {
+        for (count in EMOJI_COUNTS) {
+            assertAgreesWithGeneration(EMOJI.repeat(count), "emoji count $count")
         }
     }
 
     @Test
     fun emptyContentCannotBeChecked() {
         assertFailsWith<FfiQrException.InvalidInput> { contentFits("") }
+    }
+
+    private fun assertAgreesWithGeneration(
+        content: String,
+        message: String,
+    ) {
+        if (contentFits(content)) {
+            assertTrue(generatePng(content, QR_SIZE_PX).isNotEmpty(), message)
+        } else {
+            assertFailsWith<FfiQrException.ContentTooLong>(message) { generatePng(content, QR_SIZE_PX) }
+        }
     }
 
     private fun assertBoundary(

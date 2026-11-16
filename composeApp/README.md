@@ -102,7 +102,8 @@ composeApp/src/
 │       │   ├── navigation/                 # Tab sealed hierarchy
 │       │   └── theme/                      # RustyQrTheme, Color, Type, Shape, Motion
 │       └── bridge/                         # platform contracts: expect declarations, plus the QrBridge object
-│           ├── QrBridge.kt                 # object (not an expect): generateQrPng, decodeQr, decodeQrFromRaw, getLibraryVersion
+│           ├── QrBridge.kt                 # object (not an expect), implements QrEncoder: generateQrPng, contentFits, decodeQr, decodeQrFromRaw, getLibraryVersion
+│           ├── QrEncoder.kt                # plain interface (not an expect): generateQrPng + contentFits, the seam GenerateViewModel tests fake
 │           ├── CameraPreview.kt            # @Composable — platform draws the live preview + decodes frames
 │           ├── CameraPermission.kt         # expect funs — status check, request, permanent-denied, openAppSettings
 │           ├── HapticFeedback.kt           # expect fun — triggerImpactHaptic
@@ -187,7 +188,7 @@ Every time shared code needs platform hardware or a platform API, it goes throug
 `expect / actual` declaration in the `bridge/` package. The one exception is Rust:
 
 ```
-commonMain/bridge/QrBridge.kt     object QrBridge { fun generateQrPng(...): Either<QrError, ByteArray> }
+commonMain/bridge/QrBridge.kt     object QrBridge : QrEncoder { fun generateQrPng(...): Either<QrError, ByteArray>; fun contentFits(...) }
         │
         └─► :rustyqr-bindings generated Kotlin (commonMain API, one actual per platform)
               ├─ Android: JNA → librusty_qr_ffi.so
@@ -196,9 +197,11 @@ commonMain/bridge/QrBridge.kt     object QrBridge { fun generateQrPng(...): Eith
 
 `QrBridge` is **one `commonMain` object over the generated bindings**, not an `expect`. The bindings
 module already contains the per-platform actuals, so `composeApp` needs none. `QrBridge` calls the
-generated functions, wraps `generateQrPng`, `decodeQr` and `decodeQrFromRaw` in `Either.catch`, and
-maps `FfiQrException` to the app's `QrError`. `getLibraryVersion()` is not wrapped: it returns a
-plain `String` and can throw.
+generated functions, wraps `generateQrPng`, `contentFits`, `decodeQr` and `decodeQrFromRaw` in
+`Either.catch`, and maps `FfiQrException` to the app's `QrError`. `getLibraryVersion()` is not wrapped:
+it returns a plain `String` and can throw. `QrBridge` implements the plain `QrEncoder` interface
+(`generateQrPng`, `contentFits`), which `GenerateViewModel` takes as its last constructor parameter so
+tests can fake it.
 
 ### Conventions
 

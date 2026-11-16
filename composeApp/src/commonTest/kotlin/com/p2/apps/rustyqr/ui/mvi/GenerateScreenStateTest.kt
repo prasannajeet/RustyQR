@@ -48,6 +48,22 @@ class GenerateScreenStateTest {
     }
 
     @Test
+    fun hintStaysWhileEditingOverLimitText() {
+        val state = GenerateScreenState(inputText = "abcd", contentFit = ContentFit("abc", fits = false))
+        assertTrue(state.showsTooLongHint)
+        assertFalse(state.isInputTooLong)
+    }
+
+    @Test
+    fun hintHidesWhenTextIsBlankOrVerdictFits() {
+        val tooLong = ContentFit("abc", fits = false)
+        val fitting = ContentFit("abc", fits = true)
+        assertFalse(GenerateScreenState(inputText = "  ", contentFit = tooLong).showsTooLongHint)
+        assertFalse(GenerateScreenState(inputText = "abc", contentFit = fitting).showsTooLongHint)
+        assertFalse(GenerateScreenState(inputText = "abc").showsTooLongHint)
+    }
+
+    @Test
     fun statesDifferingOnlyInContentFitAreNotEqual() {
         val first = GenerateScreenState(inputText = "a", contentFit = ContentFit("a", fits = true))
         val second = GenerateScreenState(inputText = "a", contentFit = ContentFit("a", fits = false))

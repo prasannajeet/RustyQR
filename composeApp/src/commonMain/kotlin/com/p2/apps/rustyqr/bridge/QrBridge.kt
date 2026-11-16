@@ -43,7 +43,8 @@ object QrBridge : QrEncoder {
      * Reports whether [content] fits in a QR code, as decided by the same Rust encoder that generates it.
      *
      * @param content The text or URL to check. Must not be empty.
-     * @return [Either.Right] with whether it fits, or [Either.Left] with [QrError.InvalidInput] for empty content.
+     * @return [Either.Right] with whether it fits, or [Either.Left] with [QrError.InvalidInput] for empty content, or another [QrError]
+     *   if the check itself fails.
      */
     override fun contentFits(content: String): Either<QrError, Boolean> =
         Either

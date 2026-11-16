@@ -2,8 +2,7 @@
 //!
 //! This module provides [`generate_png`] for turning text content into a PNG
 //! image containing a QR code, [`generate_with_config`] for configurable
-//! generation, [`content_fits`] and [`content_fits_at_level`] for checking
-//! capacity without rendering, and [`get_library_version`] for querying the crate version at
+//! generation, [`content_fits`] for checking capacity without rendering, and [`get_library_version`] for querying the crate version at
 //! runtime.
 //!
 //! # Pipeline
@@ -225,7 +224,7 @@ pub fn content_fits(content: &str) -> Result<bool, QrError> {
 ///
 /// * [`QrError::InvalidInput`] – `content` is empty.
 /// * [`QrError::EncodingFailed`] – the `qrcode` library failed for a reason other than capacity.
-pub fn content_fits_at_level(content: &str, error_correction: QrErrorCorrection) -> Result<bool, QrError> {
+fn content_fits_at_level(content: &str, error_correction: QrErrorCorrection) -> Result<bool, QrError> {
     validate_content(content)?;
     match encode_bits(content.as_bytes(), error_correction.to_ec_level()) {
         Ok(_) => Ok(true),
@@ -285,7 +284,10 @@ mod tests {
     ];
 
     /// Byte-mode capacity at level M, from [`V40_CAPACITY`].
-    const BYTE_CAPACITY_LEVEL_M: usize = 2331;
+    const BYTE_CAPACITY_LEVEL_M: usize = {
+        let [_, (_, _, _, byte), _, _] = V40_CAPACITY;
+        byte
+    };
 
     /// Upper bound on characters a scanning test tries before giving up.
     const SCAN_LIMIT: usize = 20_000;
@@ -632,13 +634,7 @@ mod tests {
 
     #[test]
     fn with_config_holds_the_byte_capacity_of_each_level() -> Result<(), Box<dyn std::error::Error>> {
-        let capacities = [
-            (QrErrorCorrection::Low, 2953),
-            (QrErrorCorrection::Medium, 2331),
-            (QrErrorCorrection::Quartile, 1663),
-            (QrErrorCorrection::High, 1273),
-        ];
-        for (level, capacity) in capacities {
+        for (level, _, _, capacity) in V40_CAPACITY {
             let text = "x12345".repeat(capacity);
             let config = QrConfig {
                 size: 256,
@@ -755,6 +751,12 @@ mod tests {
         assert!(fits_agreeing_with_generation(at_limit, QrErrorCorrection::Medium)?);
         assert!(!fits_agreeing_with_generation(over, QrErrorCorrection::Medium)?);
         Ok(())
+    }
+
+    #[test]
+    fn byte_capacity_level_m_comes_from_the_medium_row() {
+        assert_eq!(V40_CAPACITY.get(1).map(|row| row.0), Some(QrErrorCorrection::Medium));
+        assert_eq!(BYTE_CAPACITY_LEVEL_M, 2331);
     }
 
     #[test]

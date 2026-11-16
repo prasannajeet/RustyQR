@@ -25,7 +25,8 @@ interface QrEncoder {
      * Asks Rust whether [content] fits in a QR code, using the same encoder as [generateQrPng].
      *
      * @return [Either.Right] with `true` when generation would not fail on length, `false` when it would return
-     *   [QrError.ContentTooLong], or [Either.Left] with [QrError.InvalidInput] for empty content.
+     *   [QrError.ContentTooLong], or [Either.Left] with [QrError.InvalidInput] for empty content, or another
+     *   [QrError] if the check itself fails.
      */
     fun contentFits(content: String): Either<QrError, Boolean>
 }

@@ -80,14 +80,14 @@ types) automatically.
 
 Six stateless, pure functions. Same input → same output, no side effects, trivially thread-safe.
 
-| Function               | Input                          | Output         | Use Case                                                     |
-|------------------------|--------------------------------|----------------|--------------------------------------------------------------|
-| `generate_png`         | text + size                    | PNG bytes      | Generate a QR code image to display in your app              |
-| `generate_with_config` | text + config (size, EC level) | PNG bytes      | Generate with custom error correction                        |
-| `decode_qr`            | PNG/JPEG bytes                 | decoded text   | Decode a QR code from a saved image                          |
-| `decode_qr_from_raw`   | grayscale pixels + dimensions  | decoded text   | Decode from a live camera frame (no image encoding overhead) |
-| `get_library_version`  | —                              | version string | Runtime version check                                        |
-| `content_fits`         | text                           | bool           | Whether `generate_png` can encode the text (`false` = too long)   |
+| Function               | Input                          | Output         | Use Case                                                        |
+|------------------------|--------------------------------|----------------|-----------------------------------------------------------------|
+| `generate_png`         | text + size                    | PNG bytes      | Generate a QR code image to display in your app                 |
+| `generate_with_config` | text + config (size, EC level) | PNG bytes      | Generate with custom error correction                           |
+| `decode_qr`            | PNG/JPEG bytes                 | decoded text   | Decode a QR code from a saved image                             |
+| `decode_qr_from_raw`   | grayscale pixels + dimensions  | decoded text   | Decode from a live camera frame (no image encoding overhead)    |
+| `get_library_version`  | —                              | version string | Runtime version check                                           |
+| `content_fits`         | text                           | bool           | Whether `generate_png` can encode the text (`false` = too long) |
 
 ---
 
@@ -308,7 +308,7 @@ either `Ok(value)` or `Err(error)`:
 // This function returns either a Vec<u8> (success) or a QrError (failure)
 pub fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, QrError> {
     validate_generate_inputs(content, size)?;  // ? = return early if Err
-    let code = encode(content.as_bytes(), qrcode::EcLevel::M)?;  // ContentTooLong if too long
+    let code = encode(content.as_bytes(), GENERATE_PNG_LEVEL.to_ec_level())?;  // ContentTooLong if too long
     render_qr_to_png(&code, size)
 }
 ```
@@ -753,13 +753,13 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 
 | Tier              | Location                | Count | What it validates                              |
 |-------------------|-------------------------|-------|------------------------------------------------|
-| Unit tests        | `crates/core/src/*.rs`  | 52    | Individual functions in isolation              |
+| Unit tests        | `crates/core/src/*.rs`  | 53    | Individual functions in isolation              |
 | Integration tests | `crates/core/tests/`    | 12    | Cross-module behaviour, round-trips (determinism 2, JPEG 1, round trip 6, thread safety 3) |
 | FFI tests         | `crates/ffi/src/lib.rs` | 17    | Type conversion, delegation, error propagation |
 | Doctests          | `crates/core/src/*.rs`  | 2     | Examples in the documentation compile and run  |
 | Benchmarks        | `crates/core/benches/`  | 16    | Performance against PRD targets (not tests; run with `cargo bench`) |
 
-The counts are from `cd rustySDK && cargo test --workspace` (52 + 2 + 1 + 6 + 3 + 17 + 2 = 83).
+The counts are from `cd rustySDK && cargo test --workspace` (53 + 2 + 1 + 6 + 3 + 17 + 2 = 84).
 
 ### What's Tested
 

@@ -31,7 +31,7 @@ import rustyqr.composeapp.generated.resources.generate_message_saved
 private const val QR_IMAGE_SIZE_PX = 512
 private const val SHARE_FILE_PREFIX = "rusty-qr"
 private const val SHARE_FILE_NAME_MAX_INPUT_CHARS = 24
-private const val KEY_INPUT_TEXT = "generate.inputText"
+internal const val KEY_INPUT_TEXT = "generate.inputText"
 
 private val tooLongText = UiText.Res(Res.string.generate_error_too_long)
 
@@ -148,11 +148,14 @@ class GenerateViewModel(
         }
     }
 
-    /** Advisory pre-check; a Left leaves the verdict unknown, and generation reports the same error itself. */
+    /** Advisory pre-check; a Left clears the verdict, and generation reports the same error itself. */
     private suspend fun checkContentFit(content: String) {
         if (content.isNotEmpty()) {
             withContext(ioDispatcher) { qrEncoder.contentFits(content) }
-                .onRight { fits -> state.update { it.copy(contentFit = ContentFit(content, fits)) } }
+                .fold(
+                    ifLeft = { state.update { s -> s.copy(contentFit = null) } },
+                    ifRight = { fits -> state.update { it.copy(contentFit = ContentFit(content, fits)) } },
+                )
         }
     }
 

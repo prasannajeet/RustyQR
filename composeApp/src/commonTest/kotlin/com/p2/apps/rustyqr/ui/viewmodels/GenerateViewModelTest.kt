@@ -1,6 +1,10 @@
 package com.p2.apps.rustyqr.ui.viewmodels
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
@@ -8,9 +12,11 @@ import com.p2.apps.rustyqr.bridge.QrEncoder
 import com.p2.apps.rustyqr.model.QrError
 import com.p2.apps.rustyqr.ui.UiText
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -28,7 +34,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private const val ABOVE_OLD_LIMIT = 5596
+private const val NUMERIC_CAPACITY_LEVEL_M = 5596
 private val tooLongError = UiText.Res(Res.string.generate_error_too_long)
 
 /** A [QrEncoder] whose answers come from the test and which records every call. */
@@ -64,13 +70,20 @@ class GenerateViewModelTest {
 
     @AfterTest
     fun tearDown() {
+        store.clear()
         Dispatchers.resetMain()
     }
+
+    private val store = ViewModelStore()
 
     private fun viewModel(
         encoder: QrEncoder,
         handle: SavedStateHandle = SavedStateHandle(),
-    ) = GenerateViewModel(handle, dispatcher, encoder)
+        ioDispatcher: CoroutineDispatcher = dispatcher,
+    ): GenerateViewModel {
+        val factory = viewModelFactory { initializer { GenerateViewModel(handle, ioDispatcher, encoder) } }
+        return ViewModelProvider.create(store, factory)[GenerateViewModel::class]
+    }
 
     private fun GenerateViewModel.type(text: String) = onIntent(GenerateQRCodeScreenIntent.UpdateText(text))
 
@@ -79,7 +92,7 @@ class GenerateViewModelTest {
         runTest(dispatcher) {
             val encoder = FakeQrEncoder()
             val viewModel = viewModel(encoder)
-            val text = "7".repeat(ABOVE_OLD_LIMIT)
+            val text = "7".repeat(NUMERIC_CAPACITY_LEVEL_M)
 
             viewModel.type(text)
             advanceUntilIdle()
@@ -87,6 +100,7 @@ class GenerateViewModelTest {
             viewModel.onIntent(GenerateQRCodeScreenIntent.Generate)
             advanceUntilIdle()
 
+            assertEquals(listOf(text), encoder.checked)
             assertEquals(listOf(text), encoder.generated)
             assertNotNull(viewModel.state.value.qrImageBytes)
         }
@@ -110,12 +124,38 @@ class GenerateViewModelTest {
     @Test
     fun pendingCheckDoesNotBlock() =
         runTest(dispatcher) {
-            val viewModel = viewModel(FakeQrEncoder(fits = { false.right() }))
+            val ioScheduler = TestCoroutineScheduler()
+            val encoder = FakeQrEncoder(fits = { false.right() })
+            val viewModel = viewModel(encoder, ioDispatcher = StandardTestDispatcher(ioScheduler))
 
             viewModel.type("abc")
-
+            advanceUntilIdle()
+            assertTrue(encoder.checked.isEmpty())
             assertFalse(viewModel.state.value.isInputTooLong)
             assertTrue(viewModel.state.value.canGenerate)
+
+            ioScheduler.advanceUntilIdle()
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.isInputTooLong)
+        }
+
+    @Test
+    fun newerTextCancelsTheInFlightCheck() =
+        runTest(dispatcher) {
+            val ioScheduler = TestCoroutineScheduler()
+            val encoder = FakeQrEncoder()
+            val viewModel = viewModel(encoder, ioDispatcher = StandardTestDispatcher(ioScheduler))
+
+            viewModel.type("a")
+            advanceUntilIdle()
+            viewModel.type("ab")
+            advanceUntilIdle()
+            ioScheduler.advanceUntilIdle()
+            advanceUntilIdle()
+            ioScheduler.advanceUntilIdle()
+            advanceUntilIdle()
+
+            assertEquals(listOf("ab"), encoder.checked)
         }
 
     @Test
@@ -165,7 +205,7 @@ class GenerateViewModelTest {
     fun restoredInputIsChecked() =
         runTest(dispatcher) {
             val encoder = FakeQrEncoder(fits = { false.right() })
-            val viewModel = viewModel(encoder, SavedStateHandle(mapOf("generate.inputText" to "x")))
+            val viewModel = viewModel(encoder, SavedStateHandle(mapOf(KEY_INPUT_TEXT to "x")))
 
             advanceUntilIdle()
 
@@ -187,6 +227,24 @@ class GenerateViewModelTest {
 
             assertEquals(listOf("abc"), encoder.generated)
             assertContentEquals(byteArrayOf(1), viewModel.state.value.qrImageBytes)
+        }
+
+    @Test
+    fun failedCheckClearsAStaleVerdict() =
+        runTest(dispatcher) {
+            val viewModel =
+                viewModel(
+                    FakeQrEncoder(fits = { if (it == "abc") false.right() else QrError.EncodingFailed("boom").left() }),
+                )
+
+            viewModel.type("abc")
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.showsTooLongHint)
+            viewModel.type("abcd")
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.showsTooLongHint)
+            assertNull(viewModel.state.value.contentFit)
         }
 
     @Test

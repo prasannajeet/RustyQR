@@ -129,7 +129,7 @@ jobs:
       # --- Gradle (dependency, wrapper and build caches) ---
       - uses: gradle/actions/setup-gradle@v5
 
-      # --- Simulator tests: the bindings module, and the app (QrInputLimitNativeTest checks the byte limit against Rust) ---
+      # --- Simulator tests: the bindings module, and the app (ContentFitNativeTest checks contentFits against the real Rust library) ---
       - run: ./gradlew :rustyqr-bindings:iosSimulatorArm64Test :composeApp:iosSimulatorArm64Test
 
       # --- Regenerate iosApp.xcodeproj (Gradle owns this) ---

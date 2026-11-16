@@ -50,8 +50,16 @@ data class GenerateScreenState(
      */
     val isInputTooLong: Boolean get() = contentFit == ContentFit(contentToEncode, fits = false)
 
+    /**
+     * Whether the too-long hint shows: the latest verdict says the text did not fit and some text remains.
+     *
+     * Unlike [isInputTooLong] this ignores which text the verdict was for, so the hint stays put while the
+     * user edits over-limit text and the next check is pending. Generation is still gated by [canGenerate].
+     */
+    val showsTooLongHint: Boolean get() = contentFit?.fits == false && contentToEncode.isNotEmpty()
+
     /** Whether the Generate action is available for the current input. */
-    val canGenerate: Boolean get() = inputText.isNotBlank() && !isInputTooLong
+    val canGenerate: Boolean get() = contentToEncode.isNotEmpty() && !isInputTooLong
 
     override fun equals(other: Any?): Boolean = this === other || (other is GenerateScreenState && sameContentAs(other))
 

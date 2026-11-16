@@ -251,7 +251,9 @@ The generated API is a single `commonMain` surface (`generatePng`, `decodeQr`, `
 `FfiQrException`, `FfiQrErrorCorrection`) with one `actual` per platform.
 `composeApp/src/commonMain/.../bridge/QrBridge.kt` is a plain `object` over that API: it calls the
 generated functions and maps `FfiQrException` to the app's `Either<QrError, T>`. It is not an
-`expect`, and it has no platform actuals.
+`expect`, and it has no platform actuals. It implements the plain `QrEncoder` interface, the seam
+`GenerateViewModel` takes so tests can fake Rust; the ViewModel calls `contentFits` through it for each
+distinct trimmed text, cancelling the previous check, so Generate is gated by Rust's own capacity rule.
 
 > **Stale checkouts.** An older checkout may still have `composeApp/src/androidMain/jniLibs/` and
 > `composeApp/src/androidMain/kotlin/generated/` on disk from the previous build pipeline. Gradle

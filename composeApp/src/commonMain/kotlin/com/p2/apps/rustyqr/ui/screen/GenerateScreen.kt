@@ -184,7 +184,7 @@ private fun InputForm(
 
         QrInputField(
             inputText = state.inputText,
-            isInputTooLong = state.isInputTooLong,
+            showsTooLongHint = state.showsTooLongHint,
             onTextChange = { onIntent(GenerateQRCodeScreenIntent.UpdateText(it)) },
         )
 
@@ -205,7 +205,7 @@ private fun InputForm(
 @Composable
 private fun QrInputField(
     inputText: String,
-    isInputTooLong: Boolean,
+    showsTooLongHint: Boolean,
     onTextChange: (String) -> Unit,
 ) {
     val keyboardOptions =
@@ -223,7 +223,7 @@ private fun QrInputField(
             unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
         )
     val tooLongSupportingText: (@Composable () -> Unit)? =
-        if (isInputTooLong) {
+        if (showsTooLongHint) {
             {
                 Text(
                     stringResource(Res.string.generate_error_too_long),
@@ -250,7 +250,7 @@ private fun QrInputField(
         keyboardOptions = keyboardOptions,
         shape = MaterialTheme.shapes.medium,
         colors = fieldColors,
-        isError = isInputTooLong,
+        isError = showsTooLongHint,
         supportingText = tooLongSupportingText,
         minLines = 3,
     )
