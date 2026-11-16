@@ -5,7 +5,7 @@ edition = "2021"
 
 [lib]
 name = "rusty_qr_ffi"
-crate-type = ["lib", "cdylib", "staticlib"]
+crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 rusty-qr-core = { path = "../core" }
