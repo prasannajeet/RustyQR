@@ -175,12 +175,12 @@ jobs:
           key: uniffi-bindgen-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
 
       # --- Android SDK + NDK (the build pins it with ORG_GRADLE_PROJECT_ndkVersion) ---
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       - uses: actions/cache@v4
         id: cache-ndk
         with:
-          path: /usr/local/lib/android/sdk/ndk/${{ env.NDK_VERSION }}
+          path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
           key: ndk-${{ runner.os }}-${{ env.NDK_VERSION }}
 
       - if: steps.cache-ndk.outputs.cache-hit != 'true'
