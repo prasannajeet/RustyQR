@@ -21,14 +21,14 @@ class GenerateScreenStateTest {
 
     @Test
     fun inputAtTheLimitCanGenerate() {
-        val state = GenerateScreenState(inputText = "a".repeat(MAX_QR_INPUT_LENGTH))
+        val state = GenerateScreenState(inputText = "a".repeat(MAX_QR_INPUT_BYTES))
         assertFalse(state.isInputTooLong)
         assertTrue(state.canGenerate)
     }
 
     @Test
     fun inputOverTheLimitIsTooLongAndCannotGenerate() {
-        val state = GenerateScreenState(inputText = "a".repeat(MAX_QR_INPUT_LENGTH + 1))
+        val state = GenerateScreenState(inputText = "a".repeat(MAX_QR_INPUT_BYTES + 1))
         assertTrue(state.isInputTooLong)
         assertFalse(state.canGenerate)
     }

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.p2.apps.rustyqr.bridge.QrBridge
 import com.p2.apps.rustyqr.bridge.saveQrImage
 import com.p2.apps.rustyqr.bridge.shareQrImage
+import com.p2.apps.rustyqr.model.QrError
 import com.p2.apps.rustyqr.ui.UiText
 import com.p2.apps.rustyqr.ui.mvi.AnimationPhase
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
@@ -26,6 +27,13 @@ private const val QR_IMAGE_SIZE_PX = 512
 private const val SHARE_FILE_PREFIX = "rusty-qr"
 private const val SHARE_FILE_NAME_MAX_INPUT_CHARS = 24
 private const val KEY_INPUT_TEXT = "generate.inputText"
+
+/** Oversized content has a localised message; any other error shows Rust's own reason. */
+internal fun QrError.toUiText(): UiText =
+    when (this) {
+        is QrError.ContentTooLong -> UiText.Res(Res.string.generate_error_too_long)
+        else -> UiText.Raw(reason)
+    }
 
 /**
  * Processes [GenerateQRCodeScreenIntent]s and updates [GenerateScreenState].
@@ -94,7 +102,7 @@ class GenerateViewModel(
                     state.update {
                         it.copy(
                             isGenerating = false,
-                            error = UiText.Raw(error.reason),
+                            error = error.toUiText(),
                         )
                     }
                 },

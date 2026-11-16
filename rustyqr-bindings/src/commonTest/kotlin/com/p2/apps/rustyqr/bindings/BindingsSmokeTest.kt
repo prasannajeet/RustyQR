@@ -11,6 +11,7 @@ import kotlin.test.assertTrue
 
 private const val QR_SIZE_PX = 256u
 private const val CONTENT = "hello"
+private const val MAX_CONTENT_BYTES = 2331
 
 class BindingsSmokeTest {
     @Test
@@ -29,6 +30,18 @@ class BindingsSmokeTest {
     fun emptyContentFailsWithInvalidInput() {
         assertFailsWith<FfiQrException.InvalidInput> {
             generatePng("", QR_SIZE_PX)
+        }
+    }
+
+    @Test
+    fun contentAtTheByteLimitEncodes() {
+        assertTrue(generatePng("a".repeat(MAX_CONTENT_BYTES), QR_SIZE_PX).isNotEmpty())
+    }
+
+    @Test
+    fun contentOneByteOverTheLimitFailsWithContentTooLong() {
+        assertFailsWith<FfiQrException.ContentTooLong> {
+            generatePng("a".repeat(MAX_CONTENT_BYTES + 1), QR_SIZE_PX)
         }
     }
 }
