@@ -140,12 +140,13 @@ jobs:
       - run: test -d iosApp/iosApp.xcodeproj
 
       # --- Build iOS app for simulator (the Xcode script compiles the Kotlin framework and links Rust into it) ---
-      # iPhone 17 on iOS 26.4 exists in the macos-26 image's Xcode 26.4 simulator runtime.
+      # No OS pin: the image's simulator runtimes drift (26.2, 26.4.1 and 26.5 today), so an exact OS can vanish.
+      # xcodebuild takes the first iPhone 17, which builds arm64 only; a generic destination would add x86_64.
       - run: |
           xcodebuild build \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4'
+            -destination 'platform=iOS Simulator,name=iPhone 17'
 
       # --- Lint: ktlint + detekt for composeApp, androidApp, rustyqr-bindings and the root scripts, ktlint for
       # build-logic, plus swiftlint (ktlint on iosMain/iosTest only runs on macOS) ---
