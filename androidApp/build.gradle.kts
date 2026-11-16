@@ -3,8 +3,7 @@ import io.gitlab.arturbosch.detekt.Detekt
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.detekt)
-    alias(libs.plugins.ktlint)
+    id("rustyqr.kotlin-lint")
 }
 
 val appVersionName = gradle.extra["appVersionName"] as String
@@ -66,24 +65,10 @@ dependencies {
     implementation(libs.compose.runtime)
     implementation(libs.compose.uiToolingPreview)
     debugImplementation(libs.compose.uiTooling)
-    detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:${libs.versions.detekt.get()}")
 }
-
-val detektConfigFile = files("${rootProject.projectDir}/config/detekt/detekt.yml")
 
 detekt {
-    buildUponDefaultConfig = true
-    config.setFrom(detektConfigFile)
     source.setFrom(files("src/main/kotlin"))
-}
-
-tasks.withType<Detekt>().configureEach {
-    // Match on the project-relative path so a checkout that lives under a /build/ directory is not skipped.
-    val moduleRoot = project.projectDir
-    exclude {
-        val path = it.file.relativeTo(moduleRoot).invariantSeparatorsPath
-        path.startsWith("build/") || path.contains("/build/")
-    }
 }
 
 androidComponents {
@@ -101,7 +86,7 @@ androidComponents {
                 classpath.setFrom(variant.compileClasspath, sdkComponents.bootClasspath)
                 jvmTarget = jvmTargetVersion.majorVersion
                 buildUponDefaultConfig = true
-                config.setFrom(detektConfigFile)
+                config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
                 // Explicit paths: unset locations fall back to detekt.<ext>, which the plain `detekt` task also writes.
                 reports {
                     listOf(xml, html, txt, sarif, md).forEach {
@@ -123,14 +108,6 @@ androidComponents {
                 .named { it == mergeTaskName }
                 .configureEach { dependsOn(":composeApp:verifyReleaseRustProfile") }
         }
-    }
-}
-
-ktlint {
-    android.set(true)
-    verbose.set(true)
-    filter {
-        exclude { it.file.path.contains("/build/") }
     }
 }
 

@@ -8,6 +8,4 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.androidKotlinMultiplatformLibrary) apply false
     alias(libs.plugins.uniffi) apply false
-    alias(libs.plugins.detekt).apply(false)
-    alias(libs.plugins.ktlint).apply(false)
 }

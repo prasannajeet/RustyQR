@@ -58,6 +58,7 @@ run {
 }
 
 pluginManagement {
+    includeBuild("build-logic")
     repositories {
         google {
             mavenContent {

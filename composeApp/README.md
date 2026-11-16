@@ -260,7 +260,7 @@ three tools also run automatically as a pre-commit hook (installed by
 
 | Tool       | Scope                   | Config                                           |
 |------------|-------------------------|--------------------------------------------------|
-| ktlint     | Kotlin sources          | `composeApp/.editorconfig` and `androidApp/.editorconfig` — Android mode, continuation indent 4 |
+| ktlint     | Kotlin sources          | root `.editorconfig` (every module) — Android mode, continuation indent 4; the shared setup is the `rustyqr.kotlin-lint` convention plugin in `build-logic/` |
 | detekt     | Kotlin sources          | `config/detekt/detekt.yml` — detekt defaults (max line length 120) plus the Compose `FunctionNaming` allowance; no suppressions. Type resolution covers androidMain and commonMain (`detektAndroidMain`) and `androidApp/src/main` (`detektDebug`) (detekt 1.x cannot type-resolve Kotlin/Native), iosMain and commonTest get the untyped scan |
 | SwiftLint  | `iosApp/` Swift sources | `.swiftlint.yml` — `trailing_whitespace` and `line_length` enabled |
 | rustfmt    | `rustySDK/` Rust sources | `rustySDK/rustfmt.toml` — edition 2024, max line width 120 (separate pre-commit step) |

@@ -423,6 +423,8 @@ Rusty-QR/
 │
 ├── version.properties          # versionName + buildNumber (single source for Android + iOS)
 ├── config/detekt/              # Detekt static analysis rules
+├── build-logic/                # Convention plugin `rustyqr.kotlin-lint`: shared detekt + ktlint setup for every module
+├── .editorconfig               # ktlint style for every Kotlin module
 ├── docs/                       # PRD, implementation plan, ADRs
 └── .husky/                     # Git hooks (pre-commit lint, commit-msg format)
 ```
