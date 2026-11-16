@@ -5,9 +5,9 @@ import android.content.Context
 /**
  * Process-scoped application [Context] for bridges that don't need an Activity.
  *
- * Initialized from the app module's `RustyQrApplication.onCreate`, so it is non-null for the entire
- * lifetime of any component that can run (including during Activity rotation).
+ * Set by [AppContextInitializer], which androidx.startup runs before any component of the process, so it is
+ * non-null for the entire lifetime of anything that can run (including during Activity rotation).
  */
-object AppContextHolder {
+internal object AppContextHolder {
     lateinit var context: Context
 }

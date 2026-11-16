@@ -48,6 +48,7 @@ kotlin {
         androidMain.dependencies {
             // api: ComponentActivity is in the public API through BridgeHostActivity's supertype.
             api(libs.androidx.activity.compose)
+            implementation(libs.androidx.startup.runtime)
             implementation(libs.androidx.camera.core)
             implementation(libs.androidx.camera.camera2)
             implementation(libs.androidx.camera.lifecycle)

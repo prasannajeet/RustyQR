@@ -94,7 +94,8 @@ composeApp/src/androidMain/
 ├── kotlin/com/p2/apps/rustyqr/
 │   ├── BridgeHostActivity.kt           # Open base Activity — registers in BridgeHostActivityHolder, owns the CAMERA launcher
 │   ├── BridgeHostActivityHolder.kt     # Weak-ref holder so bridges reach the foreground Activity
-│   ├── AppContextHolder.kt             # Static Application context for bridges (permissions, share, save)
+│   ├── AppContextHolder.kt             # Internal static Application context for bridges (permissions, share, save)
+│   ├── AppContextInitializer.kt        # androidx.startup Initializer that seeds AppContextHolder (declared in the manifest)
 │   ├── Platform.android.kt             # Platform() actual
 │   └── bridge/
 │       ├── CameraPreview.android.kt    # actual — CameraX PreviewView + ImageAnalysis
@@ -107,12 +108,11 @@ composeApp/src/androidMain/
 │       └── ImageDecoder.android.kt     # actual — BitmapFactory → ImageBitmap
 │
 ├── res/xml/                            # FileProvider paths
-└── AndroidManifest.xml                 # CAMERA permission and FileProvider (merged into the app's manifest)
+└── AndroidManifest.xml                 # CAMERA permission, FileProvider and the startup initializer (merged into the app's manifest)
 
 androidApp/src/main/                    # the Android app module
 ├── kotlin/com/p2/apps/rustyqr/
-│   ├── MainActivity.kt                 # Launcher Activity (extends BridgeHostActivity) — sets Compose content
-│   └── RustyQrApplication.kt           # Application subclass — seeds AppContextHolder
+│   └── MainActivity.kt                 # Launcher Activity (extends BridgeHostActivity) — sets Compose content
 ├── res/                                # Launcher icons, app_name
 └── AndroidManifest.xml                 # Application, launcher activity
 ```
