@@ -106,6 +106,10 @@ fn main() -> BenchResult {
     let mixed = "x12345".repeat(400);
     let mixed_2331 = mixed.get(..2331).ok_or("pattern too short")?;
     bench_content_fits(&mut c, "content_fits_2331B_mixed_fallback", mixed_2331, true)?;
+    // Non-ASCII content: ECI 26 plus Kanji-free segmentation.
+    let japanese = "日本語のテキスト、東京都渋谷区".repeat(100);
+    let japanese_2328 = japanese.get(..2328).ok_or("pattern too short")?;
+    bench_content_fits(&mut c, "content_fits_2328B_cjk", japanese_2328, true)?;
     bench_content_fits(&mut c, "content_fits_7000B_overflow", &"a".repeat(7000), false)?;
     // Input beyond the encodable cap is rejected before any parsing.
     bench_content_fits(&mut c, "content_fits_1MB_cap", &"a".repeat(1024 * 1024), false)?;

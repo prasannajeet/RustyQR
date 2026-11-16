@@ -46,15 +46,27 @@ fn map_encode_error(error: qrcode::types::QrError) -> QrError {
     }
 }
 
+/// ECI designator for UTF-8 (ISO/IEC 18004, Table 4 / AIM ECI registry).
+const ECI_UTF8: u32 = 26;
+
 /// Builds the QR data bits for `data` at `level`. This is THE capacity decision.
 ///
 /// Both generation ([`encode`]) and [`content_fits_at_level`] call this function,
 /// so "the bits were built" is exactly "generation will not return
 /// [`QrError::ContentTooLong`]": `QrCode::with_bits` cannot fail on capacity.
-/// The `qrcode` optimizer's mixed-mode segmentation is tried first; if it does not
-/// fit, a single byte-mode segment is tried (see [`single_byte_segment_bits`]),
-/// because each extra segment header can cost more bits than it saves. Input over
-/// [`MAX_ENCODABLE_BYTES`] is rejected first, so a huge paste costs no parsing.
+///
+/// * ASCII-only `data` uses the `qrcode` optimizer's mixed-mode segmentation
+///   (numeric, alphanumeric, byte). ASCII bytes are below 0x80, so they can never
+///   form Kanji pairs.
+/// * Any non-ASCII byte switches to UTF-8 mode: an ECI 26 header, then segments
+///   that are never Kanji (see [`utf8_segmented_bits`]). `qrcode`'s own parser would
+///   pack UTF-8 byte pairs that fall in Shift-JIS ranges into Kanji mode, which other
+///   scanners (iOS Camera, `ZXing`, Google Lens) decode as Shift-JIS and garble.
+///
+/// If the mixed-mode result does not fit, a single byte-mode segment is tried
+/// (see [`single_byte_segment_bits`]), because each extra segment header can cost
+/// more bits than it saves. Input over [`MAX_ENCODABLE_BYTES`] is rejected first,
+/// so a huge paste costs no parsing.
 fn encode_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits, QrError> {
     if data.len() > MAX_ENCODABLE_BYTES {
         return Err(QrError::ContentTooLong {
@@ -64,32 +76,76 @@ fn encode_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits
             ),
         });
     }
-    match qrcode::bits::encode_auto(data, level) {
-        Err(qrcode::types::QrError::DataTooLong) => single_byte_segment_bits(data, level),
-        other => other.map_err(map_encode_error),
+    let utf8 = !data.is_ascii();
+    let segmented = if utf8 {
+        utf8_segmented_bits(data, level)
+    } else {
+        qrcode::bits::encode_auto(data, level).ok()
+    };
+    match segmented {
+        Some(bits) => Ok(bits),
+        None => single_byte_segment_bits(data, level, utf8),
     }
 }
 
-/// Encodes `data` as one byte-mode segment in the smallest version that holds it.
+/// Segments non-ASCII `data` without Kanji and packs it behind an ECI 26 header.
 ///
-/// Version 40 is probed first: if a single byte segment misses version 40 it
-/// misses every version, so oversized input costs one pass instead of forty. Whether a
-/// single byte segment fits only improves as the version grows, so the smallest
-/// fitting version is found by binary search.
-fn single_byte_segment_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits, QrError> {
-    let Some(largest) = byte_segment_bits(data, qrcode::Version::Normal(40), level) else {
-        return Err(QrError::ContentTooLong {
-            reason: format!(
-                "{} UTF-8 bytes do not fit a version 40 QR code at level {level:?}",
-                data.len()
-            ),
-        });
-    };
+/// ASCII runs are segmented by the `qrcode` parser (it cannot emit Kanji for bytes
+/// below 0x80); each run containing bytes of 0x80 or more becomes one byte segment.
+/// The optimizer then merges neighbours wherever that is cheaper, as in `encode_auto`.
+/// Segments are optimised per character-count-width class (versions 1-9, 10-26, 27-40);
+/// the first class that fits wins, with the smallest fitting version inside it.
+fn utf8_segmented_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
+    let mut segments = Vec::new();
+    let mut offset = 0;
+    for run in data.chunk_by(|a, b| a.is_ascii() == b.is_ascii()) {
+        let end = offset + run.len();
+        if run.first().is_some_and(u8::is_ascii) {
+            segments.extend(
+                qrcode::optimize::Parser::new(run).map(|segment| qrcode::optimize::Segment {
+                    mode: segment.mode,
+                    begin: segment.begin + offset,
+                    end: segment.end + offset,
+                }),
+            );
+        } else {
+            segments.push(qrcode::optimize::Segment {
+                mode: qrcode::types::Mode::Byte,
+                begin: offset,
+                end,
+            });
+        }
+        offset = end;
+    }
+    [(1, 9), (10, 26), (27, 40)].into_iter().find_map(|(low, high)| {
+        let optimized = qrcode::optimize::Optimizer::new(segments.iter().copied(), qrcode::Version::Normal(high))
+            .collect::<Vec<_>>();
+        smallest_fitting_bits(low, high, |version| {
+            let mut bits = qrcode::bits::Bits::new(version);
+            bits.push_eci_designator(ECI_UTF8).ok()?;
+            bits.push_segments(data, optimized.iter().copied()).ok()?;
+            bits.push_terminator(level).ok()?;
+            Some(bits)
+        })
+    })
+}
+
+/// Finds the bits for the smallest normal version in `low..=high` for which `build` succeeds.
+///
+/// `build` must fail only for capacity, and fit monotonically: if it fits at a version
+/// it fits at every larger one. `high` is probed first, so data that fits nowhere in the
+/// range costs one pass; otherwise the smallest version is found by binary search.
+fn smallest_fitting_bits(
+    low: i16,
+    high: i16,
+    build: impl Fn(qrcode::Version) -> Option<qrcode::bits::Bits>,
+) -> Option<qrcode::bits::Bits> {
+    let mut best = build(qrcode::Version::Normal(high))?;
     // Invariant: `best` holds the bits for version `high`, which fits; versions below `low` do not.
-    let (mut low, mut high, mut best) = (1, 40, largest);
+    let (mut low, mut high) = (low, high);
     while low < high {
         let middle = low + (high - low) / 2;
-        match byte_segment_bits(data, qrcode::Version::Normal(middle), level) {
+        match build(qrcode::Version::Normal(middle)) {
             Some(bits) => {
                 high = middle;
                 best = bits;
@@ -97,15 +153,38 @@ fn single_byte_segment_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcod
             None => low = middle + 1,
         }
     }
-    Ok(best)
+    Some(best)
+}
+
+/// Encodes `data` as one byte-mode segment (behind an ECI 26 header when `utf8`) in the smallest version.
+///
+/// Version 40 is probed first: if a single byte segment misses version 40 it
+/// misses every version, so oversized input costs one pass instead of forty.
+fn single_byte_segment_bits(data: &[u8], level: qrcode::EcLevel, utf8: bool) -> Result<qrcode::bits::Bits, QrError> {
+    smallest_fitting_bits(1, 40, |version| byte_segment_bits(data, version, level, utf8)).ok_or_else(|| {
+        QrError::ContentTooLong {
+            reason: format!(
+                "{} UTF-8 bytes do not fit a version 40 QR code at level {level:?}",
+                data.len()
+            ),
+        }
+    })
 }
 
 /// Packs `data` as a single byte-mode segment at `version`, or `None` if it does not fit.
 ///
 /// `None` can only mean capacity: for `Version::Normal(1..=40)` the only error the
-/// `qrcode` push functions return is `DataTooLong`.
-fn byte_segment_bits(data: &[u8], version: qrcode::Version, level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
+/// `qrcode` push functions return is `DataTooLong` (the ECI designator 26 is valid).
+fn byte_segment_bits(
+    data: &[u8],
+    version: qrcode::Version,
+    level: qrcode::EcLevel,
+    utf8: bool,
+) -> Option<qrcode::bits::Bits> {
     let mut bits = qrcode::bits::Bits::new(version);
+    if utf8 {
+        bits.push_eci_designator(ECI_UTF8).ok()?;
+    }
     (bits.push_byte_data(data).is_ok() && bits.push_terminator(level).is_ok()).then_some(bits)
 }
 
@@ -289,6 +368,9 @@ mod tests {
         byte
     };
 
+    /// Capacity at level M for content with any non-ASCII byte: [`BYTE_CAPACITY_LEVEL_M`] minus the 12-bit ECI header.
+    const UTF8_CAPACITY_LEVEL_M: usize = 2330;
+
     /// Upper bound on characters a scanning test tries before giving up.
     const SCAN_LIMIT: usize = 20_000;
 
@@ -323,15 +405,15 @@ mod tests {
     /// Repeats `unit` char by char until the first overflow at level M.
     ///
     /// Returns `(longest fitting text, shortest overflowing text)`. Fails if the text overflows
-    /// at or below the 2331-byte guarantee.
-    fn scan_to_overflow(unit: &str) -> TestResult<(String, String)> {
+    /// at or below `guarantee` bytes.
+    fn scan_to_overflow(unit: &str, guarantee: usize) -> TestResult<(String, String)> {
         let mut text = String::new();
         for next in unit.chars().cycle().take(SCAN_LIMIT) {
             let previous_len = text.len();
             text.push(next);
             if !content_fits(&text)? {
                 assert!(
-                    previous_len + next.len_utf8() > BYTE_CAPACITY_LEVEL_M,
+                    previous_len + next.len_utf8() > guarantee,
                     "{} bytes of {unit:?} must always fit",
                     text.len()
                 );
@@ -533,14 +615,13 @@ mod tests {
 
     #[test]
     fn multibyte_boundary_is_measured_in_utf8_bytes() -> Result<(), Box<dyn std::error::Error>> {
-        // "é" is 2 bytes in UTF-8, so an odd limit needs one extra ASCII byte.
-        let at_limit = format!("a{}", "é".repeat(BYTE_CAPACITY_LEVEL_M / 2));
-        assert_eq!(at_limit.len(), BYTE_CAPACITY_LEVEL_M);
+        let at_limit = "é".repeat(UTF8_CAPACITY_LEVEL_M / 2);
+        assert_eq!(at_limit.len(), UTF8_CAPACITY_LEVEL_M);
         let encoded = generate_png(&at_limit, 256)?;
         assert_eq!(encoded.get(..8), Some(PNG_MAGIC), "content at the limit must encode");
 
         let over = format!("{at_limit}a");
-        assert_eq!(over.len(), BYTE_CAPACITY_LEVEL_M + 1);
+        assert_eq!(over.len(), UTF8_CAPACITY_LEVEL_M + 1);
         let result = generate_png(&over, 256);
         assert!(
             matches!(result, Err(QrError::ContentTooLong { .. })),
@@ -548,10 +629,10 @@ mod tests {
         );
 
         // Fewer characters than the limit, but more bytes: still too long.
-        let few_chars = "é".repeat(BYTE_CAPACITY_LEVEL_M / 2 + 1);
-        assert!(few_chars.chars().count() <= BYTE_CAPACITY_LEVEL_M);
+        let few_chars = "é".repeat(UTF8_CAPACITY_LEVEL_M / 2 + 1);
+        assert!(few_chars.chars().count() <= UTF8_CAPACITY_LEVEL_M);
         assert!(
-            few_chars.len() > BYTE_CAPACITY_LEVEL_M,
+            few_chars.len() > UTF8_CAPACITY_LEVEL_M,
             "must be over the limit in bytes"
         );
         let result = generate_png(&few_chars, 256);
@@ -697,28 +778,78 @@ mod tests {
 
     #[test]
     fn content_fits_measures_multibyte_utf8_in_bytes() -> TestResult {
-        let at_limit = format!("a{}", "é".repeat(1165));
-        assert_eq!(at_limit.len(), BYTE_CAPACITY_LEVEL_M);
-        assert!(content_fits(&at_limit)?, "2331 bytes must fit");
-        assert!(!content_fits(&format!("{at_limit}a"))?, "2332 bytes must not fit");
-        let few_chars = "é".repeat(1166);
-        assert_eq!(few_chars.len(), BYTE_CAPACITY_LEVEL_M + 1);
+        let at_limit = "é".repeat(UTF8_CAPACITY_LEVEL_M / 2);
+        assert_eq!(at_limit.len(), UTF8_CAPACITY_LEVEL_M);
+        assert!(content_fits(&at_limit)?, "2330 bytes must fit");
+        assert!(!content_fits(&format!("{at_limit}a"))?, "2331 bytes must not fit");
+        let few_chars = "é".repeat(UTF8_CAPACITY_LEVEL_M / 2 + 1);
         assert!(!content_fits(&few_chars)?, "1166 chars of 2 bytes must not fit");
         Ok(())
     }
 
     #[test]
-    fn content_fits_cjk_and_emoji_never_below_byte_guarantee() -> TestResult {
+    fn non_ascii_content_starts_with_the_utf8_eci_header() -> TestResult {
+        // ECI mode indicator 0111, designator 26 = 0001_1010, then byte mode 0100.
+        for text in ["こんにちは世界", "Café 東京 2026", "😀"] {
+            let bytes = encode_bits(text.as_bytes(), qrcode::EcLevel::M)?.into_bytes();
+            assert_eq!(
+                bytes.get(..2),
+                Some(&[0x71, 0xA4][..]),
+                "{text:?} must open ECI 26 + byte mode"
+            );
+        }
+        let ascii = encode_bits(b"hello", qrcode::EcLevel::M)?.into_bytes();
+        assert_ne!(
+            ascii.first().map(|byte| byte >> 4),
+            Some(0b0111),
+            "ASCII must not carry an ECI header"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn non_ascii_content_with_ascii_runs_uses_compact_segments() -> TestResult {
+        // A long digit run beside one accented letter must still use numeric mode.
+        let text = format!("é{}", "7".repeat(3000));
+        assert!(
+            content_fits(&text)?,
+            "digit run must keep numeric packing next to non-ASCII"
+        );
+        assert!(fits_agreeing_with_generation(&text, QrErrorCorrection::Medium)?);
+        let png = generate_png(&text, 1024)?;
+        assert_eq!(crate::decoder::decode(&png)?.content, text);
+        Ok(())
+    }
+
+    #[test]
+    fn non_ascii_content_round_trips_as_utf8() -> TestResult {
+        for text in [
+            "こんにちは世界",
+            "Café 東京 2026",
+            "世界",
+            "한국어 テスト",
+            "😀🎉 ok",
+            "ÀÉÎ",
+        ] {
+            let png = generate_png(text, 512)?;
+            assert_eq!(crate::decoder::decode(&png)?.content, text);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn content_fits_cjk_and_emoji_stay_within_the_utf8_capacity() -> TestResult {
         for unit in ["世界", "😀"] {
-            let (fitting, overflowing) = scan_to_overflow(unit)?;
+            let (fitting, overflowing) = scan_to_overflow(unit, UTF8_CAPACITY_LEVEL_M)?;
             println!(
                 "limit for {unit:?} at level M: {} chars ({} UTF-8 bytes)",
                 fitting.chars().count(),
                 fitting.len()
             );
             assert!(
-                fitting.len() >= BYTE_CAPACITY_LEVEL_M - 3,
-                "{unit:?} fits less than the byte guarantee"
+                fitting.len() > UTF8_CAPACITY_LEVEL_M - unit.len() && fitting.len() <= UTF8_CAPACITY_LEVEL_M,
+                "{unit:?} must fill the UTF-8 capacity, got {} bytes",
+                fitting.len()
             );
             assert!(fits_agreeing_with_generation(&fitting, QrErrorCorrection::Medium)?);
             assert!(!fits_agreeing_with_generation(&overflowing, QrErrorCorrection::Medium)?);
@@ -729,7 +860,7 @@ mod tests {
     #[test]
     fn content_fits_digit_runs_exceed_byte_capacity() -> TestResult {
         let unit = format!("id={};", "0123456789".repeat(4));
-        let (fitting, overflowing) = scan_to_overflow(&unit)?;
+        let (fitting, overflowing) = scan_to_overflow(&unit, BYTE_CAPACITY_LEVEL_M)?;
         println!("limit for the id= digit-run unit at level M: {} bytes", fitting.len());
         assert!(
             fitting.len() > BYTE_CAPACITY_LEVEL_M,
@@ -807,28 +938,32 @@ mod tests {
             "must take the byte fallback"
         );
         assert_eq!(encode_bits(data, level)?.version(), qrcode::Version::Normal(35));
-        assert!(byte_segment_bits(data, qrcode::Version::Normal(34), level).is_none());
+        assert!(byte_segment_bits(data, qrcode::Version::Normal(34), level, false).is_none());
         Ok(())
     }
 
     /// The previous linear search, kept as the oracle for the binary search.
-    fn linear_byte_segment_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
-        (1..=40).find_map(|version| byte_segment_bits(data, qrcode::Version::Normal(version), level))
+    fn linear_byte_segment_bits(data: &[u8], level: qrcode::EcLevel, utf8: bool) -> Option<qrcode::bits::Bits> {
+        (1..=40).find_map(|version| byte_segment_bits(data, qrcode::Version::Normal(version), level, utf8))
     }
 
     #[test]
     fn binary_version_search_matches_the_linear_search() -> TestResult {
         let text = "x12345".repeat(500);
-        for level in [
-            qrcode::EcLevel::L,
-            qrcode::EcLevel::M,
-            qrcode::EcLevel::Q,
-            qrcode::EcLevel::H,
-        ] {
+        for (utf8, level) in [false, true].into_iter().flat_map(|utf8| {
+            [
+                qrcode::EcLevel::L,
+                qrcode::EcLevel::M,
+                qrcode::EcLevel::Q,
+                qrcode::EcLevel::H,
+            ]
+            .map(move |level| (utf8, level))
+        }) {
+            // The `utf8` flag only changes the ECI header; the data is the same bytes either way.
             for length in 1..=3000 {
                 let data = text.as_bytes().get(..length).ok_or("pattern too short")?;
-                let binary = single_byte_segment_bits(data, level).ok();
-                let linear = linear_byte_segment_bits(data, level);
+                let binary = single_byte_segment_bits(data, level, utf8).ok();
+                let linear = linear_byte_segment_bits(data, level, utf8);
                 assert_eq!(
                     binary.as_ref().map(qrcode::bits::Bits::version),
                     linear.as_ref().map(qrcode::bits::Bits::version),

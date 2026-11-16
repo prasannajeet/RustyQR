@@ -89,6 +89,15 @@ Six stateless, pure functions. Same input → same output, no side effects, triv
 | `get_library_version`  | —                              | version string | Runtime version check                                           |
 | `content_fits`         | text                           | bool           | Whether `generate_png` can encode the text (`false` = too long) |
 
+**Text encoding.** ASCII-only content is segmented optimally (numeric, alphanumeric and byte modes
+mixed). Content with any non-ASCII byte is encoded as UTF-8 behind an ECI designator 26 header
+(12 bits), in numeric, alphanumeric and byte segments but never Kanji mode. The `qrcode` crate's
+automatic parser would pack UTF-8 byte pairs that fall in Shift-JIS ranges into Kanji mode, which
+other scanners (iOS Camera, ZXing, Google Lens) decode as Shift-JIS and show garbled, mostly for CJK
+text. At level M the largest non-ASCII content is therefore 2330 UTF-8 bytes (the 2331-byte byte-mode
+capacity minus the ECI header); ASCII-only capacity is unchanged. `decode_qr` returns the original
+text for both kinds.
+
 ---
 
 ## Performance

@@ -530,8 +530,9 @@ Conversion flow:
 - **Errors**: `QrError` → `FfiQrError` → `FfiQrException`. `QrBridge` maps the exception to the
   app's `QrError` inside an `Either`. The variants include `ContentTooLong`, which Rust raises for
   generate input over the encoder's capacity, which depends on the content's mode (numeric,
-  alphanumeric, byte); the `content_fits` export (`contentFits()` in Kotlin) reports whether
-  content fits, using the same code path as generation.
+  alphanumeric, byte; non-ASCII content is UTF-8 behind an ECI 26 header and never uses Kanji
+  mode, so level M holds 2330 such bytes); the `content_fits` export (`contentFits()` in Kotlin)
+  reports whether content fits, using the same code path as generation.
 
 ---
 

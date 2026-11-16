@@ -22,6 +22,10 @@ import kotlin.test.assertTrue
 
 private const val NUMERIC_CAPACITY = 5596
 private const val BYTE_CAPACITY = 2331
+
+// Non-ASCII content is UTF-8 behind a 12-bit ECI header: the byte capacity minus 1.5 bytes.
+private const val UTF8_CAPACITY = 2330
+
 private const val QR_SIZE_PX = 64
 private const val MIXED_UNIT = "id=0123456789012345678901234567890123456789;"
 private val MIXED_CONTENT_LENGTHS = listOf(BYTE_CAPACITY, 3000, 3500, 4000, 4500)
@@ -49,6 +53,13 @@ class ContentFitNativeTest {
         assertIs<QrError.ContentTooLong>(
             QrBridge.generateQrPng("7".repeat(NUMERIC_CAPACITY + 1), QR_SIZE_PX).leftOrNull(),
         )
+    }
+
+    @Test
+    fun multibyteContentIsMeasuredInBytes() {
+        val fitting = "é".repeat(UTF8_CAPACITY / 2)
+        assertEquals(true, QrBridge.contentFits(fitting).getOrNull())
+        assertEquals(false, QrBridge.contentFits(fitting + "a").getOrNull())
     }
 
     @Test
