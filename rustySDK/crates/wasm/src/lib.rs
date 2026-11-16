@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! `rusty-qr-wasm` — `wasm-bindgen` exports of the `rusty-qr-core` engine for browsers.
 //!
 //! Every function delegates to the core in one expression. Core errors become JavaScript

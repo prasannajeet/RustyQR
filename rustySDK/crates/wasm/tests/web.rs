@@ -1,19 +1,16 @@
 //! Browser tests for the `wasm-bindgen` exports; run with `wasm-pack test --headless --chrome`.
 
 use rusty_qr_wasm::{decode_image, generate_png, library_version};
+use wasm_bindgen::JsValue;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 
 wasm_bindgen_test_configure!(run_in_browser);
 
 #[wasm_bindgen_test]
-fn generated_png_decodes_back_to_the_content() {
-    let png = generate_png("hello", 256);
-    assert!(png.is_ok(), "generation failed");
-    let decoded = png.ok().map(|bytes| decode_image(&bytes));
-    assert!(
-        matches!(decoded, Some(Ok(ref content)) if content == "hello"),
-        "round trip failed"
-    );
+fn generated_png_decodes_back_to_the_content() -> Result<(), JsValue> {
+    let png = generate_png("hello", 256)?;
+    assert_eq!(decode_image(&png)?, "hello");
+    Ok(())
 }
 
 #[wasm_bindgen_test]

@@ -47,7 +47,8 @@ jobs:
 
   wasm:
     name: WebAssembly package
-    runs-on: ubuntu-latest
+    # Pinned image: its Chrome and ChromeDriver are what the headless tests use.
+    runs-on: ubuntu-24.04
     env:
       WASM_PACK_VERSION: "0.15.1"
 
@@ -69,6 +70,12 @@ jobs:
           key: rust-wasm-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
           restore-keys: rust-wasm-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
 
+      # wasm-pack downloads the wasm-bindgen CLI and wasm-opt here; the CLI version follows Cargo.lock.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/.wasm-pack
+          key: wasm-pack-tools-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+
       # wasm-pack is compiled from source, so cache the binary per wasm-pack version and toolchain.
       - id: wasm-pack-cache
         uses: actions/cache@v4
@@ -86,6 +93,12 @@ jobs:
       - run: wasm-pack test --headless --chrome rustySDK/crates/wasm
 
       - run: wasm-pack build rustySDK/crates/wasm --target web --release
+
+      - name: Report wasm size
+        run: |
+          wasm=rustySDK/crates/wasm/pkg/rusty_qr_wasm_bg.wasm
+          echo "raw: $(wc -c < "$wasm") bytes"
+          echo "gzip -9: $(gzip -9 -c "$wasm" | wc -c) bytes"
 
   android-build:
     name: Android APK
