@@ -23,7 +23,9 @@ import kotlin.test.assertTrue
 private const val NUMERIC_CAPACITY = 5596
 private const val BYTE_CAPACITY = 2331
 
-// Non-ASCII content is UTF-8 behind a 12-bit ECI header: the byte capacity minus 1.5 bytes.
+// Non-ASCII content is UTF-8 behind a 12-bit ECI header (4-bit mode + 8-bit designator). Version 40-M holds 18672
+// data bits; a 2331-byte segment uses 4 + 16 + 8 * 2331 = 18668, 4 bits short of 18672. The 12-bit header takes
+// those 4 bits plus one whole byte, so 2331 becomes 2330.
 private const val UTF8_CAPACITY = 2330
 
 private const val QR_SIZE_PX = 64
@@ -33,8 +35,8 @@ private val MIXED_CONTENT_LENGTHS = listOf(BYTE_CAPACITY, 3000, 3500, 4000, 4500
 /**
  * Checks `contentFits` against the real Rust library through [QrBridge], on the iOS simulator.
  *
- * The capacity boundaries for every mode are covered by `BindingsSmokeTest`; this checks the bridge mapping and the
- * ViewModel on top of the real library.
+ * The capacity boundaries for every mode are covered by `ContentFitsBindingsTest`; this checks the bridge mapping and
+ * the ViewModel on top of the real library.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ContentFitNativeTest {
