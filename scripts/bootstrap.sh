@@ -101,7 +101,9 @@ maybe_install() {
 if $IS_MACOS; then
     section "Homebrew"
     if command -v brew &>/dev/null; then
-        pass "brew $(brew --version | head -1 | awk '{print $2}')"
+        # Capture first, then take the first line: `cmd | head -1` can die of SIGPIPE under pipefail.
+        BREW_OUT="$(brew --version 2>/dev/null || true)"
+        pass "brew $(awk 'NR == 1 {print $2}' <<<"$BREW_OUT")"
     else
         fail "Homebrew not installed"
         warn "Install manually: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
@@ -166,18 +168,19 @@ echo
 # ---------------------------------------------------------------------------
 # JDK
 # ---------------------------------------------------------------------------
-section "Java (JDK 11+)"
+section "Java (JDK 17+)"
 if command -v java &>/dev/null; then
-    JAVA_VER="$(java -version 2>&1 | head -1 | awk -F\" '{print $2}')"
+    JAVA_OUT="$(java -version 2>&1 || true)"
+    JAVA_VER="$(awk -F\" 'NR == 1 {print $2}' <<<"$JAVA_OUT")"
     JAVA_MAJOR="$(echo "$JAVA_VER" | awk -F. '{ if ($1=="1") print $2; else print $1 }')"
-    if [[ "$JAVA_MAJOR" =~ ^[0-9]+$ ]] && (( JAVA_MAJOR >= 11 )); then
+    if [[ "$JAVA_MAJOR" =~ ^[0-9]+$ ]] && (( JAVA_MAJOR >= 17 )); then
         pass "java $JAVA_VER"
     else
-        fail "java $JAVA_VER — need 11+"
+        fail "java $JAVA_VER — need 17+ (Gradle 9 and AGP 9 require it)"
         if $IS_MACOS; then
             maybe_install "temurin JDK 21" "brew install --cask temurin@21" || true
         else
-            warn "install OpenJDK 11+ via your distro package manager"
+            warn "install OpenJDK 17+ via your distro package manager"
         fi
     fi
 else
@@ -185,7 +188,7 @@ else
     if $IS_MACOS; then
         maybe_install "temurin JDK 21" "brew install --cask temurin@21" || true
     else
-        warn "install OpenJDK 11+ via your distro package manager"
+        warn "install OpenJDK 17+ via your distro package manager"
     fi
 fi
 echo
@@ -195,16 +198,24 @@ echo
 # ---------------------------------------------------------------------------
 section "Android SDK / NDK"
 ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+SDK_FROM_FALLBACK=false
 if [[ -z "$ANDROID_SDK" ]]; then
     if $IS_MACOS && [[ -d "$HOME/Library/Android/sdk" ]]; then
         ANDROID_SDK="$HOME/Library/Android/sdk"
     elif [[ -d "$HOME/Android/Sdk" ]]; then
         ANDROID_SDK="$HOME/Android/Sdk"
     fi
+    [[ -n "$ANDROID_SDK" ]] && SDK_FROM_FALLBACK=true
 fi
 
 if [[ -n "$ANDROID_SDK" && -d "$ANDROID_SDK" ]]; then
     pass "Android SDK at $ANDROID_SDK"
+    # Gradle does not look in the default install locations: it needs sdk.dir or an environment variable.
+    REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+    if $SDK_FROM_FALLBACK && ! grep -qE '^[[:space:]]*sdk\.dir[[:space:]]*=' "$REPO_ROOT/local.properties" 2>/dev/null; then
+        fail "Android SDK found only at the default location; Gradle needs sdk.dir or ANDROID_HOME"
+        warn "Run: export ANDROID_HOME=\"$ANDROID_SDK\"   (or put sdk.dir=$ANDROID_SDK in local.properties)"
+    fi
 else
     fail "Android SDK not found"
     warn "Install Android Studio (https://developer.android.com/studio) then open SDK Manager to install platform-tools + an SDK."
@@ -213,9 +224,14 @@ fi
 # The UniFFI Gradle plugin picks the newest installed NDK itself, so any NDK under the SDK works.
 NDK_FOUND=""
 for sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$ANDROID_SDK"; do
-    if [[ -n "$sdk" && -d "$sdk/ndk" ]] && [[ -n "$(ls "$sdk/ndk" 2>/dev/null)" ]]; then
-        NDK_FOUND="$sdk/ndk/$(ls "$sdk/ndk" | sort -V | tail -1)"
-        break
+    if [[ -n "$sdk" && -d "$sdk/ndk" ]]; then
+        NDK_LIST="$(ls "$sdk/ndk" 2>/dev/null | sort -V || true)"
+        NDK_LATEST="$(tail -n 1 <<<"$NDK_LIST")"
+        # A usable NDK has its LLVM toolchain; an empty or half-installed directory does not.
+        if [[ -n "$NDK_LATEST" && -d "$sdk/ndk/$NDK_LATEST/toolchains/llvm/prebuilt" ]]; then
+            NDK_FOUND="$sdk/ndk/$NDK_LATEST"
+            break
+        fi
     fi
 done
 if [[ -n "$NDK_FOUND" ]]; then
@@ -247,7 +263,8 @@ if $IS_MACOS; then
 
     for tool in xcodegen swiftlint swiftformat; do
         if command -v "$tool" &>/dev/null; then
-            pass "$tool $($tool --version 2>/dev/null | head -1)"
+            TOOL_OUT="$("$tool" --version 2>/dev/null || true)"
+            pass "$tool $(awk 'NR == 1 {print}' <<<"$TOOL_OUT")"
         else
             fail "$tool missing"
             if command -v brew &>/dev/null; then
