@@ -13,19 +13,20 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.p2.apps.rustyqr.bridge.openUrl
+import com.p2.apps.rustyqr.bridge.plainTextClipEntry
 import com.p2.apps.rustyqr.model.QrContentType
 import com.p2.apps.rustyqr.model.ScanResult
 import com.p2.apps.rustyqr.model.detectContentType
@@ -49,14 +50,14 @@ fun ScanResultSheet(
     onDismiss: () -> Unit,
     onScanAgain: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val sheetState = rememberBottomSheetState(initialValue = SheetValue.Hidden)
     val scope = rememberCoroutineScope()
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val contentType = detectContentType(result.content)
 
     val copyAndDismiss: () -> Unit = {
-        clipboard.setText(AnnotatedString(result.content))
         scope.launch {
+            clipboard.setClipEntry(plainTextClipEntry(result.content))
             sheetState.hide()
             onDismiss()
         }
