@@ -5,6 +5,10 @@ edition = "2021"
 
 [lib]
 name = "rusty_qr_ffi"
+# No "lib"/"rlib": no Rust crate links this one, and an rlib among the outputs makes Cargo
+# drop `-C lto` without a warning. So keep tests in `#[cfg(test)]` modules (files under
+# `tests/` cannot `use rusty_qr_ffi`). Doc examples here are never compiled; put examples
+# in `rusty-qr-core`.
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
