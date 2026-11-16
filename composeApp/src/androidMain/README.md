@@ -8,7 +8,7 @@
   <img alt="Android" src="https://img.shields.io/badge/Android-minSdk%2029-3DDC84?logo=android&logoColor=white" />
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
   <img alt="CameraX" src="https://img.shields.io/badge/CameraX-ImageAnalysis-3DDC84?logo=android&logoColor=white" />
-  <img alt="JNA" src="https://img.shields.io/badge/JNA-5.14.0-777777" />
+  <img alt="JNA" src="https://img.shields.io/badge/JNA-via%20UniFFI%20runtime-777777" />
   <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-auto--bindings-3B6FE0" />
 </p>
 
@@ -38,26 +38,46 @@ UI itself lives in <code>commonMain</code>.</sub>
 ## Quick Start
 
 ```bash
-# First-time setup — verifies JDK, Android SDK/NDK, Rust toolchain,
-# Android Rust targets, cargo-ndk; prompts to install what's missing
+# First-time setup — verifies JDK, Android SDK/NDK and the Rust toolchain with the
+# Android Rust targets; prompts to install what's missing
 ./scripts/bootstrap.sh
 
-# Compile Rust + generate Kotlin bindings + build APK
-./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
+# Gradle must find the Android SDK: export ANDROID_HOME (or set sdk.dir in local.properties)
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+
+# Build Rust for 3 ABIs + generate the Kotlin bindings + build the APK
+./gradlew :composeApp:assembleDebug
 ```
 
-If you're only editing Kotlin / UI, skip `buildRustAndroid` — `assembleDebug` reuses the existing
-`.so` files and generated binding.
+The first build compiles the UniFFI Kotlin generator with `cargo install`, which takes several
+minutes; later builds reuse it. If you're only editing Kotlin / UI, run the same command again:
+Gradle sees that the Rust sources and bindings are up to date and skips them.
+
+> **Upgrading an old checkout?** The previous build pipeline wrote
+> `composeApp/src/androidMain/jniLibs/` and `composeApp/src/androidMain/kotlin/generated/`.
+> Gradle would package and compile them next to the new output, so delete both directories if
+> they exist.
 
 ---
 
 ## Android-Specific Gradle Tasks
 
-| Task                             | What it does                                              |
-|----------------------------------|-----------------------------------------------------------|
-| `:composeApp:buildRustAndroid`   | `make android` — cross-compile + generate Kotlin bindings |
-| `:composeApp:assembleDebug`      | Standard Android debug APK build                          |
-| `:composeApp:installDebug`       | Install debug APK to connected device / emulator          |
+| Task                                          | What it does                                                          |
+|-----------------------------------------------|-----------------------------------------------------------------------|
+| `:composeApp:assembleDebug`                   | Debug APK; builds Rust (3 ABIs) and the bindings first               |
+| `:composeApp:installDebug`                    | Install debug APK to connected device / emulator                      |
+| `:rustyqr-bindings:buildBindings`             | Generate the Kotlin bindings only                                     |
+| `:rustyqr-bindings:mergeUniffiAndroidJniLibs` | Collect the `.so` files per ABI                                       |
+
+Build options:
+
+- **Release:** `./gradlew :composeApp:assembleRelease -PreleaseBuild=true`. Without the flag,
+  `verifyReleaseRustProfile` fails the build, so a shipped APK can never embed the debug Rust library.
+- **NDK:** by default the plugin uses the newest NDK under `<sdk>/ndk`. Pin one with
+  `-PndkVersion=<version>`.
+- **ABIs:** debug builds cover `arm64-v8a`, `armeabi-v7a` and `x86_64`, from `androidAbis` in
+  `gradle.properties`. Passing fewer (`-PandroidAbis=arm64-v8a`) builds faster, but only devices of
+  that ABI can run the result.
 
 Module-level linting and format tasks (ktlint, detekt, lintAll, installGitHooks) live on the parent
 `composeApp` module — see the [module README](../../README.md).
@@ -78,26 +98,31 @@ composeApp/src/androidMain/
 │   ├── AppContextHolder.kt             # Static Application context for bridges (permissions, share, save)
 │   ├── Platform.android.kt             # Platform() actual
 │   └── bridge/
-│       ├── QrBridge.android.kt         # actual — delegates to UniFFI-generated Kotlin
 │       ├── CameraPreview.android.kt    # actual — CameraX PreviewView + ImageAnalysis
 │       ├── CameraPermission.android.kt # actual — ActivityResultLauncher
 │       ├── HapticFeedback.android.kt   # actual — HapticFeedbackType via View
 │       ├── OpenUrl.android.kt          # actual — Intent(ACTION_VIEW)
+│       ├── PlainTextClipEntry.android.kt # actual — ClipEntry for plain text
 │       ├── ShareQrImage.android.kt     # actual — Intent(ACTION_SEND) via FileProvider
 │       ├── SaveQrImage.android.kt      # actual — MediaStore.Images
 │       └── ImageDecoder.android.kt     # actual — BitmapFactory → ImageBitmap
 │
-├── kotlin/generated/                   # GENERATED by UniFFI (do not edit) — gitignored
-│   └── com/p2/apps/rustyqr/rust/rusty_qr_ffi.kt
-│
-├── jniLibs/                            # GENERATED by cargo-ndk — gitignored
-│   ├── arm64-v8a/librusty_qr_ffi.so
-│   ├── armeabi-v7a/librusty_qr_ffi.so
-│   └── x86_64/librusty_qr_ffi.so
-│
 ├── res/xml/                            # FileProvider paths, adaptive icon, etc.
 └── AndroidManifest.xml                 # Permissions, activity, application class
 ```
+
+There is no `jniLibs/` and no generated Kotlin in this source set. The `.so` files and the UniFFI
+bindings belong to the `:rustyqr-bindings` module, which `composeApp` depends on:
+
+```
+rustyqr-bindings/build/                 # gitignored — regenerated by Gradle
+├── uniffi/bindings/commonMain/…        # generated Kotlin API (expect declarations, data classes)
+├── uniffi/bindings/androidMain/…       # generated actuals that call the .so through JNA
+└── generated/jniLibs/mergeUniffiAndroidJniLibs/<abi>/librusty_qr_ffi.so
+```
+
+`QrBridge` is not an `expect`/`actual` pair, so there is no `QrBridge.android.kt`. It is one
+`commonMain` object over the generated API.
 
 The Android app has no Compose screens of its own — it reuses the shared `commonMain` screens from
 the KMP module. The only Android-specific Compose code is inside the `bridge/` actuals (e.g.
@@ -106,34 +131,36 @@ the KMP module. The only Android-specific Compose code is inside the `bridge/` a
 </details>
 
 <details>
-<summary><b>Scan Feature — Data Flow on Android</b> — CameraX → scan gate → Rust → MVI</summary>
+<summary><b>Scan Feature — Data Flow on Android</b> — CameraX → scanning flag → Rust → MVI</summary>
 
 <br/>
 
 ```mermaid
 sequenceDiagram
     participant CAM as CameraX<br/>ImageAnalysis
-    participant ANA as Frame Analyzer<br/>(camera thread)
-    participant GATE as scanGate<br/>(@Volatile Boolean)
-    participant JNI as UniFFI Kotlin<br/>→ JNA → .so
+    participant ANA as Frame Analyzer<br/>(analysis executor thread)
+    participant FLAG as scanningFlag<br/>(AtomicBoolean)
+    participant JNI as QrBridge → generated Kotlin<br/>→ JNA → .so
     participant VM as ScanViewModel<br/>(main thread)
-    participant UI as ScanScreen<br/>Composable
+    participant UI as ScanScreen /<br/>CameraPreview
 
     CAM->>ANA: ImageProxy (Y-plane luma buffer)
-    ANA->>GATE: read isScanning
-    alt gate locked (sheet visible)
-        GATE-->>ANA: skip frame, close proxy
-    else gate open
+    ANA->>FLAG: get()
+    alt false (idle, or result sheet visible)
+        FLAG-->>ANA: skip frame, close proxy
+    else true
+        ANA->>ANA: copy Y-plane, strip row padding
         ANA->>JNI: QrBridge.decodeQrFromRaw(pixels, w, h)
         alt Either.Left (no QR — most frames)
             JNI-->>ANA: discard silently
         else Either.Right (QR decoded)
             JNI-->>ANA: ScanResult(content)
             ANA->>VM: mainExecutor.execute { onIntent(FrameDecoded) }
-            VM->>GATE: lock — first-write-wins
+            VM->>VM: scanGate — first-write-wins, main thread only
             VM->>VM: triggerHaptic()
             VM->>VM: isScanning=false, sheetContent=result, isSheetVisible=true
             VM-->>UI: StateFlow emits
+            UI->>FLAG: SideEffect { set(isScanning) }
             UI->>UI: scrim + ScanResultSheet
         end
     end
@@ -141,16 +168,23 @@ sequenceDiagram
 
 Key design decisions on Android:
 
-- **Gate is `@Volatile Boolean`**, not `AtomicBoolean` — fast read on camera thread, no lock
-  overhead; writes only happen on the main thread.
+- **Two flags, two jobs.** The analyzer reads `scanningFlag`, an `AtomicBoolean` that
+  `CameraPreview.android.kt` writes in a `SideEffect` from its `isScanning` parameter (the screen's
+  `ScanScreenState.isScanning`). It is written on the main thread and read on the analysis
+  executor's thread, hence atomic. Separately, `ScanViewModel.scanGate` is a plain `Boolean` that
+  is read and written only on the main thread. It is the first-write-wins guard that keeps a
+  second `FrameDecoded`, already posted to the main thread before the state change reaches the
+  analyzer, from reopening the sheet.
 - **Camera session binds only while the user is actively scanning** — `CameraPreview` is gated on
-  `isCameraActive`. On decode the analyzer stops reading frames via the scan gate (camera remains
-  bound while the result sheet is open); on dismiss the screen returns to idle and the camera
-  unbinds. The Scan tab opens cold with no preview and no permission prompt until Start Scanning.
+  `isCameraActive`. On decode the analyzer stops decoding frames once `scanningFlag` turns false
+  (the camera remains bound while the result sheet is open); on dismiss the screen returns to idle
+  and the camera unbinds. The Scan tab opens cold with no preview and no permission prompt until
+  Start Scanning.
 - **`Either.Left` frames are silently discarded** — most frames contain no QR; this is the expected
   case, not an error path.
-- **JNA is the loader** — the generated `rusty_qr_ffi.kt` calls into `librusty_qr_ffi.so` through
-  the `net.java.dev.jna` runtime library, not `System.loadLibrary`.
+- **JNA is the loader** — the generated Android actual calls into `librusty_qr_ffi.so` through the
+  `net.java.dev.jna` runtime library, not `System.loadLibrary`. JNA arrives as a dependency of the
+  UniFFI plugin's runtime, so `composeApp` declares nothing for it.
 
 </details>
 
@@ -165,138 +199,132 @@ Rust directly — they're different languages with different runtimes. Two thing
 1. **A compiled Rust library** (`.so` file per CPU architecture) that Android loads at runtime
 2. **Generated Kotlin code** that knows how to call the functions inside that library
 
-### What `buildRustAndroid` actually does
+The `:rustyqr-bindings` module does both, through the Ubique UniFFI Gradle plugin
+(`ch.ubique.uniffi.plugin`). `composeApp` depends on that module, so
+`./gradlew :composeApp:assembleDebug` is the only command you run. Nothing else is a developer
+entry point: there is no `make`, no script and no separate Rust task.
 
-`buildRustAndroid` is a Gradle `Exec` task that invokes `make android` in `rustySDK/`. Developers
-never run `make` directly — Gradle is the only entry point, so CI, local builds, and IDE sync all
-take the same path.
+### What the plugin does
 
-```makefile
-# rustySDK/Makefile (excerpt)
-android:
-    ./scripts/build_android.sh
+`rustyqr-bindings/build.gradle.kts` points the plugin at the Rust crate:
 
-clean:
-    cargo clean
-    rm -rf ../composeApp/src/androidMain/jniLibs
-    rm -rf ../composeApp/src/androidMain/kotlin/generated
+```kotlin
+cargo {
+    packageDirectory = rootProject.layout.projectDirectory.dir("rustySDK/crates/ffi")
+}
+uniffi {
+    generateFromLibrary {
+        packageName = "com.p2.apps.rustyqr.rust"
+    }
+}
 ```
 
-`build_android.sh` does three things in order:
+**1. Cross-compile Rust.** One `cargoBuild…Debug` task per target runs Cargo on
+`rustySDK/crates/ffi` (the Cargo `dev` profile, with optimised dependencies set in
+`rustySDK/Cargo.toml`):
 
-**1. Dependency check.** Verifies `cargo-ndk`, `ANDROID_NDK_HOME`, and the three Android Rust
-targets are installed. If anything is missing, it prints the exact install command.
-
-**2. Cross-compile Rust.** `cargo-ndk` invokes the Rust compiler once per architecture:
-
-| Architecture  | Who uses it                            | Output                                   |
-|---------------|----------------------------------------|------------------------------------------|
-| `arm64-v8a`   | All modern Android phones (64-bit ARM) | `jniLibs/arm64-v8a/librusty_qr_ffi.so`   |
-| `armeabi-v7a` | Older 32-bit ARM devices               | `jniLibs/armeabi-v7a/librusty_qr_ffi.so` |
-| `x86_64`      | Android emulator on a Mac              | `jniLibs/x86_64/librusty_qr_ffi.so`      |
+| Architecture  | Who uses it                            | Rust target                  | Output                         |
+|---------------|----------------------------------------|------------------------------|--------------------------------|
+| `arm64-v8a`   | All modern Android phones (64-bit ARM) | `aarch64-linux-android`      | `librusty_qr_ffi.so`           |
+| `armeabi-v7a` | Older 32-bit ARM devices               | `armv7-linux-androideabi`    | `librusty_qr_ffi.so`           |
+| `x86_64`      | Android emulator on a Mac              | `x86_64-linux-android`       | `librusty_qr_ffi.so`           |
 
 All `.so` files are built with **16KB ELF page alignment** (`align 2**14`), compliant with
 [Android's 16KB page size requirement](https://developer.android.com/guide/practices/page-sizes)
-effective November 2025. Handled automatically by NDK 28+ (we use NDK 30) — no extra linker flags.
-AGP 9.1 handles zip alignment at packaging time.
+effective November 2025. Handled automatically by NDK 28+ — no extra linker flags. AGP handles zip
+alignment at packaging time.
 
-**3. Generate Kotlin bindings.** `uniffi-bindgen` reads UniFFI metadata embedded in the `.so` and
-emits a single `.kt` file:
+**2. Generate Kotlin bindings.** The plugin also builds a host library, `buildBindings` reads the
+UniFFI metadata embedded in it, and the generator emits Kotlin into
+`rustyqr-bindings/build/uniffi/bindings/`:
 
 ```
-Rust:    generate_png(content: &str, size: u32) -> Result<Vec<u8>, QrError>
-         ↓  uniffi-bindgen generates  ↓
-Kotlin:  fun generatePng(content: String, size: UInt): List<UByte>
+Rust:    generate_png(content: &str, size: u32) -> Result<Vec<u8>, FfiQrError>
+         ↓  UniFFI generator  ↓
+Kotlin:  fun generatePng(content: String, size: UInt): ByteArray
          (throws FfiQrException on error)
 ```
 
-Output lands at:
+The API lands in `commonMain` (`expect` declarations and the types), with an Android `actual` that
+calls the `.so` through JNA.
 
-```
-composeApp/src/androidMain/kotlin/generated/com/p2/apps/rustyqr/rust/rusty_qr_ffi.kt
-```
+**3. Package the libraries.** `mergeUniffiAndroidJniLibs` collects the three `.so` files as the
+module's `jniLibs`. `composeApp` filters its APK to the same three ABIs (`abiFilters`), so an
+ABI that a dependency ships but Rust does not cover cannot install and then crash.
 
 ### How Gradle picks up the artifacts
 
-Gradle needs no special configuration — it uses **convention-based source directories**:
-
-- **`jniLibs/`** is a magic directory name for the Android Gradle Plugin. Any `.so` files inside
-  `jniLibs/<abi>/` are automatically packaged into the APK. At install time the device extracts
+- **`jniLibs`** is the Android Gradle Plugin convention for native libraries. The plugin fills it
+  for `:rustyqr-bindings`, and AGP merges it into the APK. At install time the device extracts
   only the `.so` matching its CPU.
-- **`kotlin/`** under a source set is where Gradle looks for source files to compile. The generated
-  `rusty_qr_ffi.kt` is compiled like any other Kotlin file.
-- **JNA** (Java Native Access) is a runtime library declared in `build.gradle.kts` via the
-  `androidMainImplementation` configuration (a KMP sourceSets DSL workaround). The generated
-  Kotlin uses JNA to load `librusty_qr_ffi.so` and call its functions. Without JNA the generated
-  code would compile but crash at runtime.
+- **The generated Kotlin** is added to the module's source sets by the plugin, so it compiles like
+  any other Kotlin file.
+- **JNA** (Java Native Access) is a runtime library that the plugin's runtime artifact brings in.
+  The generated Kotlin uses JNA to load `librusty_qr_ffi.so` and call its functions.
 
 ### Full pipeline
 
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant G as ./gradlew buildRustAndroid
-    participant M as make android
-    participant S as build_android.sh
-    participant CNDK as cargo-ndk
-    participant UB as uniffi-bindgen
-    participant GA as ./gradlew assembleDebug
+    participant G as ./gradlew assembleDebug
+    participant B as :rustyqr-bindings<br/>(UniFFI plugin)
+    participant C as cargo
+    participant UG as UniFFI Kotlin generator
+    participant AGP as Android Gradle Plugin
 
-    Dev->>G: buildRustAndroid
-    G->>M: exec make android
-    M->>S: bash build_android.sh
+    Dev->>G: assembleDebug
+    G->>B: composeApp depends on :rustyqr-bindings
 
-    Note over S: Step 1 — dependency check
-    S->>CNDK: cargo ndk build --release
+    B->>C: cargoBuild… per ABI
+    C->>C: compile aarch64-linux-android
+    C->>C: compile armv7-linux-androideabi
+    C->>C: compile x86_64-linux-android
+    C-->>B: 3 × librusty_qr_ffi.so
 
-    CNDK->>CNDK: compile aarch64-linux-android
-    CNDK->>CNDK: compile armv7-linux-androideabi
-    CNDK->>CNDK: compile x86_64-linux-android
-    CNDK-->>S: 3 × librusty_qr_ffi.so
+    B->>C: build the host library
+    B->>UG: buildBindings reads the library metadata
+    UG-->>B: Kotlin in build/uniffi/bindings/
 
-    Note over S: Step 3 — generate Kotlin bindings
-    S->>UB: read .so metadata → emit Kotlin
-    UB-->>S: rusty_qr_ffi.kt
+    B->>B: mergeUniffiAndroidJniLibs
 
-    S-->>Dev: done
-
-    Dev->>GA: assembleDebug
-    Note over GA: Packages .so from jniLibs/<br/>Compiles .kt from kotlin/generated/<br/>Produces app-debug.apk
+    G->>AGP: compile Kotlin, merge native libs
+    AGP-->>Dev: composeApp-debug.apk
 ```
 
-### Why three `.so` files but one `.kt` file?
+### Why three `.so` files but one Kotlin API?
 
 **Three `.so` files** because each CPU architecture needs its own machine code. ARM code can't run
 on x86 and vice versa.
 
-**One `.kt` file** because the Kotlin code is architecture-independent — it calls Rust functions by
+**One Kotlin API** because the Kotlin code is architecture-independent — it calls Rust functions by
 name (e.g. `generate_png`), and JNA resolves those names against whichever `.so` was loaded on the
-device. The UniFFI metadata in all three `.so` files is identical, so any one of them can be used
-as the source for binding generation.
+device. The UniFFI metadata is identical in every library, so one of them is enough as the input
+for binding generation.
 
 </details>
 
 <details>
-<summary><b>UniFFI Metadata Under the Hood</b> — proc-macros embed the signature in the <code>.so</code></summary>
+<summary><b>UniFFI Metadata Under the Hood</b> — proc-macros embed the signature in the library</summary>
 
 <br/>
 
-`uniffi-bindgen` knows what Kotlin to emit because **proc-macros** in the Rust FFI crate embed
-metadata directly into the `.so` binary at compile time:
+The UniFFI generator knows what Kotlin to emit because **proc-macros** in the Rust FFI crate embed
+metadata directly into the compiled library at compile time:
 
 ```mermaid
 graph LR
-    A["#[uniffi::export]<br/>fn generate_png(content: String, size: u32)<br/>-> Result[Vec u8, FfiQrError]"]
+    A["#[uniffi::export]<br/>fn generate_png(content: &str, size: u32)<br/>-> Result[Vec u8, FfiQrError]"]
     B["uniffi proc-macro<br/>reads the signature"]
-    C["Metadata section embedded<br/>into the .so binary"]
-    D["uniffi-bindgen reads<br/>metadata from .so"]
-    E["Generates Kotlin:<br/>fun generatePng(content: String, size: UInt): List[UByte]"]
+    C["Metadata section embedded<br/>into the library binary"]
+    D["UniFFI generator reads<br/>metadata from the library"]
+    E["Generates Kotlin:<br/>fun generatePng(content: String, size: UInt): ByteArray"]
 
-    A --> B --> C -->|".so file"| D --> E
+    A --> B --> C -->|"library file"| D --> E
 ```
 
-Change a Rust function signature and the next `buildRustAndroid` regenerates the Kotlin to match —
-no manual bridging code to keep in sync.
+Change a Rust function signature and the next Gradle build regenerates the Kotlin to match — no
+manual bridging code to keep in sync.
 
 </details>
 
@@ -314,32 +342,28 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 # 2. Android cross-compilation targets
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
-# 3. cargo-ndk (the cross-compilation wrapper)
-cargo install cargo-ndk
-
-# 4. ANDROID_NDK_HOME — add to ~/.zshrc or ~/.bashrc
-export ANDROID_NDK_HOME="$HOME/Library/Android/sdk/ndk/$(ls $HOME/Library/Android/sdk/ndk | tail -1)"
+# 3. Android SDK location for Gradle (or sdk.dir in local.properties)
+export ANDROID_HOME="$HOME/Library/Android/sdk"
 ```
+
+You also need an NDK (Android Studio → SDK Manager → SDK Tools → NDK (Side by side)). The plugin
+uses the newest one under `$ANDROID_HOME/ndk`; there is no NDK environment variable to set, and no
+extra Cargo subcommand to install. `./scripts/bootstrap.sh` checks all of this.
 
 After that, every build is:
 
 ```bash
-./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug
+./gradlew :composeApp:assembleDebug
 ```
 
 ### Cleaning Up
 
 ```bash
-./gradlew :composeApp:cleanBuildIos    # cleans BOTH platforms' Rust artifacts
+./gradlew :rustyqr-bindings:clean :composeApp:clean   # generated bindings, packaged .so files, APK
+cd rustySDK && cargo clean                            # Cargo build output (rustySDK/target/)
 ```
 
-This removes (via `make clean`):
-
-- `rustySDK/target/` — all Rust compiled objects
-- `composeApp/src/androidMain/jniLibs/` — the `.so` files
-- `composeApp/src/androidMain/kotlin/generated/` — the generated Kotlin binding
-
-After cleaning, rebuild Android with `./gradlew :composeApp:buildRustAndroid`.
+After cleaning, rebuild with `./gradlew :composeApp:assembleDebug`.
 
 </details>
 
@@ -348,9 +372,19 @@ After cleaning, rebuild Android with `./gradlew :composeApp:buildRustAndroid`.
 
 <br/>
 
-**Emulator crashes on scan launch with `UnsatisfiedLinkError`.** You're running an x86_64 emulator
-and the `.so` is only built for arm64. Run `./gradlew :composeApp:buildRustAndroid` — it always
-builds all three architectures.
+**Emulator crashes on scan launch with `UnsatisfiedLinkError`.** The APK has no `.so` for the
+emulator's ABI, typically because the build was made with `-PandroidAbis=arm64-v8a` and the
+emulator is x86_64. Rebuild without that property, so all three ABIs are built.
+
+**Gradle says the SDK location is not found.** Export `ANDROID_HOME` or add `sdk.dir=<path>` to
+`local.properties`.
+
+**The build cannot find an NDK.** Install one under `<sdk>/ndk` (SDK Manager → NDK (Side by side)).
+To use a specific version, pass `-PndkVersion=<version>`.
+
+**Duplicate or stale native libraries, or duplicate generated classes.** An old checkout may still
+contain `composeApp/src/androidMain/jniLibs/` and `composeApp/src/androidMain/kotlin/generated/`
+from the previous build pipeline. Delete both.
 
 **`detekt` complains about `MatchingDeclarationName`.** The rule is enabled and accepts the
 `*.android.kt` / `*.ios.kt` suffixes; an actual-only helper class that differs from the file name
