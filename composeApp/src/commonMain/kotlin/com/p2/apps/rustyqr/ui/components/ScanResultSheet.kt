@@ -36,12 +36,13 @@ import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.action_copy
 import rustyqr.composeapp.generated.resources.action_open
 import rustyqr.composeapp.generated.resources.scan_again
+import rustyqr.composeapp.generated.resources.scan_clip_label
 
 /**
  * Modal bottom sheet displaying the decoded QR code result.
  *
- * Peek height: ~40% of screen. Expandable to ~70% for long content.
- * Dismiss via swipe-down fires [onDismiss] intent.
+ * Content taller than half the container opens partially expanded at half the container height and expands to
+ * the full content height; shorter content is shown in full. Swiping down dismisses and fires [onDismiss].
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,10 +55,11 @@ fun ScanResultSheet(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
     val contentType = detectContentType(result.content)
+    val clipLabel = stringResource(Res.string.scan_clip_label)
 
     val copyAndDismiss: () -> Unit = {
         scope.launch {
-            clipboard.setClipEntry(plainTextClipEntry(result.content))
+            clipboard.setClipEntry(plainTextClipEntry(clipLabel, result.content))
             sheetState.hide()
             onDismiss()
         }
