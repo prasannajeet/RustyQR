@@ -20,6 +20,7 @@
 //! | `decode_qr`             | `rusty_qr_core::decoder::decode` |
 //! | `decode_qr_from_raw`    | `rusty_qr_core::decoder::decode_from_raw` |
 //! | `get_library_version`   | `rusty_qr_core::encoder::get_library_version` |
+//! | `content_fits`         | `rusty_qr_core::encoder::content_fits` |
 //! | `max_content_bytes`     | `rusty_qr_core::encoder::MAX_BYTE_CONTENT_LEN_LEVEL_M_U32` |
 
 uniffi::setup_scaffolding!();
@@ -194,6 +195,12 @@ fn decode_qr_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<FfiScanR
 #[uniffi::export]
 fn get_library_version() -> String {
     rusty_qr_core::encoder::get_library_version()
+}
+
+/// Whether `generate_png` can encode `content`; `false` means it would fail with `ContentTooLong`.
+#[uniffi::export]
+fn content_fits(content: &str) -> Result<bool, FfiQrError> {
+    rusty_qr_core::encoder::content_fits(content).map_err(FfiQrError::from)
 }
 
 /// Returns the number of UTF-8 bytes of content that always encodes with `generate_png`.
@@ -381,6 +388,56 @@ mod tests {
             "one byte over must be ContentTooLong, got {over:?}"
         );
         Ok(())
+    }
+
+    #[test]
+    fn content_fits_delegates_to_core() -> Result<(), FfiQrError> {
+        for content in ["hello", &"a".repeat(2332), &"7".repeat(5597)] {
+            let ffi_result = content_fits(content)?;
+            let core_result = rusty_qr_core::encoder::content_fits(content).map_err(FfiQrError::from)?;
+            assert_eq!(
+                ffi_result,
+                core_result,
+                "FFI and core must agree for {} bytes",
+                content.len()
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn content_fits_agrees_with_generate_png_at_mode_boundaries() -> Result<(), Box<dyn std::error::Error>> {
+        let x12345 = "x12345".repeat(2332);
+        let cases: [(String, usize); 4] = [
+            ("7".repeat(5597), 5596),
+            ("A".repeat(3392), 3391),
+            ("a".repeat(2332), 2331),
+            (x12345, 2331),
+        ];
+        for (text, capacity) in cases {
+            for length in [capacity, capacity + 1] {
+                let content = text.get(..length).ok_or("text too short")?;
+                let fits = content_fits(content)?;
+                assert_eq!(fits, length == capacity, "{length} bytes of a {capacity}-capacity mode");
+                match generate_png(content, 64) {
+                    Ok(_) => assert!(fits, "generation succeeded where content_fits said no"),
+                    Err(FfiQrError::ContentTooLong { .. }) => {
+                        assert!(!fits, "generation failed where content_fits said yes");
+                    }
+                    Err(other) => return Err(other.into()),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn content_fits_empty_returns_invalid_input() {
+        let result = content_fits("");
+        assert!(
+            matches!(result, Err(FfiQrError::InvalidInput { .. })),
+            "expected InvalidInput, got {result:?}"
+        );
     }
 
     // -----------------------------------------------------------------------

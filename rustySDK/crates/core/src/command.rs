@@ -50,6 +50,12 @@ pub enum QrCommand {
         /// Frame height in pixels. Must be greater than 0.
         height: u32,
     },
+    /// Ask whether text fits a QR code, i.e. whether [`QrCommand::GeneratePng`] would not fail with
+    /// [`QrError::ContentTooLong`].
+    CheckContentFits {
+        /// The text to check. Must not be empty.
+        content: String,
+    },
     /// Query the library version string.
     GetVersion,
 }
@@ -69,6 +75,11 @@ pub enum QrResponse {
     Decoded {
         /// The decoded scan result containing the text content.
         result: ScanResult,
+    },
+    /// Whether the text fits a QR code at the default error-correction level.
+    ContentFits {
+        /// `true` if generation can encode the content; `false` if it would be too long.
+        fits: bool,
     },
     /// The library version string.
     Version {
@@ -92,6 +103,7 @@ pub enum QrResponse {
 ///   other than capacity.
 /// * [`QrError::ContentTooLong`] – A generate command's content exceeds the
 ///   capacity of the largest QR code at the chosen error-correction level.
+///   [`QrCommand::CheckContentFits`] reports this as `fits: false` instead.
 /// * [`QrError::ImageError`] – The PNG serialisation or image loading step
 ///   failed.
 /// * [`QrError::DecodingFailed`] – No QR code was found in the provided image
@@ -114,6 +126,9 @@ pub fn process(command: QrCommand) -> Result<QrResponse, QrError> {
             let result = decoder::decode_from_raw(&pixels, width, height)?;
             Ok(QrResponse::Decoded { result })
         }
+        QrCommand::CheckContentFits { content } => Ok(QrResponse::ContentFits {
+            fits: encoder::content_fits(&content)?,
+        }),
         QrCommand::GetVersion => Ok(QrResponse::Version {
             version: encoder::get_library_version(),
         }),
@@ -201,6 +216,23 @@ mod tests {
         };
         let resp = process(cmd)?;
         assert!(matches!(resp, QrResponse::PngGenerated { .. }));
+        Ok(())
+    }
+
+    #[test]
+    fn process_check_content_fits() -> Result<(), Box<dyn std::error::Error>> {
+        let fits = process(QrCommand::CheckContentFits {
+            content: "7".repeat(5596),
+        })?;
+        assert_eq!(fits, QrResponse::ContentFits { fits: true });
+
+        let too_long = process(QrCommand::CheckContentFits {
+            content: "7".repeat(5597),
+        })?;
+        assert_eq!(too_long, QrResponse::ContentFits { fits: false });
+
+        let empty = process(QrCommand::CheckContentFits { content: String::new() });
+        assert!(matches!(empty, Err(QrError::InvalidInput { .. })), "got {empty:?}");
         Ok(())
     }
 }
