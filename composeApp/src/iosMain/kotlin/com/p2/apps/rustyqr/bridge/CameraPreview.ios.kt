@@ -2,17 +2,22 @@
 
 package com.p2.apps.rustyqr.bridge
 
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import arrow.core.Either
+import arrow.core.left
+import arrow.core.raise.either
+import arrow.core.raise.ensure
+import arrow.core.raise.ensureNotNull
+import arrow.core.right
 import com.p2.apps.rustyqr.camera.FrameDispatcher
 import com.p2.apps.rustyqr.camera.rememberFrameDispatcher
 import com.p2.apps.rustyqr.debug.FrameRecorder
 import com.p2.apps.rustyqr.debug.FrameTimings
 import com.p2.apps.rustyqr.debug.LOG_FRAME_TIMINGS
+import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.model.ScanResult
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ByteVar
@@ -20,18 +25,20 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.plus
 import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.reinterpret
-import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVCaptureConnection
 import platform.AVFoundation.AVCaptureDevice
 import platform.AVFoundation.AVCaptureDeviceInput
+import platform.AVFoundation.AVCaptureDevicePositionBack
+import platform.AVFoundation.AVCaptureDeviceTypeBuiltInWideAngleCamera
 import platform.AVFoundation.AVCaptureSession
 import platform.AVFoundation.AVCaptureSessionPresetPhoto
+import platform.AVFoundation.AVCaptureSessionRuntimeErrorNotification
 import platform.AVFoundation.AVCaptureVideoDataOutput
 import platform.AVFoundation.AVCaptureVideoDataOutputSampleBufferDelegateProtocol
 import platform.AVFoundation.AVCaptureVideoPreviewLayer
 import platform.AVFoundation.AVLayerVideoGravityResizeAspectFill
 import platform.AVFoundation.AVMediaTypeVideo
-import platform.AVFoundation.authorizationStatusForMediaType
+import platform.AVFoundation.defaultDeviceWithDeviceType
 import platform.CoreGraphics.CGRectMake
 import platform.CoreMedia.CMSampleBufferGetImageBuffer
 import platform.CoreMedia.CMSampleBufferRef
@@ -44,8 +51,11 @@ import platform.CoreVideo.CVPixelBufferRef
 import platform.CoreVideo.CVPixelBufferUnlockBaseAddress
 import platform.CoreVideo.kCVPixelBufferLock_ReadOnly
 import platform.CoreVideo.kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIView
 import platform.darwin.NSObject
+import platform.darwin.NSObjectProtocol
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 import platform.darwin.dispatch_queue_create
@@ -63,7 +73,8 @@ import platform.darwin.dispatch_queue_t
  * - [AVCaptureSession] uses the `.photo` preset and the back camera.
  *   Session start/stop runs on a dedicated serial queue.
  *   Frame delivery runs on a separate serial queue to avoid blocking the main thread.
- * - [FrameDispatcher] (via `rememberFrameDispatcher`) owns the scan gate, ready-once rule and main-thread delivery.
+ * - [FrameDispatcher] (via `rememberFrameDispatcher`) owns the scan gate, ready-once and error-once rules and
+ *   main-thread delivery. A session that cannot be configured is never started and reports a [CameraFailure].
  *   Teardown order: the dispatcher closes on leaving composition (`onDispose`), then the deferred `onRelease`
  *   detaches the sample-buffer delegates and stops the session on the session queue.
  */
@@ -72,25 +83,35 @@ actual fun CameraPreview(
     isScanning: Boolean,
     onQrDecoded: (ScanResult) -> Unit,
     onCameraReady: () -> Unit,
+    onCameraError: (CameraFailure) -> Unit,
+    modifier: Modifier,
 ) {
     val session = remember { AVCaptureSession() }
     val sessionQueue: dispatch_queue_t =
         remember { dispatch_queue_create("com.p2.apps.rustyqr.session", null) }
 
     // Closed in onDispose (see rememberFrameDispatcher), which precedes the deferred UIKitView onRelease.
-    val dispatcher = rememberFrameDispatcher(isScanning, onQrDecoded, onCameraReady, ::postToMainQueue)
+    val dispatcher = rememberFrameDispatcher(isScanning, onQrDecoded, onCameraReady, onCameraError, ::postToMainQueue)
     val delegate = remember { FrameDelegate(dispatcher) }
+    val runtimeErrors = remember { RuntimeErrorWatch(dispatcher) }
 
     UIKitView(
         factory = {
             val previewView = CameraPreviewUIView(session)
-            configureSession(session, delegate)
-            dispatch_async(sessionQueue) { session.startRunning() }
+            configureSession(session, delegate).fold(
+                // Nothing was added to the session, so there is nothing to start; the failure reaches the main queue.
+                ifLeft = dispatcher::fail,
+                ifRight = {
+                    runtimeErrors.start(session)
+                    dispatch_async(sessionQueue) { session.startRunning() }
+                },
+            )
             previewView
         },
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier,
         onRelease = {
             // onRelease is deferred to the next presented frame, so the dispatcher is already closed by then.
+            runtimeErrors.stop()
             // Session queue: detach the delegate so no more frames are delivered, then stop.
             dispatch_async(sessionQueue) {
                 detachFrameDelegates(session)
@@ -99,6 +120,39 @@ actual fun CameraPreview(
         },
     )
 }
+
+/**
+ * Reports an `AVCaptureSessionRuntimeError` on [session] (the session failed after it started) as
+ * [CameraFailure.CouldNotStart]. Interruptions are deliberately not observed: the system resumes them. Main thread
+ * only. The observer block captures only the dispatcher; the session is used once, as the notification filter, and
+ * [stop] removes the observer.
+ */
+private class RuntimeErrorWatch(
+    private val dispatcher: FrameDispatcher,
+) {
+    private var token: NSObjectProtocol? = null
+
+    fun start(session: AVCaptureSession) {
+        if (token != null) return
+        val dispatcher = dispatcher
+        token =
+            NSNotificationCenter.defaultCenter.addObserverForName(
+                name = AVCaptureSessionRuntimeErrorNotification,
+                `object` = session,
+                queue = NSOperationQueue.mainQueue,
+            ) { notification ->
+                logInfo(TAG, "Capture session runtime error: ${notification?.userInfo}")
+                dispatcher.fail(CameraFailure.CouldNotStart)
+            }
+    }
+
+    fun stop() {
+        token?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
+        token = null
+    }
+}
+
+private const val TAG = "CameraPreview"
 
 /** Runs [work] asynchronously on the main queue. */
 private fun postToMainQueue(work: () -> Unit) {
@@ -232,47 +286,60 @@ private val frameRecorder = FrameRecorder(platform = "ios")
 // Session configuration
 // ---------------------------------------------------------------------------
 
-private fun authorizedVideoDevice(): AVCaptureDevice? {
-    val authStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
-    if (authStatus != AVAuthorizationStatusAuthorized) return null
-    return AVCaptureDevice.defaultDeviceWithMediaType(AVMediaTypeVideo)
-}
+/**
+ * The back wide-angle camera, or null when the hardware has none (the iOS simulator has no camera). Selected
+ * explicitly, like the Android actual's back camera, so a front-only device reports NoCamera instead of previewing
+ * the wrong camera.
+ */
+private fun backVideoDevice(): AVCaptureDevice? =
+    AVCaptureDevice.defaultDeviceWithDeviceType(
+        deviceType = AVCaptureDeviceTypeBuiltInWideAngleCamera,
+        mediaType = AVMediaTypeVideo,
+        position = AVCaptureDevicePositionBack,
+    )
 
 /** Returns null when the OS reports an error (e.g. device access denied after the authorization check). */
 private fun createDeviceInput(device: AVCaptureDevice): AVCaptureDeviceInput? =
     // AVCaptureDeviceInput throws a Kotlin exception when Objective-C sets the NSError out-param.
     Either.catch { AVCaptureDeviceInput(device = device, error = null) }.getOrNull()
 
+/** Left says why the session cannot run; on Left nothing was added to [session]. */
 private fun configureSession(
     session: AVCaptureSession,
     delegate: FrameDelegate,
-) {
-    val device = authorizedVideoDevice() ?: return
-    val input = createDeviceInput(device) ?: return
-
-    session.beginConfiguration()
-    session.sessionPreset = AVCaptureSessionPresetPhoto
-
-    if (session.canAddInput(input)) {
-        session.addInput(input)
+): Either<CameraFailure, Unit> =
+    either {
+        val device = ensureNotNull(backVideoDevice()) { CameraFailure.NoCamera }
+        ensure(isCameraPermissionGranted()) { CameraFailure.CouldNotStart }
+        val input = ensureNotNull(createDeviceInput(device)) { CameraFailure.CouldNotStart }
+        addToSession(session, input, delegate).bind()
     }
 
+/** Adds [input] and a frame output to [session] together, so a failure never leaves it half configured. */
+private fun addToSession(
+    session: AVCaptureSession,
+    input: AVCaptureDeviceInput,
+    delegate: FrameDelegate,
+): Either<CameraFailure, Unit> {
     // Dedicated serial queue for frame delivery — keeps Rust decode off the main thread.
     // Results reach the main queue through FrameDispatcher (postToMainQueue).
     val analysisQueue: dispatch_queue_t = dispatch_queue_create("com.p2.apps.rustyqr.frame", null)
-
     val output =
         AVCaptureVideoDataOutput().apply {
             videoSettings =
                 mapOf(
                     "PixelFormatType" to kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
                 )
-            setSampleBufferDelegate(delegate, queue = analysisQueue)
         }
 
-    if (session.canAddOutput(output)) {
+    session.beginConfiguration()
+    session.sessionPreset = AVCaptureSessionPresetPhoto
+    val canAdd = session.canAddInput(input) && session.canAddOutput(output)
+    if (canAdd) {
+        session.addInput(input)
+        output.setSampleBufferDelegate(delegate, queue = analysisQueue)
         session.addOutput(output)
     }
-
     session.commitConfiguration()
+    return if (canAdd) Unit.right() else CameraFailure.CouldNotStart.left()
 }

@@ -1,5 +1,6 @@
 package com.p2.apps.rustyqr.ui.mvi
 
+import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.model.ScanResult
 
 /**
@@ -30,6 +31,14 @@ sealed interface ScanQRCodeScreenIntent {
 
     /** User tapped "Start Scanning" on the idle screen — lazily checks permission and activates camera. */
     data object StartScanning : ScanQRCodeScreenIntent
+
+    /** The camera is unusable: none on the device, or it failed to start or died mid-session. Shows the error. */
+    data class CameraFailed(
+        val failure: CameraFailure,
+    ) : ScanQRCodeScreenIntent
+
+    /** User tapped "Try Again" on a retryable camera error — clears it and starts the camera again. */
+    data object RetryCamera : ScanQRCodeScreenIntent
 
     /** First camera frame has been delivered — clears the warm-up loader overlay. */
     data object CameraReady : ScanQRCodeScreenIntent

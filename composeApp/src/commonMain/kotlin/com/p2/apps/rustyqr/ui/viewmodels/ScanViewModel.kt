@@ -6,6 +6,7 @@ import com.p2.apps.rustyqr.bridge.isCameraPermissionPermanentlyDenied
 import com.p2.apps.rustyqr.bridge.openAppSettings
 import com.p2.apps.rustyqr.bridge.requestCameraPermission
 import com.p2.apps.rustyqr.bridge.triggerHaptic
+import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.ui.mvi.ScanQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.ScanScreenState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +23,8 @@ import kotlinx.coroutines.flow.update
  *   - Starts unlocked (false) — camera is analyzing
  *   - Locks (true) on first [ScanQRCodeScreenIntent.FrameDecoded] (first-write-wins)
  *   - Unlocks on [ScanQRCodeScreenIntent.DismissSheet] / [ScanQRCodeScreenIntent.ResumeScanning]
+ *   - Unlocks on [ScanQRCodeScreenIntent.CameraFailed]: the session is gone, so no frame can arrive, and a gate left
+ *     locked would swallow the first decode of the retried session
  */
 class ScanViewModel : ViewModel() {
     val state: StateFlow<ScanScreenState>
@@ -44,11 +47,38 @@ class ScanViewModel : ViewModel() {
             is ScanQRCodeScreenIntent.OpenSettings -> openAppSettings()
             is ScanQRCodeScreenIntent.StartScanning -> handleStartScanning()
             is ScanQRCodeScreenIntent.CameraReady -> handleCameraReady()
+            is ScanQRCodeScreenIntent.CameraFailed -> handleCameraFailed(intent.failure)
+            is ScanQRCodeScreenIntent.RetryCamera -> handleRetryCamera()
         }
     }
 
     private fun handleCameraReady() {
         state.update { it.copy(isCameraWarmingUp = false) }
+    }
+
+    private fun handleCameraFailed(failure: CameraFailure) {
+        // Dropping isCameraActive removes the preview from composition, which releases the camera. The session is
+        // over, so no frame can arrive; unlock the gate so a decode that locked it just before the failure cannot
+        // block the first decode of a retried session.
+        scanGate = false
+        state.update {
+            it.copy(
+                isScanning = false,
+                isCameraActive = false,
+                isCameraWarmingUp = false,
+                cameraFailure = failure,
+            )
+        }
+    }
+
+    /**
+     * One tap retries: clears the failure and starts the camera again. The preview already left composition, so it
+     * comes back with a fresh dispatcher and session. Ignored for failures retrying cannot fix (no camera). Permission
+     * was granted when the camera first started; if it was revoked since, the new session reports a failure again.
+     */
+    private fun handleRetryCamera() {
+        if (state.value.cameraFailure?.isRetryable != true) return
+        state.update { it.copy(cameraFailure = null).withCameraActive(true) }
     }
 
     private fun handleFrameDecoded(intent: ScanQRCodeScreenIntent.FrameDecoded) {
@@ -82,14 +112,12 @@ class ScanViewModel : ViewModel() {
     private fun handlePermissionResult(granted: Boolean) {
         val permanentlyDenied = if (!granted) isCameraPermissionPermanentlyDenied() else false
         state.update {
-            it.copy(
-                hasPermission = granted,
-                permissionRequested = true,
-                isCameraActive = granted,
-                isScanning = granted,
-                isCameraWarmingUp = granted,
-                isPermanentlyDenied = permanentlyDenied,
-            )
+            it
+                .copy(
+                    hasPermission = granted,
+                    permissionRequested = true,
+                    isPermanentlyDenied = permanentlyDenied,
+                ).withCameraActive(granted)
         }
     }
 
@@ -102,14 +130,12 @@ class ScanViewModel : ViewModel() {
     private fun handleStartScanning() {
         if (isCameraPermissionGranted()) {
             state.update {
-                it.copy(
-                    isCameraActive = true,
-                    hasPermission = true,
-                    permissionRequested = true,
-                    isScanning = true,
-                    isCameraWarmingUp = true,
-                    isPermanentlyDenied = false,
-                )
+                it
+                    .copy(
+                        hasPermission = true,
+                        permissionRequested = true,
+                        isPermanentlyDenied = false,
+                    ).withCameraActive(true)
             }
         } else {
             requestCameraPermission { granted ->
@@ -118,3 +144,7 @@ class ScanViewModel : ViewModel() {
         }
     }
 }
+
+/** The camera on and scanning with the warm-up loader showing, or all three off. */
+private fun ScanScreenState.withCameraActive(active: Boolean): ScanScreenState =
+    copy(isCameraActive = active, isScanning = active, isCameraWarmingUp = active)

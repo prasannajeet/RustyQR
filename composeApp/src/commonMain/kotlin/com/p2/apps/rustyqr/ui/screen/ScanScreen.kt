@@ -1,25 +1,18 @@
 package com.p2.apps.rustyqr.ui.screen
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -29,13 +22,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.p2.apps.rustyqr.bridge.CameraPreview
 import com.p2.apps.rustyqr.ui.components.AmberButton
+import com.p2.apps.rustyqr.ui.components.CameraFailureContent
+import com.p2.apps.rustyqr.ui.components.PermissionDeniedContent
 import com.p2.apps.rustyqr.ui.components.ScanResultSheet
 import com.p2.apps.rustyqr.ui.components.ScannerOverlay
 import com.p2.apps.rustyqr.ui.mvi.ScanQRCodeScreenIntent
@@ -43,13 +37,8 @@ import com.p2.apps.rustyqr.ui.mvi.ScanScreenState
 import com.p2.apps.rustyqr.ui.viewmodels.ScanViewModel
 import org.jetbrains.compose.resources.stringResource
 import rustyqr.composeapp.generated.resources.Res
-import rustyqr.composeapp.generated.resources.scan_camera_denied_cd
 import rustyqr.composeapp.generated.resources.scan_camera_starting
-import rustyqr.composeapp.generated.resources.scan_grant_permission
 import rustyqr.composeapp.generated.resources.scan_hint
-import rustyqr.composeapp.generated.resources.scan_open_settings
-import rustyqr.composeapp.generated.resources.scan_permission_body
-import rustyqr.composeapp.generated.resources.scan_permission_title
 import rustyqr.composeapp.generated.resources.scan_start_scanning
 
 /**
@@ -101,6 +90,13 @@ private fun ScanContent(
                 )
             }
 
+            state.cameraFailure != null -> {
+                CameraFailureContent(
+                    failure = state.cameraFailure,
+                    onTryAgain = { onIntent(ScanQRCodeScreenIntent.RetryCamera) },
+                )
+            }
+
             state.isCameraActive && state.hasPermission -> {
                 CameraScanLayer(state = state, onIntent = onIntent)
             }
@@ -124,6 +120,8 @@ private fun CameraScanLayer(
         isScanning = state.isScanning,
         onQrDecoded = { result -> onIntent(ScanQRCodeScreenIntent.FrameDecoded(result)) },
         onCameraReady = { onIntent(ScanQRCodeScreenIntent.CameraReady) },
+        onCameraError = { failure -> onIntent(ScanQRCodeScreenIntent.CameraFailed(failure)) },
+        modifier = Modifier.fillMaxSize(),
     )
 
     // Warm-up loader overlay — covers the black-while-warming-up frame so the user
@@ -236,101 +234,4 @@ private fun IdleContent(onStartScanning: () -> Unit) {
             modifier = Modifier.align(Alignment.Center),
         )
     }
-}
-
-@Composable
-private fun PermissionDeniedContent(
-    isPermanentlyDenied: Boolean,
-    onGrantPermission: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    val columnModifier =
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(32.dp)
-    Column(
-        modifier = columnModifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        CameraDeniedIcon()
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        PermissionMessage()
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        if (isPermanentlyDenied) {
-            AmberButton(
-                text = stringResource(Res.string.scan_open_settings),
-                onClick = onOpenSettings,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            AmberButton(
-                text = stringResource(Res.string.scan_grant_permission),
-                onClick = onGrantPermission,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
-/** Camera icon with a strike-through line. */
-@Composable
-private fun CameraDeniedIcon() {
-    Box(contentAlignment = Alignment.Center) {
-        Surface(
-            modifier = Modifier.size(80.dp),
-            shape = CircleShape,
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Outlined.CameraAlt,
-                    contentDescription = stringResource(Res.string.scan_camera_denied_cd),
-                    modifier = Modifier.size(36.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-            }
-        }
-        // Strike-through line
-        val strikeModifier =
-            Modifier
-                .size(width = 80.dp, height = 2.dp)
-                .background(MaterialTheme.colorScheme.error)
-        Box(
-            modifier = strikeModifier,
-        )
-    }
-}
-
-@Composable
-private fun ColumnScope.PermissionMessage() {
-    val titleStyle =
-        MaterialTheme.typography.bodyLarge.copy(
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 15.sp,
-        )
-    Text(
-        text = stringResource(Res.string.scan_permission_title),
-        style = titleStyle,
-        textAlign = TextAlign.Center,
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    val bodyStyle =
-        MaterialTheme.typography.bodySmall.copy(
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
-        )
-    Text(
-        text = stringResource(Res.string.scan_permission_body),
-        style = bodyStyle,
-        textAlign = TextAlign.Center,
-    )
 }
