@@ -321,8 +321,7 @@ either `Ok(value)` or `Err(error)`:
 // This function returns either a Vec<u8> (success) or a QrError (failure)
 pub fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, QrError> {
     validate_generate_inputs(content, size)?;  // ? = return early if Err
-    let code = qrcode::QrCode::new(content.as_bytes())
-        .map_err(|e| QrError::EncodingFailed { reason: e.to_string() })?;
+    let code = encode(content.as_bytes(), qrcode::EcLevel::M)?;  // ContentTooLong if too long
     render_qr_to_png(&code, size)
 }
 ```
@@ -339,15 +338,16 @@ associated values:
 ```rust
 pub enum QrError {
     InvalidInput { reason: String },     // caller's fault
-    EncodingFailed { reason: String },   // QR encoding library error
+    EncodingFailed { reason: String },   // internal qrcode error, not capacity
     DecodingFailed { reason: String },   // no QR code found
     ImageError { reason: String },       // PNG/JPEG processing error
+    ContentTooLong { reason: String },   // exceeds the largest QR code (declared last)
 }
 ```
 
 UniFFI maps this to:
 
-- **Kotlin**: `sealed class FfiQrException` with subclasses (`InvalidInput`, `EncodingFailed`, etc.)
+- **Kotlin**: `sealed class FfiQrException` with subclasses (`InvalidInput`, `EncodingFailed`, `ContentTooLong`, etc.)
 - **Swift**: `enum FfiQrError` with associated values
 
 ### Traits and Derive Macros
@@ -640,6 +640,7 @@ classDiagram
             EncodingFailed~reason String~
             DecodingFailed~reason String~
             ImageError~reason String~
+            ContentTooLong~reason String~
         }
     }
 
@@ -669,6 +670,7 @@ classDiagram
             EncodingFailed~reason String~
             DecodingFailed~reason String~
             ImageError~reason String~
+            ContentTooLong~reason String~
         }
     }
 
@@ -718,6 +720,7 @@ graph LR
     D --> F[EncodingFailed]
     D --> G[DecodingFailed]
     D --> H[ImageError]
+    D --> I[ContentTooLong]
 ```
 
 The library guarantees **zero panics** in production code. A panic in Rust is equivalent to an
@@ -729,9 +732,10 @@ unhandled exception — it would crash the mobile app. Every error is caught and
 | Variant          | When it occurs                                          | Caller action                              |
 |------------------|---------------------------------------------------------|--------------------------------------------|
 | `InvalidInput`   | Empty content, size = 0, size > 4096, empty image bytes | Fix the input — never retry                |
-| `EncodingFailed` | Content exceeds QR capacity                             | Try shorter content or lower EC level      |
+| `EncodingFailed` | Internal `qrcode` error; not expected for text input    | Report as a bug                            |
 | `DecodingFailed` | No QR code found in image                               | Expected — not all images contain QR codes |
 | `ImageError`     | PNG/JPEG parsing failed, image encoding error           | Check the image format                     |
+| `ContentTooLong` | Content exceeds the largest QR code at the chosen level | Shorten to at most 2331 UTF-8 bytes at level M, or lower the EC level |
 
 ### Validation Pattern
 
