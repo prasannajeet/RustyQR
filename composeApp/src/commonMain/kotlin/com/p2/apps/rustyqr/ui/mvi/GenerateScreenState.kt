@@ -6,6 +6,13 @@ import com.p2.apps.rustyqr.ui.UiText
 const val MAX_QR_INPUT_LENGTH = 4296
 
 /**
+ * Whether [text] exceeds [MAX_QR_INPUT_LENGTH] once surrounding whitespace is trimmed.
+ *
+ * Generation encodes the trimmed text, so the limit applies to the trimmed length everywhere.
+ */
+fun isQrInputTooLong(text: String): Boolean = text.trim().length > MAX_QR_INPUT_LENGTH
+
+/**
  * Animation phase for the Generate screen.
  */
 enum class AnimationPhase {

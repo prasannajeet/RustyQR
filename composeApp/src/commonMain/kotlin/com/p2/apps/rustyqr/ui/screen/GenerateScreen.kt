@@ -39,7 +39,7 @@ import com.p2.apps.rustyqr.ui.components.QrResultCard
 import com.p2.apps.rustyqr.ui.mvi.AnimationPhase
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.GenerateScreenState
-import com.p2.apps.rustyqr.ui.mvi.MAX_QR_INPUT_LENGTH
+import com.p2.apps.rustyqr.ui.mvi.isQrInputTooLong
 import com.p2.apps.rustyqr.ui.resolve
 import com.p2.apps.rustyqr.ui.viewmodels.GenerateViewModel
 import org.jetbrains.compose.resources.stringResource
@@ -205,7 +205,7 @@ private fun QrInputField(
     inputText: String,
     onTextChange: (String) -> Unit,
 ) {
-    val isInputTooLong = inputText.length > MAX_QR_INPUT_LENGTH
+    val isInputTooLong = isQrInputTooLong(inputText)
 
     val keyboardOptions =
         KeyboardOptions(
@@ -267,7 +267,7 @@ private fun GenerateButton(
         )
     val buttonEnabled =
         inputText.isNotBlank() &&
-            inputText.length <= MAX_QR_INPUT_LENGTH
+            !isQrInputTooLong(inputText)
     AmberButton(
         text = buttonText,
         onClick = onGenerate,
