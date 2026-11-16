@@ -76,12 +76,12 @@ actual fun CameraPreview(
 private val frameRecorder = FrameRecorder(platform = "android")
 
 /**
- * One camera binding: the analysis thread, the use cases and the [dispatcher].
+ * One camera binding: the analysis thread, the use cases and the analyzer feeding the [FrameDispatcher].
  * Main-thread only. Holds no Activity or [PreviewView] after [release]. The dispatcher is closed by
  * [rememberFrameDispatcher], not here.
  */
 private class CameraSession(
-    private val dispatcher: FrameDispatcher,
+    dispatcher: FrameDispatcher,
     private val mainExecutor: Executor,
 ) {
     private val executor = Executors.newSingleThreadExecutor()
