@@ -10,19 +10,28 @@ private class AndroidFrameFiles(
     override fun writeBytes(
         name: String,
         bytes: ByteArray,
-    ): Either<String, Unit> = write { File(directory, name).writeBytes(bytes) }
+    ): Either<String, Unit> = io { File(directory, name).writeBytes(bytes) }
 
     override fun appendLine(
         name: String,
         line: String,
-    ): Either<String, Unit> = write { File(directory, name).appendText(line + "\n") }
+    ): Either<String, Unit> = io { File(directory, name).appendText(line + "\n") }
 
-    private fun write(action: () -> Unit): Either<String, Unit> =
+    override fun countLines(name: String): Either<String, Int> =
+        io {
+            val file = File(directory, name)
+            if (file.exists()) file.useLines { it.count() } else 0
+        }
+
+    private fun <T> io(action: () -> T): Either<String, T> =
         Either
             .catch {
                 check(directory.isDirectory || directory.mkdirs()) { "cannot create $directory" }
                 action()
-            }.mapLeft { it.message ?: "frame write failed" }
+            }.mapLeft { it.message ?: "frame file access failed" }
 }
 
-actual fun frameFiles(): FrameFiles = AndroidFrameFiles(File(AppContextHolder.context.cacheDir, "frames"))
+actual fun frameFiles(): Either<String, FrameFiles> {
+    val directory = File(AppContextHolder.context.cacheDir, "frames")
+    return Either.Right(AndroidFrameFiles(directory))
+}
