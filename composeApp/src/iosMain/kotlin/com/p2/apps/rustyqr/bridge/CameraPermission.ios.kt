@@ -44,9 +44,9 @@ actual fun isCameraPermissionPermanentlyDenied(): Boolean = cameraAuthorizationS
  * iOS actual — opens the app's settings page so the user can change camera access.
  */
 actual fun openAppSettings() {
-    val url = NSURL(string = UIApplicationOpenSettingsURLString) ?: return
+    val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
     dispatch_async(dispatch_get_main_queue()) {
-        UIApplication.sharedApplication.openURL(url)
+        UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any?>(), completionHandler = null)
     }
 }
 
