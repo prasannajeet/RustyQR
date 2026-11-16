@@ -61,16 +61,6 @@ uniffi {
     }
 }
 
-detekt {
-    // The plain `detekt` task defaults to src/main/kotlin, which does not exist in a KMP layout. Point it at the
-    // hand-written KMP source sets only; the UniFFI bindings are generated under build/.
-    source.setFrom(
-        fileTree("src") {
-            include("*Main/kotlin/**/*.kt", "*Test/kotlin/**/*.kt")
-        },
-    )
-}
-
 ktlint {
     filter {
         exclude { it.file.path.contains("/generated/") }

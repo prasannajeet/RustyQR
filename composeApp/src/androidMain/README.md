@@ -15,8 +15,8 @@
 <p><b>Rust <code>.so</code> × 3 ABIs · UniFFI Kotlin · CameraX Y-plane path · 16KB page-aligned on 64-bit ABIs</b></p>
 
 <sub>This source set holds Android-specific <code>actual</code> implementations for the expect
-declarations in <code>commonMain</code> plus the <code>BridgeHostActivity</code> base class that the app module's launcher Activity extends. The shared Compose
-UI itself lives in <code>commonMain</code>.</sub>
+declarations in <code>commonMain</code> plus the <code>BridgeHostActivity</code> base class that the app
+module's launcher Activity extends. The shared Compose UI itself lives in <code>commonMain</code>.</sub>
 
 </div>
 
@@ -93,7 +93,7 @@ Module-level linting and format tasks (ktlint, detekt, lintAll, installGitHooks)
 composeApp/src/androidMain/
 ├── kotlin/com/p2/apps/rustyqr/
 │   ├── BridgeHostActivity.kt           # Open base Activity — registers in BridgeHostActivityHolder, owns the CAMERA launcher
-│   ├── BridgeHostActivityHolder.kt           # Weak-ref holder so bridges reach the foreground Activity
+│   ├── BridgeHostActivityHolder.kt     # Weak-ref holder so bridges reach the foreground Activity
 │   ├── AppContextHolder.kt             # Static Application context for bridges (permissions, share, save)
 │   ├── Platform.android.kt             # Platform() actual
 │   └── bridge/

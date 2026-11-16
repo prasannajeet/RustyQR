@@ -1,5 +1,14 @@
 plugins {
     `kotlin-dsl`
+    alias(libs.plugins.ktlint)
+}
+
+ktlint {
+    android.set(true)
+    verbose.set(true)
+    filter {
+        exclude { it.file.path.contains("/build/") }
+    }
 }
 
 dependencies {

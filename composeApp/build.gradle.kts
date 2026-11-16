@@ -90,20 +90,11 @@ kotlin {
     }
 }
 
-detekt {
-    // The plain `detekt` task defaults to src/main/kotlin, which does not exist in a KMP layout. Point it at every
-    // KMP Kotlin source set (commonMain, androidMain, iosMain, commonTest, ...).
-    source.setFrom(
-        fileTree("src") {
-            include("*Main/kotlin/**/*.kt", "*Test/kotlin/**/*.kt")
-        },
-    )
-}
-
 // Type resolution: detekt 1.23.x routes the Android KMP library compilation through its generic path, which gives
 // `detektAndroidMain` a compile classpath (androidJvm) over the androidMain sources. commonMain is added to it so
 // shared code is type-checked against the Android classpath, and the SDK boot classpath makes `android.*` resolve.
-// detekt 1.x cannot resolve Kotlin/Native types, so iosMain and commonTest only get the untyped source-set scan configured above.
+// detekt 1.x cannot resolve Kotlin/Native types, so iosMain and commonTest only get the untyped source-set scan
+// that the convention plugin configures.
 // The plugin registers its per-compilation tasks late, so adjust it afterwards (this fails loudly if the task is gone).
 afterEvaluate {
     tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektAndroidMain") {
@@ -181,6 +172,7 @@ tasks.register("lintAll") {
         ":androidApp:detekt",
         ":rustyqr-bindings:ktlintCheck",
         ":rustyqr-bindings:detekt",
+        gradle.includedBuild("build-logic").task(":ktlintCheck"),
     )
 }
 

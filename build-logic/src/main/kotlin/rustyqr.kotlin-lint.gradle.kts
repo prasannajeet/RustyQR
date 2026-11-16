@@ -21,7 +21,7 @@ dependencies {
 
 detekt {
     buildUponDefaultConfig = true
-    config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
+    config.setFrom(rootProject.layout.projectDirectory.file("config/detekt/detekt.yml"))
 }
 
 tasks.withType<Detekt>().configureEach {
@@ -37,6 +37,23 @@ ktlint {
     android.set(true)
     verbose.set(true)
     filter {
-        exclude { it.file.path.contains("/build/") }
+        // Project-relative, like the detekt exclude: a checkout under some /build/ directory must still be linted.
+        val moduleRoot = project.projectDir
+        exclude {
+            val path = it.file.relativeTo(moduleRoot).invariantSeparatorsPath
+            path.startsWith("build/") || path.contains("/build/")
+        }
+    }
+}
+
+// The plain `detekt` task defaults to src/main/kotlin, which does not exist in a KMP layout. Point it at every KMP
+// Kotlin source set. Generated code lives under build/ and is excluded above.
+pluginManager.withPlugin("org.jetbrains.kotlin.multiplatform") {
+    detekt {
+        source.setFrom(
+            fileTree("src") {
+                include("*Main/kotlin/**/*.kt", "*Test/kotlin/**/*.kt")
+            },
+        )
     }
 }

@@ -85,8 +85,8 @@ androidComponents {
                 include("**/*.kt", "**/*.kts")
                 classpath.setFrom(variant.compileClasspath, sdkComponents.bootClasspath)
                 jvmTarget = jvmTargetVersion.majorVersion
-                buildUponDefaultConfig = true
-                config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
+                buildUponDefaultConfig = detekt.buildUponDefaultConfig
+                config.setFrom(detekt.config)
                 // Explicit paths: unset locations fall back to detekt.<ext>, which the plain `detekt` task also writes.
                 reports {
                     listOf(xml, html, txt, sarif, md).forEach {
