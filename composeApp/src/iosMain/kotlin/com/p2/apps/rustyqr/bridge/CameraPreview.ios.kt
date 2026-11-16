@@ -159,6 +159,8 @@ private class FrameDelegate(
         didOutputSampleBuffer: CMSampleBufferRef?,
         fromConnection: AVCaptureConnection,
     ) {
+        // Timed from analyzer entry; frames that never reach Rust (idle, no pixel buffer) stay uncounted.
+        if (LOG_FRAME_TIMINGS) timings.startFrame()
         // Fire the ready callback on the first delivered frame (even if not scanning),
         // so the "Starting camera…" overlay clears as soon as the preview is live.
         if (!readyFired) {
@@ -166,8 +168,6 @@ private class FrameDelegate(
             dispatch_async(dispatch_get_main_queue()) { onCameraReady() }
         }
         if (!isScanning) return
-        // Timed from before the buffer lookup; frames that never reach Rust stay uncounted.
-        if (LOG_FRAME_TIMINGS) timings.startFrame()
         val pixelBuffer = didOutputSampleBuffer?.let { CMSampleBufferGetImageBuffer(it) } ?: return
         decodeFrame(pixelBuffer)
         if (LOG_FRAME_TIMINGS) timings.endFrame()

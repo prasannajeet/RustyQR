@@ -14,7 +14,7 @@ private const val NANOS_PER_MICRO = 1000L
 private val monotonicOrigin = TimeSource.Monotonic.markNow()
 
 /** A source of monotonic nanoseconds. A `fun interface` returning a primitive, so reading it never boxes. */
-fun interface NanoClock {
+internal fun interface NanoClock {
     fun nowNanos(): Long
 }
 
@@ -58,8 +58,8 @@ internal fun percentile(
  * of each [FrameStage] (in microseconds) in one line, then starts over.
  *
  * Call order per frame: [startFrame], [endCopy], [endRust], [endFrame]. A frame that returns early skips the remaining
- * calls. Laps already recorded stay in the batch. [FrameStage.TOTAL] and the frame count only include frames that
- * reached the Rust call, so frames dropped before decoding (not scanning, unusable plane) do not skew the batch.
+ * calls. [FrameStage.TOTAL] and the frame count only include frames that reached the Rust call, so frames dropped
+ * before decoding (not scanning, unusable plane) do not skew the batch.
  *
  * Timings run when [logFrameTimings] is true, in any build type. When it is false, every method returns on its first
  * statement: the clock is never read and nothing is allocated. Callers additionally guard each call with the
@@ -69,7 +69,7 @@ internal fun percentile(
  * thread, so a new screen entry gets its own instance and an old and a new thread never share state. A frame that is
  * still in flight on an old thread only affects its own instance. No method throws.
  */
-class FrameTimings(
+internal class FrameTimings(
     logFrameTimings: Boolean = LOG_FRAME_TIMINGS,
     private val clock: NanoClock = NanoClock(::monotonicNanos),
     private val log: (String) -> Unit = { logInfo(LOG_TAG, it) },
