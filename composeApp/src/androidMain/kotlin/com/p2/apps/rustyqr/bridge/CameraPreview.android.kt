@@ -1,7 +1,9 @@
 package com.p2.apps.rustyqr.bridge
 
+import android.content.Context
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -15,6 +17,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.p2.apps.rustyqr.camera.packLumaRows
+import com.p2.apps.rustyqr.debug.FrameRecorder
 import com.p2.apps.rustyqr.model.ScanResult
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -72,6 +75,9 @@ actual fun CameraPreview(
     )
 }
 
+/** Process-scoped so the debug frame budget is per app launch, not per composition. */
+private val frameRecorder = FrameRecorder(platform = "android")
+
 /** Everything the per-frame analyzer needs: where it runs and how it reports back. */
 private class FrameAnalysis(
     val executor: java.util.concurrent.ExecutorService,
@@ -112,34 +118,7 @@ private fun bindCamera(
                             imageProxy.close()
                             return@setAnalyzer
                         }
-                        val planeProxy = imageProxy.planes[0]
-                        if (planeProxy.pixelStride != 1) {
-                            imageProxy.close()
-                            return@setAnalyzer
-                        }
-                        val buffer = planeProxy.buffer
-                        val bytes = ByteArray(buffer.remaining())
-                        buffer.get(bytes)
-
-                        val packed =
-                            packLumaRows(bytes, imageProxy.width, imageProxy.height, planeProxy.rowStride)
-                                .getOrNull()
-                        if (packed == null) {
-                            imageProxy.close()
-                            return@setAnalyzer
-                        }
-
-                        QrBridge
-                            .decodeQrFromRaw(
-                                pixels = packed,
-                                width = imageProxy.width,
-                                height = imageProxy.height,
-                            ).onRight { result ->
-                                // Left (no QR found) is silently discarded — expected for most frames
-                                val mainExecutor = ContextCompat.getMainExecutor(context)
-                                mainExecutor.execute { analysis.onQrDecoded(result) }
-                            }
-                        imageProxy.close()
+                        analyzeFrame(imageProxy, analysis, context)
                     }
                 }
 
@@ -151,4 +130,37 @@ private fun bindCamera(
             imageAnalysis,
         )
     }, ContextCompat.getMainExecutor(context))
+}
+
+/** Decodes one scanning frame, offers it to the debug [frameRecorder], and always closes [imageProxy]. */
+private fun analyzeFrame(
+    imageProxy: ImageProxy,
+    analysis: FrameAnalysis,
+    context: Context,
+) {
+    val planeProxy = imageProxy.planes[0]
+    if (planeProxy.pixelStride == 1) {
+        val buffer = planeProxy.buffer
+        val bytes = ByteArray(buffer.remaining())
+        buffer.get(bytes)
+
+        packLumaRows(bytes, imageProxy.width, imageProxy.height, planeProxy.rowStride)
+            .getOrNull()
+            ?.let { packed ->
+                val decoded = QrBridge.decodeQrFromRaw(packed, imageProxy.width, imageProxy.height)
+                // The unpacked copy keeps the row padding exactly as delivered.
+                frameRecorder.record(
+                    luma = bytes,
+                    width = imageProxy.width,
+                    height = imageProxy.height,
+                    rowStride = planeProxy.rowStride,
+                    content = decoded.getOrNull()?.content,
+                )
+                // Left (no QR found) is silently discarded — expected for most frames
+                decoded.onRight { result ->
+                    ContextCompat.getMainExecutor(context).execute { analysis.onQrDecoded(result) }
+                }
+            }
+    }
+    imageProxy.close()
 }
