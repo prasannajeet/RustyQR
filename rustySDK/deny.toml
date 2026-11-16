@@ -28,6 +28,11 @@ name = "rusty-qr-ffi"
 expression = "MIT"
 license-files = []
 
+[[licenses.clarify]]
+name = "rusty-qr-wasm"
+expression = "MIT"
+license-files = []
+
 [bans]
 multiple-versions = "warn"
 wildcards = "allow"  # path deps don't need version specifiers
