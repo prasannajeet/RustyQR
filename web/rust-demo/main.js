@@ -1,6 +1,6 @@
-import init, { generatePng, decodeImage, libraryVersion } from '../../rustySDK/crates/wasm/pkg/rusty_qr_wasm.js';
-
+const WASM_MODULE = '../../rustySDK/crates/wasm/pkg/rusty_qr_wasm.js';
 const QR_SIZE = 256;
+const RELOAD_HINT = 'The Rust module stopped working. Reload the page.';
 
 const byId = (id) => document.getElementById(id);
 const status = byId('status');
@@ -12,7 +12,13 @@ const file = byId('file');
 const decoded = byId('decoded');
 const decodeError = byId('decode-error');
 
+let wasm;
 let currentUrl = null;
+
+// A Rust panic traps the module as a WebAssembly.RuntimeError and leaves it unusable.
+function describe(error) {
+  return error instanceof WebAssembly.RuntimeError ? RELOAD_HINT : error.message;
+}
 
 function showGenerated(bytes) {
   if (currentUrl) {
@@ -26,10 +32,10 @@ function showGenerated(bytes) {
 function onGenerate() {
   generateError.textContent = '';
   try {
-    showGenerated(generatePng(content.value, QR_SIZE));
+    showGenerated(wasm.generatePng(content.value, QR_SIZE));
   } catch (error) {
     qr.hidden = true;
-    generateError.textContent = error.message;
+    generateError.textContent = describe(error);
   }
 }
 
@@ -42,15 +48,17 @@ async function onFile() {
   }
   try {
     const bytes = new Uint8Array(await selected.arrayBuffer());
-    decoded.textContent = decodeImage(bytes);
+    decoded.textContent = wasm.decodeImage(bytes);
   } catch (error) {
-    decodeError.textContent = error.message;
+    decodeError.textContent = describe(error);
   }
 }
 
 try {
-  await init();
-  status.textContent = `Rust core ${libraryVersion()} loaded.`;
+  // Imported dynamically so a missing pkg/ reaches this catch instead of failing the whole module.
+  wasm = await import(WASM_MODULE);
+  await wasm.default();
+  status.textContent = `Rust core ${wasm.libraryVersion()} loaded.`;
   content.disabled = false;
   generate.disabled = false;
   file.disabled = false;
