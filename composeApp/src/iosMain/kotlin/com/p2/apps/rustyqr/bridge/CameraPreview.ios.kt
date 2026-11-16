@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import arrow.core.Either
 import com.p2.apps.rustyqr.debug.FrameRecorder
+import com.p2.apps.rustyqr.debug.FrameTimings
 import com.p2.apps.rustyqr.model.ScanResult
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ByteVar
@@ -149,6 +150,9 @@ private class FrameDelegate(
     var isScanning: Boolean = true
     private var readyFired: Boolean = false
 
+    // Touched only on this delegate's serial analysis queue; each composition has its own delegate and queue.
+    private val timings = FrameTimings()
+
     override fun captureOutput(
         output: platform.AVFoundation.AVCaptureOutput,
         didOutputSampleBuffer: CMSampleBufferRef?,
@@ -166,6 +170,7 @@ private class FrameDelegate(
     }
 
     private fun decodeFrame(pixelBuffer: CVPixelBufferRef) {
+        timings.startFrame()
         CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
         // Copy only while locked; decoding and recording work on the copies.
         val frame =
@@ -175,7 +180,9 @@ private class FrameDelegate(
                 CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
             }
         if (frame == null) return
+        timings.endCopy()
         val decoded = QrBridge.decodeQrFromRaw(frame.bytes, frame.width, frame.height)
+        timings.endRust(decoded)
         decoded.onRight { result ->
             dispatch_async(dispatch_get_main_queue()) { onQrDecoded(result) }
         }
@@ -183,6 +190,7 @@ private class FrameDelegate(
         frame.padded?.let { padded ->
             frameRecorder.record(padded, frame.width, frame.height, frame.bytesPerRow, decoded.getOrNull()?.content)
         }
+        timings.endFrame()
     }
 
     /**
