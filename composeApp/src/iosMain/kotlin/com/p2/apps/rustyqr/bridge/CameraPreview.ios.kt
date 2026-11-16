@@ -175,7 +175,7 @@ private class FrameDelegate(
         // Copy only while locked; decoding and recording work on the copies.
         val frame =
             try {
-                copyLumaPlane(pixelBuffer, keepPadded = frameRecorder.isEnabled)
+                copyLumaPlane(pixelBuffer, keepPadded = frameRecorder.wantsFrames)
             } finally {
                 CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
             }

@@ -28,17 +28,14 @@ open class CapturePolicy(
         return (decoded || analysed % sampleInterval == 0) && reserveSlot()
     }
 
+    /** True while fewer than [maxFrames] frames have been accepted. */
+    open fun hasBudget(): Boolean = acceptedFrames.load() < maxFrames
+
     private fun reserveSlot(): Boolean {
-        var reserved = false
-        var open = true
-        while (open) {
+        while (true) {
             val current = acceptedFrames.load()
-            open = current < maxFrames
-            if (open && acceptedFrames.compareAndSet(current, current + 1)) {
-                reserved = true
-                open = false
-            }
+            if (current >= maxFrames) return false
+            if (acceptedFrames.compareAndSet(current, current + 1)) return true
         }
-        return reserved
     }
 }
