@@ -102,10 +102,10 @@ fn main() -> BenchResult {
     bench_round_trip_256(&mut c)?;
     bench_content_fits(&mut c, "content_fits_2331B_byte", &"a".repeat(2331), true)?;
     bench_content_fits(&mut c, "content_fits_5596_numeric", &"7".repeat(5596), true)?;
-    // Worst case that still fits: the optimizer overflows, so the single byte segment search runs.
+    // Worst case that still fits: one whole byte segment is shorter than every optimised segmentation.
     let mixed = "x12345".repeat(400);
     let mixed_2331 = mixed.get(..2331).ok_or("pattern too short")?;
-    bench_content_fits(&mut c, "content_fits_2331B_mixed_fallback", mixed_2331, true)?;
+    bench_content_fits(&mut c, "content_fits_2331B_mixed_whole_byte", mixed_2331, true)?;
     // Non-ASCII content: ECI 26 plus Kanji-free segmentation.
     let japanese = "日本語のテキスト、東京都渋谷区".repeat(100);
     let japanese_2328 = japanese.get(..2328).ok_or("pattern too short")?;

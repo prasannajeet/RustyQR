@@ -46,7 +46,7 @@ class ContentFitsBindingsTest {
     }
 
     @Test
-    fun digitRunBoundaryIsTheByteFallback() {
+    fun digitRunBoundaryIsOneWholeByteSegment() {
         assertTrue(contentFits(digitRunContent(BYTE_CAPACITY)))
         assertTrue(generatePng(digitRunContent(BYTE_CAPACITY), QR_SIZE_PX).isNotEmpty())
         assertFalse(contentFits(digitRunContent(BYTE_CAPACITY + 1)))
