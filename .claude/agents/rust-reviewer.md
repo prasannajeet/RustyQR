@@ -18,11 +18,11 @@ The reader is an experienced Kotlin and Android engineer who is learning Rust. E
 
 ## Steps
 
-1. From `rustySDK/`, run `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `cargo clippy --workspace --all-targets -- -W clippy::pedantic` and `cargo test --workspace`. Record each result.
+1. From `rustySDK/`, run `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo clippy --workspace --all-targets -- -W clippy::pedantic` and `cargo test --workspace`. Record each result.
 2. In the changed lines, find: `.clone()`, `.to_owned()`, `.to_vec()`, `Rc<`, `RefCell`, `Arc<`, `Mutex`, `'static`, `Box<dyn`, `unwrap`, `expect(`, `unsafe`, `#[expect` and `as` casts.
 3. For each `.clone()`, `.to_owned()`, `.to_vec()`, `Rc`, `RefCell` and `'static` found, test whether it is needed. Create a temporary worktree with `git worktree add`, remove the workaround there, run `cargo check`, and record the compiler error or its absence. Remove the worktree afterwards. Never change the working tree under review.
 4. Check the project rules:
-   - No panics outside tests. Every `#[expect]` has a reason, and the check it names exists.
+   - No panicking calls anywhere, tests and benches included: Clippy runs with `--all-targets`. No `#[allow]` or `#[expect]`; report each one as a finding and fix the code instead.
    - `crates/core` has no UniFFI dependency. Functions in `crates/ffi` are single delegations with no branching.
    - Sizes received from Kotlin use checked arithmetic before any allocation or indexing.
    - Camera-frame buffers are not copied again in Rust after they cross the FFI boundary.
