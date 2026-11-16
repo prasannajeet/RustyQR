@@ -82,6 +82,12 @@ pub enum FfiQrError {
         /// Human-readable description of the failure.
         reason: String,
     },
+    /// The content exceeds the capacity of the largest QR code.
+    #[error("Content too long: {reason}")]
+    ContentTooLong {
+        /// Human-readable description of the failure.
+        reason: String,
+    },
     /// QR decoding failed.
     #[error("Decoding failed: {reason}")]
     DecodingFailed {
@@ -136,6 +142,7 @@ impl From<rusty_qr_core::QrError> for FfiQrError {
         match value {
             rusty_qr_core::QrError::InvalidInput { reason } => Self::InvalidInput { reason },
             rusty_qr_core::QrError::EncodingFailed { reason } => Self::EncodingFailed { reason },
+            rusty_qr_core::QrError::ContentTooLong { reason } => Self::ContentTooLong { reason },
             rusty_qr_core::QrError::DecodingFailed { reason } => Self::DecodingFailed { reason },
             rusty_qr_core::QrError::ImageError { reason } => Self::ImageError { reason },
         }
@@ -245,6 +252,12 @@ mod tests {
                 "encode fail",
             ),
             (
+                rusty_qr_core::QrError::ContentTooLong {
+                    reason: "too long".into(),
+                },
+                "too long",
+            ),
+            (
                 rusty_qr_core::QrError::DecodingFailed {
                     reason: "decode fail".into(),
                 },
@@ -262,6 +275,7 @@ mod tests {
             let ffi_err: FfiQrError = core_err.into();
             let (FfiQrError::InvalidInput { reason }
             | FfiQrError::EncodingFailed { reason }
+            | FfiQrError::ContentTooLong { reason }
             | FfiQrError::DecodingFailed { reason }
             | FfiQrError::ImageError { reason }) = ffi_err;
             assert_eq!(reason, expected_reason);
@@ -273,6 +287,9 @@ mod tests {
 
         let enc: FfiQrError = rusty_qr_core::QrError::EncodingFailed { reason: "x".into() }.into();
         assert!(matches!(enc, FfiQrError::EncodingFailed { .. }));
+
+        let long: FfiQrError = rusty_qr_core::QrError::ContentTooLong { reason: "x".into() }.into();
+        assert!(matches!(long, FfiQrError::ContentTooLong { .. }));
 
         let dec: FfiQrError = rusty_qr_core::QrError::DecodingFailed { reason: "x".into() }.into();
         assert!(matches!(dec, FfiQrError::DecodingFailed { .. }));
