@@ -16,6 +16,12 @@ import com.p2.apps.rustyqr.model.ScanResult
  *                      delivered. Drives the "Starting camera…" loader overlay so the
  *                      user never sees a black screen during AVCaptureSession / CameraX
  *                      warm-up.
+ *
+ * Contract every actual must satisfy:
+ * - It always invokes the latest [isScanning], [onQrDecoded] and [onCameraReady], never the ones from the
+ *   first composition, because the camera outlives recompositions.
+ * - It never calls back after the preview has left composition.
+ * - [onCameraReady] fires at most once per entry into composition.
  */
 @Composable
 expect fun CameraPreview(
