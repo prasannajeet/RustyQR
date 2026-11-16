@@ -31,9 +31,9 @@ const MAX_SIZE: u32 = 4096;
 /// mixed-mode segmentation does not fit. Longer content encodes only if it
 /// packs into numeric or alphanumeric mode. [`generate_with_config`] with another
 /// level has a different capacity.
-pub const MAX_BYTE_CONTENT_LEN_LEVEL_M: usize = 2331;
+pub const MAX_BYTE_CONTENT_LEN_LEVEL_M: usize = MAX_BYTE_CONTENT_LEN_LEVEL_M_U32 as usize;
 
-/// [`MAX_BYTE_CONTENT_LEN_LEVEL_M`] as a `u32`, the type exported across FFI.
+/// [`MAX_BYTE_CONTENT_LEN_LEVEL_M`] as a `u32`, the type exported across FFI. The `usize` constant derives from it.
 pub const MAX_BYTE_CONTENT_LEN_LEVEL_M_U32: u32 = 2331;
 
 /// Converts a `qrcode` encoding error, reporting oversized data as its own variant.
@@ -486,15 +486,6 @@ mod tests {
         let png = generate_png(at_limit, 1024)?;
         let scan = crate::decoder::decode(&png)?;
         assert_eq!(scan.content, at_limit);
-        Ok(())
-    }
-
-    #[test]
-    fn byte_limit_constants_agree() -> Result<(), Box<dyn std::error::Error>> {
-        assert_eq!(
-            usize::try_from(MAX_BYTE_CONTENT_LEN_LEVEL_M_U32)?,
-            MAX_BYTE_CONTENT_LEN_LEVEL_M
-        );
         Ok(())
     }
 
