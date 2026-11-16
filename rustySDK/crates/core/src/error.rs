@@ -28,11 +28,11 @@ pub enum QrError {
     #[error("Image processing error: {reason}")]
     ImageError { reason: String },
 
-    /// The content exceeds the data capacity of the largest QR code (version 40)
-    /// at the requested error-correction level.
+    /// Neither the `qrcode` optimizer nor a single byte-mode segment fits the
+    /// largest QR code (version 40) at the requested error-correction level.
     ///
-    /// Declared last on purpose: flat errors cross the FFI boundary as their
-    /// declaration index, so earlier variants must keep their positions.
+    /// Declared last on purpose. Kept in the same order as `FfiQrError`, which
+    /// crosses FFI by declaration index.
     #[error("Content too long: {reason}")]
     ContentTooLong { reason: String },
 }
