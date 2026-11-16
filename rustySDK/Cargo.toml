@@ -15,10 +15,14 @@ allow_attributes_without_reason = "deny"
 
 # The UniFFI Gradle plugin builds the dev profile for every debug app build. Optimise
 # dependencies (image, rqrr, qrcode, ...) so debug builds scan at realistic speed, while
-# our FFI crate stays unoptimised and debuggable. rusty-qr-core is optimised too, because the
-# generic decode hot loop (rqrr, image) is monomorphised into it.
+# our FFI crate stays unoptimised and debuggable. Dependencies keep only line tables, so
+# backtraces still show file:line but the debug artifacts stay small.
 [profile.dev.package."*"]
+debug = "line-tables-only"
 opt-level = 3
 
+# rusty-qr-core is optimised too, because the generic decode hot loop (rqrr, image) is
+# monomorphised into it. To step-debug core, build with optimisations off:
+#   cargo build --config 'profile.dev.package.rusty-qr-core.opt-level=0'
 [profile.dev.package.rusty-qr-core]
 opt-level = 3
