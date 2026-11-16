@@ -29,12 +29,12 @@ class GenerateViewModelTest {
     fun contentTooLongFromRustMapsToLocalisedMessage() {
         assertEquals(
             UiText.Res(Res.string.generate_error_too_long),
-            QrError.ContentTooLong("Content too long: data too long").toUiText(),
+            QrError.ContentTooLong("Content too long: data too long").toGenerateErrorText(),
         )
     }
 
     @Test
     fun otherErrorsKeepRustReason() {
-        assertEquals(UiText.Raw("boom"), QrError.EncodingFailed("boom").toUiText())
+        assertEquals(UiText.Raw("boom"), QrError.EncodingFailed("boom").toGenerateErrorText())
     }
 }
