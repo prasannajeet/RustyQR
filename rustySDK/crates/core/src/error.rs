@@ -15,9 +15,16 @@ pub enum QrError {
     #[error("Invalid input: {reason}")]
     InvalidInput { reason: String },
 
-    /// The QR encoding step failed (e.g. content exceeds QR data capacity).
+    /// The QR encoding step failed for a reason other than size (e.g. an
+    /// unsupported character set). Content that is simply too long is reported
+    /// as [`QrError::ContentTooLong`] instead.
     #[error("Encoding failed: {reason}")]
     EncodingFailed { reason: String },
+
+    /// The content exceeds the data capacity of the largest QR code (version 40)
+    /// at the requested error-correction level.
+    #[error("Content too long: {reason}")]
+    ContentTooLong { reason: String },
 
     /// Decoding a QR image failed (e.g. no QR code found, corrupt image data).
     #[error("Decoding failed: {reason}")]
