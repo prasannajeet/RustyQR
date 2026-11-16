@@ -275,7 +275,7 @@ androidComponents {
     }
 }
 
-// Release frameworks reach Xcode through paths that skip the Xcode script (OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED,
+// Release frameworks reach Xcode through paths that skip the Xcode script (the IDE-support override,
 // direct Gradle runs). dependsOn on a no-output task, not doFirst: link tasks are cacheable and could be FROM-CACHE.
 tasks.withType<KotlinNativeLink>().configureEach {
     if (binary.buildType == NativeBuildType.RELEASE) {

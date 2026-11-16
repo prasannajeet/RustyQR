@@ -2,10 +2,6 @@
 # Run: cargo deny check
 
 [advisories]
-# Tolerated unmaintained-crate advisory (deliberately NOT in `ignore`; no fix is available yet):
-#   RUSTSEC-2026-0374  basic-toml  via uniffi_bindgen -> askama; removed when crates/uniffi-bindgen
-#                                  and the `cli` feature go (spec 1.4)
-# Any other advisory, licence, ban or source failure is real.
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
 
@@ -31,11 +27,6 @@ license-files = []
 
 [[licenses.clarify]]
 name = "rusty-qr-ffi"
-expression = "MIT"
-license-files = []
-
-[[licenses.clarify]]
-name = "uniffi-bindgen"
 expression = "MIT"
 license-files = []
 

@@ -1,5 +1,0 @@
-[bindings.kotlin]
-package_name = "com.p2.apps.rustyqr.rust"
-
-[bindings.swift]
-module_name = "RustyQrFFI"
