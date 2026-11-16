@@ -25,6 +25,11 @@ for arg in "$@"; do
     esac
 done
 
+# rustup's rustc/cargo proxies download the pinned toolchain on first use. This script only reports, and installs
+# through maybe_install, so switch that off. Run from the repo root so every rustup call sees rust-toolchain.toml.
+export RUSTUP_AUTO_INSTALL=0
+cd "$REPO_ROOT"
+
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
@@ -118,16 +123,45 @@ fi
 # Rust toolchain
 # ---------------------------------------------------------------------------
 section "Rust toolchain"
-if command -v rustc &>/dev/null && command -v cargo &>/dev/null; then
-    pass "rustc $(rustc --version | awk '{print $2}')"
-    pass "cargo $(cargo --version | awk '{print $2}')"
-else
-    fail "rustup / cargo not installed"
-    maybe_install "rustup" \
-        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" \
-        || true
-    # shellcheck disable=SC1091
-    [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+# rust-toolchain.toml pins the toolchain; rustup applies it from the repo root (where this script runs).
+PINNED_RUST=""
+if [[ -f "$REPO_ROOT/rust-toolchain.toml" ]]; then
+    PINNED_RUST="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$REPO_ROOT/rust-toolchain.toml")"
+fi
+if [[ -z "$PINNED_RUST" ]]; then
+    fail "rust-toolchain.toml is missing or has no channel"
+    warn "Restore rust-toolchain.toml at the repo root: it pins the Rust version for Gradle, Xcode, wasm-pack and CI."
+elif ! command -v rustup &>/dev/null; then
+    if command -v rustc &>/dev/null; then
+        fail "rustc at $(command -v rustc) is not managed by rustup, but rust-toolchain.toml needs rustup"
+        warn "Install rustup (https://rustup.rs) and put ~/.cargo/bin before $(dirname "$(command -v rustc)") on PATH."
+    else
+        fail "rustup / cargo not installed"
+        maybe_install "rustup" \
+            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" \
+            || true
+        # shellcheck disable=SC1091
+        [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+    fi
+fi
+
+if [[ -n "$PINNED_RUST" ]] && command -v rustup &>/dev/null; then
+    if RUSTC_OUT="$(rustc --version 2>/dev/null)"; then
+        ACTIVE_RUST="$(awk '{print $2}' <<<"$RUSTC_OUT")"
+    else
+        ACTIVE_RUST="none"
+    fi
+    if [[ "$ACTIVE_RUST" == "$PINNED_RUST" ]]; then
+        pass "rustc $ACTIVE_RUST (pinned by rust-toolchain.toml)"
+        CARGO_OUT="$(cargo --version 2>/dev/null || true)"
+        pass "cargo $(awk '{print $2}' <<<"$CARGO_OUT")"
+    elif [[ "$ACTIVE_RUST" == "none" ]]; then
+        fail "rust $PINNED_RUST (pinned by rust-toolchain.toml) is not installed"
+        maybe_install "rust $PINNED_RUST" "rustup toolchain install $PINNED_RUST" || true
+    else
+        fail "rustc $ACTIVE_RUST is active, but rust-toolchain.toml pins $PINNED_RUST"
+        warn "Run: rustup toolchain install $PINNED_RUST; or unset RUSTUP_TOOLCHAIN / run 'rustup override unset'; rustc on PATH is $(command -v rustc)"
+    fi
 fi
 
 # Android and WebAssembly Rust targets

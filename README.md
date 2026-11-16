@@ -446,7 +446,7 @@ For per-module details, see the nested READMEs linked above.
 | Android camera   | CameraX                            | —             |
 | iOS camera       | AVFoundation                       | —             |
 | FFI loader       | JNA (Android), via the plugin runtime | —          |
-| QR engine        | Rust (edition 2021)                | —             |
+| QR engine        | Rust (edition 2021)                | pinned in `rust-toolchain.toml` |
 | QR encoding      | `qrcode` crate                     | 0.14          |
 | QR decoding      | `rqrr` crate                       | 0.10          |
 | Image processing | `image` crate                      | 0.25          |

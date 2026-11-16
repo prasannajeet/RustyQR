@@ -5,6 +5,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
+  # toolchain and all of those targets on top of what each job installs. With it, a job uses only what the action
+  # installed (its own `targets:`) and fails loudly on a mismatch.
+  RUSTUP_AUTO_INSTALL: "0"
   NDK_VERSION: "30.0.14904198"
   # Gradle reads this as -PndkVersion for every invocation, so the configuration cache sees one configuration.
   ORG_GRADLE_PROJECT_ndkVersion: "30.0.14904198"
@@ -20,10 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pinned: pedantic Clippy with -D warnings can break on a floating toolchain when a new lint ships.
-      - uses: dtolnay/rust-toolchain@1.94.1
+      - id: pin
+        name: Read the pinned Rust version
+        shell: bash
+        run: |
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
+          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
+          echo "version=$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
         id: toolchain
         with:
+          toolchain: ${{ steps.pin.outputs.version }}
           components: clippy, rustfmt
 
       # Cache Rust build artifacts — keyed on Cargo.lock so it busts on dependency changes
@@ -40,10 +52,12 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
-      # Supply chain: advisories, licences, bans and sources (Docker action, Linux only).
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      # Supply chain: advisories, licences, bans and sources. Installed on the runner, not run through the Docker
+      # action, whose rustup would download the whole pinned toolchain and every target on each run.
+      - uses: taiki-e/install-action@v2
         with:
-          manifest-path: rustySDK/Cargo.toml
+          tool: cargo-deny@0.19.0
+      - run: cargo deny --manifest-path Cargo.toml check
 
   wasm:
     name: WebAssembly package
@@ -55,9 +69,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@1.94.1
+      - id: pin
+        name: Read the pinned Rust version
+        shell: bash
+        run: |
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
+          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
+          echo "version=$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
         id: toolchain
         with:
+          toolchain: ${{ steps.pin.outputs.version }}
           targets: wasm32-unknown-unknown
           components: clippy
 
@@ -114,9 +137,18 @@ jobs:
           java-version: "17"
 
       # --- Rust toolchain (the UniFFI Gradle plugin runs cargo itself) ---
-      - uses: dtolnay/rust-toolchain@1.94.1
+      - id: pin
+        name: Read the pinned Rust version
+        shell: bash
+        run: |
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
+          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
+          echo "version=$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
         id: toolchain
         with:
+          toolchain: ${{ steps.pin.outputs.version }}
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
       # Cargo registry and Rust build artifacts (Android ABIs plus the host library for the JVM tests).

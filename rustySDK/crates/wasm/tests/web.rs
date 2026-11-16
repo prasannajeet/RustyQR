@@ -24,6 +24,6 @@ fn bytes_that_are_not_an_image_are_an_error() {
 }
 
 #[wasm_bindgen_test]
-fn library_version_is_not_empty() {
-    assert!(!library_version().is_empty());
+fn library_version_matches_core() {
+    assert_eq!(library_version(), rusty_qr_core::encoder::get_library_version());
 }
