@@ -88,7 +88,10 @@ pub enum QrResponse {
 ///
 /// * [`QrError::InvalidInput`] – Any command variant received invalid
 ///   arguments (empty content, bad size, pixel buffer mismatch, etc.).
-/// * [`QrError::EncodingFailed`] – The QR encoding step failed.
+/// * [`QrError::EncodingFailed`] – The QR encoding step failed for a reason
+///   other than capacity.
+/// * [`QrError::ContentTooLong`] – A generate command's content exceeds the
+///   capacity of the largest QR code at the chosen error-correction level.
 /// * [`QrError::ImageError`] – The PNG serialisation or image loading step
 ///   failed.
 /// * [`QrError::DecodingFailed`] – No QR code was found in the provided image

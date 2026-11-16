@@ -15,16 +15,10 @@ pub enum QrError {
     #[error("Invalid input: {reason}")]
     InvalidInput { reason: String },
 
-    /// The QR encoding step failed for a reason other than size (e.g. an
-    /// unsupported character set). Content that is simply too long is reported
-    /// as [`QrError::ContentTooLong`] instead.
+    /// An internal `qrcode` error other than capacity. Content that is simply
+    /// too long is reported as [`QrError::ContentTooLong`] instead.
     #[error("Encoding failed: {reason}")]
     EncodingFailed { reason: String },
-
-    /// The content exceeds the data capacity of the largest QR code (version 40)
-    /// at the requested error-correction level.
-    #[error("Content too long: {reason}")]
-    ContentTooLong { reason: String },
 
     /// Decoding a QR image failed (e.g. no QR code found, corrupt image data).
     #[error("Decoding failed: {reason}")]
@@ -33,4 +27,12 @@ pub enum QrError {
     /// An image-processing operation failed (e.g. PNG serialisation error).
     #[error("Image processing error: {reason}")]
     ImageError { reason: String },
+
+    /// The content exceeds the data capacity of the largest QR code (version 40)
+    /// at the requested error-correction level.
+    ///
+    /// Declared last on purpose: flat errors cross the FFI boundary as their
+    /// declaration index, so earlier variants must keep their positions.
+    #[error("Content too long: {reason}")]
+    ContentTooLong { reason: String },
 }
