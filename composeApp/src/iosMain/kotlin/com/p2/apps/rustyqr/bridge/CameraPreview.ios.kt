@@ -13,6 +13,7 @@ import androidx.compose.ui.viewinterop.UIKitView
 import arrow.core.Either
 import com.p2.apps.rustyqr.debug.FrameRecorder
 import com.p2.apps.rustyqr.debug.FrameTimings
+import com.p2.apps.rustyqr.debug.LOG_FRAME_TIMINGS
 import com.p2.apps.rustyqr.model.ScanResult
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ByteVar
@@ -165,12 +166,14 @@ private class FrameDelegate(
             dispatch_async(dispatch_get_main_queue()) { onCameraReady() }
         }
         if (!isScanning) return
+        // Timed from before the buffer lookup; frames that never reach Rust stay uncounted.
+        if (LOG_FRAME_TIMINGS) timings.startFrame()
         val pixelBuffer = didOutputSampleBuffer?.let { CMSampleBufferGetImageBuffer(it) } ?: return
         decodeFrame(pixelBuffer)
+        if (LOG_FRAME_TIMINGS) timings.endFrame()
     }
 
     private fun decodeFrame(pixelBuffer: CVPixelBufferRef) {
-        timings.startFrame()
         CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
         // Copy only while locked; decoding and recording work on the copies.
         val frame =
@@ -180,9 +183,9 @@ private class FrameDelegate(
                 CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
             }
         if (frame == null) return
-        timings.endCopy()
+        if (LOG_FRAME_TIMINGS) timings.endCopy()
         val decoded = QrBridge.decodeQrFromRaw(frame.bytes, frame.width, frame.height)
-        timings.endRust(decoded)
+        if (LOG_FRAME_TIMINGS) timings.endRust(decoded)
         decoded.onRight { result ->
             dispatch_async(dispatch_get_main_queue()) { onQrDecoded(result) }
         }
@@ -190,7 +193,6 @@ private class FrameDelegate(
         frame.padded?.let { padded ->
             frameRecorder.record(padded, frame.width, frame.height, frame.bytesPerRow, decoded.getOrNull()?.content)
         }
-        timings.endFrame()
     }
 
     /**
