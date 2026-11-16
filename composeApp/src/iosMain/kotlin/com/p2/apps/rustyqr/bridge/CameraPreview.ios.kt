@@ -11,9 +11,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import arrow.core.Either
+import com.p2.apps.rustyqr.debug.FrameRecorder
 import com.p2.apps.rustyqr.model.ScanResult
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ByteVar
+import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.plus
 import kotlinx.cinterop.readBytes
@@ -168,11 +170,20 @@ private class FrameDelegate(
         CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
         try {
             val frame = copyLumaPlane(pixelBuffer) ?: return
-            QrBridge
-                .decodeQrFromRaw(frame.bytes, frame.width, frame.height)
-                .onRight { result ->
-                    dispatch_async(dispatch_get_main_queue()) { onQrDecoded(result) }
-                }
+            val decoded = QrBridge.decodeQrFromRaw(frame.bytes, frame.width, frame.height)
+            // Copy the padded plane only when recording; otherwise the frame path pays nothing for it.
+            if (frameRecorder.isEnabled) {
+                frameRecorder.record(
+                    luma = frame.rawBytes(),
+                    width = frame.width,
+                    height = frame.height,
+                    rowStride = frame.bytesPerRow,
+                    content = decoded.getOrNull()?.content,
+                )
+            }
+            decoded.onRight { result ->
+                dispatch_async(dispatch_get_main_queue()) { onQrDecoded(result) }
+            }
         } finally {
             CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
         }
@@ -196,15 +207,27 @@ private class FrameDelegate(
             val rowStart = (bytePtr + row.toLong() * bytesPerRow.toLong()) ?: continue
             rowStart.readBytes(width).copyInto(dst, destinationOffset = row * width)
         }
-        return LumaFrame(dst, width, height)
+        return LumaFrame(dst, width, height, bytePtr, bytesPerRow)
     }
 }
 
+/**
+ * A packed luma copy plus the locked source plane it came from. [source] is only valid while the pixel buffer
+ * stays locked, so [rawBytes] must be called before unlocking.
+ */
 private class LumaFrame(
     val bytes: ByteArray,
     val width: Int,
     val height: Int,
-)
+    private val source: CPointer<ByteVar>,
+    val bytesPerRow: Int,
+) {
+    /** Copies `bytesPerRow * height` bytes of the source plane, row padding included. */
+    fun rawBytes(): ByteArray = source.readBytes(bytesPerRow * height)
+}
+
+/** Process-scoped so the debug frame budget is per app launch. */
+private val frameRecorder = FrameRecorder(platform = "ios")
 
 // ---------------------------------------------------------------------------
 // Session configuration
