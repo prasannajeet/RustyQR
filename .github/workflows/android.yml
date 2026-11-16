@@ -20,6 +20,7 @@ jobs:
 
       # Pinned: pedantic Clippy with -D warnings can break on a floating toolchain when a new lint ships.
       - uses: dtolnay/rust-toolchain@1.94.1
+        id: toolchain
         with:
           components: clippy, rustfmt
 
@@ -30,12 +31,17 @@ jobs:
             ~/.cargo/registry/
             ~/.cargo/git/
             rustySDK/target/
-          key: rust-check-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+          key: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
           restore-keys: rust-check-${{ runner.os }}-
 
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+      # Supply chain: advisories, licences, bans and sources (Docker action, Linux only).
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: rustySDK/Cargo.toml
 
   android-build:
     name: Android APK
@@ -52,22 +58,31 @@ jobs:
 
       # --- Rust toolchain (the UniFFI Gradle plugin runs cargo itself) ---
       - uses: dtolnay/rust-toolchain@1.94.1
+        id: toolchain
         with:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
 
-      # Cargo registry and Rust build artifacts (Android ABIs plus the host library for the JVM tests), and the
-      # Kotlin bindgen the plugin compiles with `cargo install` on its first run (several minutes).
+      # Cargo registry and Rust build artifacts (Android ABIs plus the host library for the JVM tests).
       - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry/
             ~/.cargo/git/
             rustySDK/target/
-            build/uniffi/bindgen/
-          key: rust-android-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock', 'gradle/libs.versions.toml') }}
-          restore-keys: rust-android-${{ runner.os }}-
+          key: rust-android-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+          restore-keys: rust-android-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
 
-      # --- Android SDK + NDK (the plugin picks the newest installed NDK) ---
+      # The Kotlin bindgen the plugin compiles with `cargo install` on its first run (several minutes). Keyed on the
+      # plugin version alone, so a library bump does not discard the Rust build cache above.
+      - id: plugin-version
+        run: echo "version=$(grep -E '^uniffi-plugin *=' gradle/libs.versions.toml | tr -d ' ')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: build/uniffi/bindgen/
+          key: uniffi-bindgen-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
+
+      # --- Android SDK + NDK (the build pins it with -PndkVersion) ---
       - uses: android-actions/setup-android@v3
 
       - uses: actions/cache@v4
@@ -83,10 +98,10 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       # --- Bindings module tests (builds the host Rust library and generates the bindings) ---
-      - run: ./gradlew :rustyqr-bindings:jvmTest
+      - run: ./gradlew :rustyqr-bindings:jvmTest -PndkVersion=${{ env.NDK_VERSION }}
 
       # --- App unit tests and debug APK (Rust for all three ABIs, built by the plugin) ---
-      - run: ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug
+      - run: ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug -PndkVersion=${{ env.NDK_VERSION }}
 
       # --- Kotlin lint (SwiftLint is macOS only and runs in the iOS workflow) ---
       - run: ./gradlew :composeApp:ktlintCheck :composeApp:detekt :rustyqr-bindings:ktlintCheck :rustyqr-bindings:detekt

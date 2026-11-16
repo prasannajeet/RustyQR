@@ -46,6 +46,8 @@ kotlin {
 
 cargo {
     packageDirectory = rootProject.layout.projectDirectory.dir("rustySDK/crates/ffi")
+    // Optional NDK pin (CI passes -PndkVersion=...). Unset: the plugin uses the newest NDK under <sdk>/ndk.
+    providers.gradleProperty("ndkVersion").orNull?.let { ndkVersion = it }
 }
 
 uniffi {
