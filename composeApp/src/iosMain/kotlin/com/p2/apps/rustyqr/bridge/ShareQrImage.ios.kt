@@ -35,7 +35,9 @@ private fun presentShareSheet(bytes: ByteArray): Either<String, Unit> {
     val presenter = topViewController()
     return when {
         image == null -> Either.Left("Invalid image data")
+
         presenter == null -> Either.Left("No view controller to present share sheet")
+
         else -> {
             val activityVC =
                 UIActivityViewController(

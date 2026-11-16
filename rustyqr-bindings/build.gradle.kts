@@ -75,20 +75,11 @@ ktlint {
     }
 }
 
-// Type resolution: detekt 1.x only wires a classpath for the JVM/Android targets, so detektJvmTest is the type-resolved
-// task. src/ffiTest is added to it so the shared tests are type-checked against the JVM classpath.
-// The plugin registers its per-compilation tasks and sets their sources late, so add the directory afterwards.
-afterEvaluate {
-    if (!isReleaseBuild) {
-        tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektJvmTest") {
-            source(file("src/ffiTest/kotlin"))
-        }
-    }
-}
-
+// Type resolution: detekt only wires a classpath for the JVM and Android targets, so `detektTestJvm` is the
+// type-resolved task for the shared tests. src/ffiTest is part of jvmTest, so it is checked against the JVM classpath.
 // `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved task.
 tasks.named("detekt") {
     if (!isReleaseBuild) {
-        dependsOn("detektJvmTest")
+        dependsOn("detektMainJvm", "detektTestJvm")
     }
 }

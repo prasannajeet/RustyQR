@@ -34,6 +34,7 @@ private val tooLongText = UiText.Res(Res.string.generate_error_too_long)
 internal fun QrError.toGenerateErrorText(): UiText =
     when (this) {
         is QrError.ContentTooLong -> tooLongText
+
         is QrError.InvalidInput,
         is QrError.EncodingFailed,
         is QrError.DecodingFailed,
@@ -63,7 +64,9 @@ class GenerateViewModel(
                 savedStateHandle[KEY_INPUT_TEXT] = intent.text
                 state.update { it.copy(inputText = intent.text, error = null) }
             }
+
             is GenerateQRCodeScreenIntent.Generate -> handleGenerate()
+
             is GenerateQRCodeScreenIntent.ClearResult -> {
                 state.update {
                     it.copy(
@@ -73,11 +76,15 @@ class GenerateViewModel(
                     )
                 }
             }
+
             is GenerateQRCodeScreenIntent.ClearError -> {
                 state.update { it.copy(error = null) }
             }
+
             is GenerateQRCodeScreenIntent.ShareQr -> handleShare()
+
             is GenerateQRCodeScreenIntent.SaveQr -> handleSave()
+
             is GenerateQRCodeScreenIntent.ClearMessage -> {
                 state.update { it.copy(message = null) }
             }

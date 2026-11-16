@@ -92,5 +92,6 @@ private fun ffiErrorToQrError(throwable: Throwable): QrError =
                 is FfiQrException.ContentTooLong -> QrError.ContentTooLong(throwable.message ?: "Content too long")
                 is FfiQrException.ImageException -> QrError.ImageError(throwable.message ?: "Image error")
             }
+
         else -> QrError.from(throwable)
     }

@@ -503,7 +503,7 @@ For per-module details, see the nested READMEs linked above.
 | Rust benchmarks        | Criterion       | `cargo bench -p rusty-qr-core`                                                 |
 | Rust supply chain      | cargo-deny      | `cargo deny check`                                                             |
 | Kotlin formatting      | ktlint          | `./gradlew :<module>:ktlintCheck`; `./gradlew lintKotlin` covers every module   |
-| Kotlin static analysis | detekt          | `./gradlew :<module>:detekt`; `./gradlew lintKotlin` covers every module       |
+| Kotlin static analysis | detekt 2.0.0-alpha.6 | `./gradlew :<module>:detekt` (also runs the type-resolved `detektMainAndroid`, `detektDebug`, `detektTestJvm`); `./gradlew lintKotlin` covers every module |
 | Swift linting          | SwiftLint       | `./gradlew swiftlint`                                                          |
 | Pre-commit hook        | Husky           | `lintAll` on staged `.kt`/`.kts`/`.swift`; `cargo fmt --check` on staged `.rs` |
 | Commit messages        | commit-msg hook | Enforces conventional commits (`type(scope): message`)                         |
