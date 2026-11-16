@@ -23,9 +23,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -33,6 +31,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.p2.apps.rustyqr.ui.components.AmberButton
 import com.p2.apps.rustyqr.ui.components.AnimatedGenerateContent
 import com.p2.apps.rustyqr.ui.components.QrResultCard
@@ -58,16 +59,17 @@ private const val PILL_PREVIEW_MAX_CHARS = 40
  *
  * Wires [GenerateViewModel] to [GenerateContent].
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GenerateScreen(viewModel: GenerateViewModel = viewModel { GenerateViewModel(createSavedStateHandle()) }) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Hardware/gesture back collapses result card back to input (instead of exiting app)
-    BackHandler(enabled = state.animationPhase == AnimationPhase.ShowingResult) {
-        viewModel.onIntent(GenerateQRCodeScreenIntent.ClearResult)
-    }
+    NavigationBackHandler(
+        state = rememberNavigationEventState(currentInfo = NavigationEventInfo.None),
+        isBackEnabled = state.animationPhase == AnimationPhase.ShowingResult,
+        onBackCompleted = { viewModel.onIntent(GenerateQRCodeScreenIntent.ClearResult) },
+    )
 
     val errorText = state.error?.resolve()
     val messageText = state.message?.resolve()
