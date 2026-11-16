@@ -28,11 +28,17 @@ private const val SHARE_FILE_PREFIX = "rusty-qr"
 private const val SHARE_FILE_NAME_MAX_INPUT_CHARS = 24
 private const val KEY_INPUT_TEXT = "generate.inputText"
 
-/** Oversized content has a localised message; any other error shows Rust's own reason. */
-internal fun QrError.toUiText(): UiText =
+private val tooLongText = UiText.Res(Res.string.generate_error_too_long)
+
+/** Oversized content has a localised message; other errors show their reason. */
+internal fun QrError.toGenerateErrorText(): UiText =
     when (this) {
-        is QrError.ContentTooLong -> UiText.Res(Res.string.generate_error_too_long)
-        else -> UiText.Raw(reason)
+        is QrError.ContentTooLong -> tooLongText
+        is QrError.InvalidInput,
+        is QrError.EncodingFailed,
+        is QrError.DecodingFailed,
+        is QrError.ImageError,
+        -> UiText.Raw(reason)
     }
 
 /**
@@ -83,9 +89,7 @@ class GenerateViewModel(
 
         if (!current.canGenerate) {
             if (current.isInputTooLong) {
-                state.update {
-                    it.copy(error = UiText.Res(Res.string.generate_error_too_long))
-                }
+                state.update { it.copy(error = tooLongText) }
             }
             return
         }
@@ -102,7 +106,7 @@ class GenerateViewModel(
                     state.update {
                         it.copy(
                             isGenerating = false,
-                            error = error.toUiText(),
+                            error = error.toGenerateErrorText(),
                         )
                     }
                 },

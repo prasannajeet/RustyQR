@@ -5,10 +5,11 @@ import com.p2.apps.rustyqr.ui.UiText
 /**
  * Maximum size, in UTF-8 bytes, of the trimmed text this app accepts for a QR code.
  *
- * The largest QR code (version 40) at error-correction level M, the level `generate_png` uses, holds 2331 bytes
- * in byte mode, so any text whose trimmed UTF-8 encoding fits always encodes. Digits-only or uppercase-only text
- * could hold more, but is held to the same simple rule. Rust stays the source of truth: its
- * `MAX_BYTE_CONTENT_LEN_LEVEL_M` test pins this number.
+ * Text whose trimmed UTF-8 encoding is at most 2331 bytes always encodes: the largest QR code (version 40) at
+ * error-correction level M, the level `generate_png` uses, holds 2331 bytes in byte mode, and Rust falls back to
+ * byte mode when a denser mode cannot be used. Digits-only or uppercase-only text could hold more, but is held to
+ * this simple rule. The constant mirrors Rust's `MAX_BYTE_CONTENT_LEN_LEVEL_M`, and an iOS test checks that it
+ * equals the native `maxContentBytes()`.
  */
 const val MAX_QR_INPUT_BYTES = 2331
 
