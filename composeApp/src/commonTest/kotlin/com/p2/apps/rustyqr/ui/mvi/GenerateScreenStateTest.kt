@@ -20,17 +20,38 @@ class GenerateScreenStateTest {
     }
 
     @Test
-    fun inputAtTheLimitCanGenerate() {
-        val state = GenerateScreenState(inputText = "a".repeat(MAX_QR_INPUT_BYTES))
+    fun noVerdictNeverBlocks() {
+        val state = GenerateScreenState(inputText = "abc")
         assertFalse(state.isInputTooLong)
         assertTrue(state.canGenerate)
     }
 
     @Test
-    fun inputOverTheLimitIsTooLongAndCannotGenerate() {
-        val state = GenerateScreenState(inputText = "a".repeat(MAX_QR_INPUT_BYTES + 1))
+    fun falseVerdictForTheTrimmedTextBlocks() {
+        val state = GenerateScreenState(inputText = "  abc \n", contentFit = ContentFit("abc", fits = false))
         assertTrue(state.isInputTooLong)
         assertFalse(state.canGenerate)
+    }
+
+    @Test
+    fun staleVerdictIsIgnored() {
+        val state = GenerateScreenState(inputText = "abcd", contentFit = ContentFit("abc", fits = false))
+        assertFalse(state.isInputTooLong)
+        assertTrue(state.canGenerate)
+    }
+
+    @Test
+    fun fitsVerdictAllowsGeneration() {
+        val state = GenerateScreenState(inputText = "abc", contentFit = ContentFit("abc", fits = true))
+        assertFalse(state.isInputTooLong)
+        assertTrue(state.canGenerate)
+    }
+
+    @Test
+    fun statesDifferingOnlyInContentFitAreNotEqual() {
+        val first = GenerateScreenState(inputText = "a", contentFit = ContentFit("a", fits = true))
+        val second = GenerateScreenState(inputText = "a", contentFit = ContentFit("a", fits = false))
+        assertNotEquals(first, second)
     }
 
     @Test

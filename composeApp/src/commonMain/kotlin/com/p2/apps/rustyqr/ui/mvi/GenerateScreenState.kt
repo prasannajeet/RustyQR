@@ -3,22 +3,15 @@ package com.p2.apps.rustyqr.ui.mvi
 import com.p2.apps.rustyqr.ui.UiText
 
 /**
- * Maximum size, in UTF-8 bytes, of the trimmed text this app accepts for a QR code.
+ * Rust's verdict on whether [content] fits in a QR code.
  *
- * Text whose trimmed UTF-8 encoding is at most 2331 bytes always encodes: the largest QR code (version 40) at
- * error-correction level M, the level `generate_png` uses, holds 2331 bytes in byte mode, and Rust falls back to
- * byte mode when a denser mode cannot be used. Digits-only or uppercase-only text could hold more, but is held to
- * this simple rule. The constant mirrors Rust's `MAX_BYTE_CONTENT_LEN_LEVEL_M`, and an iOS test checks that it
- * equals the native `maxContentBytes()`.
+ * [content] is the exact trimmed text the verdict was computed for, so a verdict for older text is recognisable
+ * and never applies to newer text.
  */
-const val MAX_QR_INPUT_BYTES = 2331
-
-/**
- * Whether [text] exceeds [MAX_QR_INPUT_BYTES] once surrounding whitespace is trimmed.
- *
- * Generation encodes the trimmed text, so the limit applies to its UTF-8 byte size everywhere.
- */
-fun isQrInputTooLong(text: String): Boolean = text.trim().encodeToByteArray().size > MAX_QR_INPUT_BYTES
+data class ContentFit(
+    val content: String,
+    val fits: Boolean,
+)
 
 /**
  * Animation phase for the Generate screen.
@@ -44,9 +37,18 @@ data class GenerateScreenState(
     val animationPhase: AnimationPhase = AnimationPhase.Input,
     val error: UiText? = null,
     val message: UiText? = null,
+    val contentFit: ContentFit? = null,
 ) {
-    /** Whether the trimmed input exceeds [MAX_QR_INPUT_BYTES]. */
-    val isInputTooLong: Boolean get() = isQrInputTooLong(inputText)
+    /** The text that is encoded: the input without surrounding whitespace. */
+    val contentToEncode: String get() = inputText.trim()
+
+    /**
+     * Whether Rust has said the current text does not fit.
+     *
+     * A missing or stale verdict never blocks, so the check fails open; generation still reports
+     * `ContentTooLong` authoritatively.
+     */
+    val isInputTooLong: Boolean get() = contentFit == ContentFit(contentToEncode, fits = false)
 
     /** Whether the Generate action is available for the current input. */
     val canGenerate: Boolean get() = inputText.isNotBlank() && !isInputTooLong
@@ -59,7 +61,8 @@ data class GenerateScreenState(
             isGenerating == other.isGenerating &&
             animationPhase == other.animationPhase &&
             error == other.error &&
-            message == other.message
+            message == other.message &&
+            contentFit == other.contentFit
 
     override fun hashCode(): Int {
         var result = inputText.hashCode()
@@ -68,6 +71,7 @@ data class GenerateScreenState(
         result = 31 * result + animationPhase.hashCode()
         result = 31 * result + (error?.hashCode() ?: 0)
         result = 31 * result + (message?.hashCode() ?: 0)
+        result = 31 * result + (contentFit?.hashCode() ?: 0)
         return result
     }
 }
