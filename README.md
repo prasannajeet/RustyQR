@@ -128,7 +128,8 @@ Steps to clone, build, and run on Android and iOS — in order.
   `local.properties`. The UniFFI Gradle plugin uses the newest NDK under `<sdk>/ndk`; no NDK
   environment variable is needed.
 - **iOS** (macOS only): install Xcode 26.x from the Mac App Store, then run
-  `sudo xcode-select --install`.
+  `sudo xcode-select --install`. The app requires iOS 18.5 or later (`deploymentTarget` in
+  `iosApp/project.yml`).
 
 ### 2. Clone the repo
 
@@ -147,7 +148,12 @@ checks are skipped automatically on non-macOS hosts.
 ./scripts/bootstrap.sh           # interactive — prompts to install anything missing
 ./scripts/bootstrap.sh --check   # report only, non-zero exit if anything missing (CI-friendly)
 ./scripts/bootstrap.sh --yes     # non-interactive, auto-install everything it can
+./scripts/bootstrap.sh --with-wasm  # also require the WebAssembly tools (see "Web demo" below)
 ```
+
+The `wasm32-unknown-unknown` Rust target and `wasm-pack` are only needed for the web demo. Without
+`--with-wasm`, a missing one prints a warning with the install command and does not fail the check.
+Flags combine, e.g. `--check --with-wasm`.
 
 ### 4. Build and run on Android
 
@@ -192,6 +198,28 @@ loads the Rust library) live in the platform READMEs —
 [`composeApp/src/androidMain/README.md`](composeApp/src/androidMain/README.md) for Android,
 [`iosApp/README.md`](iosApp/README.md) for iOS, and
 [`composeApp/README.md`](composeApp/README.md) for shared KMP conventions.
+
+### Web demo (WebAssembly, optional)
+
+`rustySDK/crates/wasm` compiles the same Rust core to WebAssembly with `wasm-bindgen`. It is not part
+of the mobile apps. It exports three functions to JavaScript:
+
+- `generatePng(content, size)` returns the PNG bytes of a QR code (`Uint8Array`).
+- `decodeImage(bytes)` returns the text of the QR code in a PNG or JPEG.
+- `libraryVersion()` returns the Rust core version.
+
+Errors from the core arrive as JavaScript `Error` objects. This needs the `wasm32-unknown-unknown`
+target and `wasm-pack` (`./scripts/bootstrap.sh --with-wasm` checks for both).
+
+```bash
+wasm-pack test --headless --chrome rustySDK/crates/wasm        # browser tests (needs Chrome)
+wasm-pack build rustySDK/crates/wasm --target web --release    # writes rustySDK/crates/wasm/pkg/ (gitignored)
+python3 -m http.server 8000                                    # from the repo root
+```
+
+Then open <http://localhost:8000/web/rust-demo/>. Serve the repo root over HTTP, not `file://`:
+`web/rust-demo/main.js` imports the module from `../../rustySDK/crates/wasm/pkg/`, and browsers refuse
+ES module imports from `file://` URLs.
 
 ### Versioning
 
@@ -419,8 +447,10 @@ Rusty-QR/
 ├── rustySDK/                   # Rust workspace — all QR logic
 │   ├── crates/core/            # encoder · decoder · types · errors (no FFI)
 │   ├── crates/ffi/             # UniFFI thin wrappers
+│   ├── crates/wasm/            # wasm-bindgen exports for the browser demo
 │   └── README.md               # Rust SDK deep dive (ownership, cargo, FFI types)
 │
+├── web/rust-demo/              # Browser demo of the wasm crate (index.html + main.js)
 ├── version.properties          # versionName + buildNumber (single source for Android + iOS)
 ├── config/detekt/              # Detekt static analysis rules
 ├── build-logic/                # Convention plugin `rustyqr.kotlin-lint`: shared detekt + ktlint setup for every module

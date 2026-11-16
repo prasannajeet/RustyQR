@@ -138,7 +138,8 @@ rustySDK/
 ├── Cargo.toml                 # workspace definition
 └── crates/
     ├── core/                  # pure Rust — no FFI, no UniFFI
-    └── ffi/                   # UniFFI exports + type wrappers (cdylib + staticlib)
+    ├── ffi/                   # UniFFI exports + type wrappers (cdylib + staticlib)
+    └── wasm/                  # wasm-bindgen exports for the browser demo (cdylib + rlib)
 ```
 
 There is no binding-generator crate in the workspace. The generator is built and run by the Gradle
@@ -158,6 +159,36 @@ crate-type = ["cdylib", "staticlib"]
 
 One source, two output formats. The Android build asks for `cdylib`; the iOS build asks for
 `staticlib`.
+
+### The `wasm` crate and the web demo
+
+`rustySDK/crates/wasm` is a third consumer of `core`, next to `ffi`. It is not part of the mobile
+build pipeline: Gradle does not build it and neither app links it. Like `ffi`, it holds no logic; each
+function delegates to `core` in one expression. It targets `wasm32-unknown-unknown` with `wasm-bindgen`
+and exports:
+
+| JavaScript export                | Rust core call               | Returns                          |
+|----------------------------------|------------------------------|----------------------------------|
+| `generatePng(content, size)`     | `encoder::generate_png`      | PNG bytes (`Uint8Array`)         |
+| `decodeImage(bytes)`             | `decoder::decode`            | the QR content (`string`)        |
+| `libraryVersion()`               | `encoder::get_library_version` | the core version (`string`)    |
+
+Core errors become JavaScript `Error` objects carrying the core's message. The crate builds as
+`cdylib` (the wasm module) plus `rlib` so `tests/web.rs` can link it.
+
+The demo in `web/rust-demo/` (`index.html`, `main.js`) imports the generated package from
+`rustySDK/crates/wasm/pkg/` (gitignored). Build, test and serve it with:
+
+```bash
+wasm-pack test --headless --chrome rustySDK/crates/wasm
+wasm-pack build rustySDK/crates/wasm --target web --release
+python3 -m http.server 8000     # from the repo root, then open http://localhost:8000/web/rust-demo/
+```
+
+Serve over HTTP rather than opening the file, because browsers block ES module imports from `file://`.
+This build uses `wasm-pack` directly instead of a Gradle task, because it is outside the mobile app
+build. Without `--with-wasm`, `scripts/bootstrap.sh` only warns when `wasm-pack` or the
+`wasm32-unknown-unknown` target is missing.
 
 ---
 

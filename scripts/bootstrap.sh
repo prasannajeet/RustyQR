@@ -7,16 +7,21 @@
 #   scripts/bootstrap.sh            # check, prompt to auto-install missing tools
 #   scripts/bootstrap.sh --check    # report only, never install, non-zero exit if anything missing
 #   scripts/bootstrap.sh --yes      # non-interactive, auto-install everything possible
+#   scripts/bootstrap.sh --with-wasm  # also require the WebAssembly tools (wasm32 target, wasm-pack);
+#                                     # without it they are optional and a missing one only prints a warning
+#                                     # Flags combine, e.g. --check --with-wasm.
 #
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 MODE="interactive"
+WITH_WASM=false
 for arg in "$@"; do
     case "$arg" in
         --check) MODE="check" ;;
         --yes|-y) MODE="yes" ;;
+        --with-wasm) WITH_WASM=true ;;
         --help|-h)
             sed -n '2,/^set -euo/p' "$0" | sed 's/^#//; s/^ //'
             exit 0
@@ -166,8 +171,7 @@ fi
 
 # Android and WebAssembly Rust targets
 if command -v rustup &>/dev/null; then
-    # wasm32-unknown-unknown is for rustySDK/crates/wasm (browser build)
-    ANDROID_TARGETS=(aarch64-linux-android armv7-linux-androideabi x86_64-linux-android wasm32-unknown-unknown)
+    ANDROID_TARGETS=(aarch64-linux-android armv7-linux-androideabi x86_64-linux-android)
     INSTALLED_TARGETS="$(rustup target list --installed 2>/dev/null || true)"
     for t in "${ANDROID_TARGETS[@]}"; do
         if grep -q "^$t$" <<<"$INSTALLED_TARGETS"; then
@@ -177,6 +181,16 @@ if command -v rustup &>/dev/null; then
             maybe_install "rust target $t" "rustup target add $t" || true
         fi
     done
+
+    # wasm32-unknown-unknown is for rustySDK/crates/wasm (browser build); optional unless --with-wasm
+    if grep -q "^wasm32-unknown-unknown$" <<<"$INSTALLED_TARGETS"; then
+        pass "rust target wasm32-unknown-unknown"
+    elif $WITH_WASM; then
+        fail "rust target wasm32-unknown-unknown missing"
+        maybe_install "rust target wasm32-unknown-unknown" "rustup target add wasm32-unknown-unknown" || true
+    else
+        warn "optional: rust target wasm32-unknown-unknown missing (only the web demo needs it) — rustup target add wasm32-unknown-unknown"
+    fi
 
     # iOS Rust targets — macOS only
     if $IS_MACOS; then
@@ -195,9 +209,11 @@ fi
 # wasm-pack packages rustySDK/crates/wasm. Capture first, then take the first line: a pipe into `head` can die of SIGPIPE under pipefail.
 if WASM_PACK_OUT="$(wasm-pack --version 2>/dev/null)"; then
     pass "wasm-pack $(awk 'NR == 1 {print $2}' <<<"$WASM_PACK_OUT")"
-else
+elif $WITH_WASM; then
     fail "wasm-pack missing"
     maybe_install "wasm-pack" "cargo install wasm-pack --locked --version 0.15.1" || true
+else
+    warn "optional: wasm-pack missing (only the web demo needs it) — cargo install wasm-pack --locked --version 0.15.1"
 fi
 
 # rust-analyzer — rustup ships a proxy that fails until the component is added,

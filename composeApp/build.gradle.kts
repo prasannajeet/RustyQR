@@ -12,13 +12,6 @@ plugins {
 }
 
 kotlin {
-    compilerOptions {
-        // Explicit backing fields (KEEP-278) — lets ViewModels expose
-        // `val state: StateFlow<T>` with a private `field = MutableStateFlow(...)`,
-        // eliminating the `_state` / `state` duplication. Still experimental in 2.3.x.
-        freeCompilerArgs.add("-Xexplicit-backing-fields")
-    }
-
     android {
         namespace = "com.p2.apps.rustyqr.composeapp"
         compileSdk =
@@ -45,6 +38,8 @@ kotlin {
             binaries.framework {
                 baseName = "ComposeApp"
                 isStatic = true
+                // Without an explicit id the Kotlin/Native link warns that it cannot infer one from the packages.
+                binaryOption("bundleId", "com.p2.apps.rustyqr.composeapp")
             }
         }
 
@@ -52,6 +47,8 @@ kotlin {
             binaries.framework {
                 baseName = "ComposeApp"
                 isStatic = true
+                // Without an explicit id the Kotlin/Native link warns that it cannot infer one from the packages.
+                binaryOption("bundleId", "com.p2.apps.rustyqr.composeapp")
             }
         }
     }

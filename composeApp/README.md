@@ -265,9 +265,9 @@ three tools also run automatically as a pre-commit hook (installed by
 Auto-fix Kotlin formatting with `./gradlew ktlintFormat` (every project, root included)
 (for `build-logic/`: `./gradlew -p build-logic ktlintFormat`).
 
-**Prerequisite:** `detekt` (and therefore `lintAll` and the pre-commit hook) also runs the type-resolved
-`detektAndroidMain` task (and `:androidApp:detektDebug`), which compiles the Android target. On a fresh checkout the
-gitignored `rustyqr-bindings/build/uniffi/bindings` UniFFI bindings do not exist yet, so run
-`./gradlew :rustyqr-bindings:assemble` once before linting.
+**No setup step before linting:** `detekt` (and therefore `lintAll` and the pre-commit hook) also runs the
+type-resolved `detektAndroidMain` task (and `:androidApp:detektDebug`), which compiles the Android target. Gradle
+builds the gitignored UniFFI bindings (`:rustyqr-bindings:buildBindings`) first, so `./gradlew lintAll` works on a
+fresh checkout. That first run compiles the Rust library and takes several minutes.
 
 </details>
