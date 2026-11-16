@@ -4,13 +4,12 @@ package com.p2.apps.rustyqr.bridge
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import arrow.core.Either
 import com.p2.apps.rustyqr.camera.FrameDispatcher
+import com.p2.apps.rustyqr.camera.rememberFrameDispatcher
 import com.p2.apps.rustyqr.debug.FrameRecorder
 import com.p2.apps.rustyqr.debug.FrameTimings
 import com.p2.apps.rustyqr.debug.LOG_FRAME_TIMINGS
@@ -64,6 +63,9 @@ import platform.darwin.dispatch_queue_t
  * - [AVCaptureSession] uses the `.photo` preset and the back camera.
  *   Session start/stop runs on a dedicated serial queue.
  *   Frame delivery runs on a separate serial queue to avoid blocking the main thread.
+ * - [FrameDispatcher] (via `rememberFrameDispatcher`) owns the scan gate, ready-once rule and main-thread delivery.
+ *   Teardown order: the dispatcher closes on leaving composition (`onDispose`), then the deferred `onRelease`
+ *   detaches the sample-buffer delegates and stops the session on the session queue.
  */
 @Composable
 actual fun CameraPreview(
@@ -75,20 +77,8 @@ actual fun CameraPreview(
     val sessionQueue: dispatch_queue_t =
         remember { dispatch_queue_create("com.p2.apps.rustyqr.session", null) }
 
-    // rememberUpdatedState ensures the dispatcher always reads the latest values, even when the caller
-    // recomposes with new callback references. State reads are safe from the analysis queue.
-    val latestScanning by rememberUpdatedState(isScanning)
-    val latestOnDecoded by rememberUpdatedState(onQrDecoded)
-    val latestOnReady by rememberUpdatedState(onCameraReady)
-    val dispatcher =
-        remember {
-            FrameDispatcher(
-                isScanning = { latestScanning },
-                currentOnQrDecoded = { latestOnDecoded },
-                currentOnCameraReady = { latestOnReady },
-                postToMain = ::postToMainQueue,
-            )
-        }
+    // Closed in onDispose (see rememberFrameDispatcher), which precedes the deferred UIKitView onRelease.
+    val dispatcher = rememberFrameDispatcher(isScanning, onQrDecoded, onCameraReady, ::postToMainQueue)
     val delegate = remember { FrameDelegate(dispatcher) }
 
     UIKitView(
@@ -100,8 +90,7 @@ actual fun CameraPreview(
         },
         modifier = Modifier.fillMaxSize(),
         onRelease = {
-            // Main thread: drops callbacks already posted to main and any posted later.
-            dispatcher.close()
+            // onRelease is deferred to the next presented frame, so the dispatcher is already closed by then.
             // Session queue: detach the delegate so no more frames are delivered, then stop.
             dispatch_async(sessionQueue) {
                 detachFrameDelegates(session)
@@ -116,7 +105,7 @@ private fun postToMainQueue(work: () -> Unit) {
     dispatch_async(dispatch_get_main_queue()) { work() }
 }
 
-/** Clears the sample-buffer delegate of every video output so the delegate is released. Call on the session queue. */
+/** Clears the sample-buffer delegate of every video output so no further frames reach it. Call on the session queue. */
 private fun detachFrameDelegates(session: AVCaptureSession) {
     session.outputs
         .filterIsInstance<AVCaptureVideoDataOutput>()
@@ -269,7 +258,7 @@ private fun configureSession(
     }
 
     // Dedicated serial queue for frame delivery — keeps Rust decode off the main thread.
-    // Results are dispatched back to main via dispatch_async(dispatch_get_main_queue()).
+    // Results reach the main queue through FrameDispatcher (postToMainQueue).
     val analysisQueue: dispatch_queue_t = dispatch_queue_create("com.p2.apps.rustyqr.frame", null)
 
     val output =

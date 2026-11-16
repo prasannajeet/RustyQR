@@ -8,9 +8,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -19,6 +17,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.p2.apps.rustyqr.camera.FrameDispatcher
 import com.p2.apps.rustyqr.camera.packLumaRows
+import com.p2.apps.rustyqr.camera.rememberFrameDispatcher
 import com.p2.apps.rustyqr.debug.FrameRecorder
 import com.p2.apps.rustyqr.debug.FrameTimings
 import com.p2.apps.rustyqr.debug.LOG_FRAME_TIMINGS
@@ -33,8 +32,8 @@ import java.util.concurrent.Executors
  * Frame analyzer: extracts Y-plane from [ImageProxy] → [QrBridge.decodeQrFromRaw].
  * [arrow.core.Either.Left] (no QR found) is silently discarded — expected for most frames.
  *
- * The camera outlives recompositions, so [isScanning], [onQrDecoded] and [onCameraReady] are all read through
- * [rememberUpdatedState] at the moment they are used; the latest value always wins.
+ * The camera outlives recompositions, so [rememberFrameDispatcher] reads [isScanning], [onQrDecoded] and
+ * [onCameraReady] at the moment they are used (the latest value always wins) and closes itself on leaving composition.
  */
 @Composable
 actual fun CameraPreview(
@@ -45,21 +44,17 @@ actual fun CameraPreview(
     // Assumed stable: it is the Activity (Scan has no NavHost), and the AndroidView factory below binds only once.
     // Keying the session on it would not rebind, because the factory does not rerun, so it is deliberately not keyed.
     val lifecycleOwner = LocalLifecycleOwner.current
-    val latestScanning by rememberUpdatedState(isScanning)
-    val latestOnDecoded by rememberUpdatedState(onQrDecoded)
-    val latestOnReady by rememberUpdatedState(onCameraReady)
     // Application context: nothing long-lived below may hold the Activity.
     val appContext = LocalContext.current.applicationContext
-    val mainExecutor = remember(appContext) { ContextCompat.getMainExecutor(appContext) }
+    // Not keyed: the dispatcher and session below keep the first executor, so a keyed remember would only mislead.
+    val mainExecutor = remember { ContextCompat.getMainExecutor(appContext) }
     val dispatcher =
-        remember {
-            FrameDispatcher(
-                isScanning = { latestScanning },
-                currentOnQrDecoded = { latestOnDecoded },
-                currentOnCameraReady = { latestOnReady },
-                postToMain = { work -> mainExecutor.execute(work) },
-            )
-        }
+        rememberFrameDispatcher(
+            isScanning = isScanning,
+            onQrDecoded = onQrDecoded,
+            onCameraReady = onCameraReady,
+            postToMain = { work -> mainExecutor.execute(work) },
+        )
     val session = remember { CameraSession(dispatcher, mainExecutor) }
 
     DisposableEffect(session) {
@@ -82,7 +77,8 @@ private val frameRecorder = FrameRecorder(platform = "android")
 
 /**
  * One camera binding: the analysis thread, the use cases and the [dispatcher].
- * Main-thread only. Holds no Activity or [PreviewView] after [release].
+ * Main-thread only. Holds no Activity or [PreviewView] after [release]. The dispatcher is closed by
+ * [rememberFrameDispatcher], not here.
  */
 private class CameraSession(
     private val dispatcher: FrameDispatcher,
@@ -148,10 +144,9 @@ private class CameraSession(
         provider = null
     }
 
-    /** Stops callbacks, unbinds this session's use cases and shuts the analysis thread down. */
+    /** Unbinds this session's use cases and shuts the analysis thread down. */
     fun release() {
         released = true
-        dispatcher.close()
         unbindUseCases()
         executor.shutdown()
     }
