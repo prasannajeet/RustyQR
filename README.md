@@ -145,9 +145,9 @@ cross-compile targets, JDK 17+, the Android SDK and NDK, `xcodegen`, `swiftlint`
 checks are skipped automatically on non-macOS hosts.
 
 ```bash
-./scripts/bootstrap.sh           # interactive — prompts to install anything missing
-./scripts/bootstrap.sh --check   # report only, non-zero exit if anything missing (CI-friendly)
-./scripts/bootstrap.sh --yes     # non-interactive, auto-install everything it can
+./scripts/bootstrap.sh              # interactive — prompts to install anything missing
+./scripts/bootstrap.sh --check      # report only, non-zero exit if anything missing (CI-friendly)
+./scripts/bootstrap.sh --yes        # non-interactive, auto-install everything it can
 ./scripts/bootstrap.sh --with-wasm  # also require the WebAssembly tools (see "Web demo" below)
 ```
 

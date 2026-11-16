@@ -34,17 +34,8 @@ kotlin {
     }
 
     if (RustHost.Platform.MacOS.isCurrent) {
-        iosArm64().apply {
-            binaries.framework {
-                baseName = "ComposeApp"
-                isStatic = true
-                // Without an explicit id the Kotlin/Native link warns that it cannot infer one from the packages.
-                binaryOption("bundleId", "com.p2.apps.rustyqr.composeapp")
-            }
-        }
-
-        iosSimulatorArm64().apply {
-            binaries.framework {
+        listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+            target.binaries.framework {
                 baseName = "ComposeApp"
                 isStatic = true
                 // Without an explicit id the Kotlin/Native link warns that it cannot infer one from the packages.

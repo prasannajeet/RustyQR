@@ -167,11 +167,11 @@ build pipeline: Gradle does not build it and neither app links it. Like `ffi`, i
 function delegates to `core` in one expression. It targets `wasm32-unknown-unknown` with `wasm-bindgen`
 and exports:
 
-| JavaScript export                | Rust core call               | Returns                          |
-|----------------------------------|------------------------------|----------------------------------|
-| `generatePng(content, size)`     | `encoder::generate_png`      | PNG bytes (`Uint8Array`)         |
-| `decodeImage(bytes)`             | `decoder::decode`            | the QR content (`string`)        |
-| `libraryVersion()`               | `encoder::get_library_version` | the core version (`string`)    |
+| JavaScript export            | Rust core call                 | Returns                    |
+|------------------------------|--------------------------------|----------------------------|
+| `generatePng(content, size)` | `encoder::generate_png`        | PNG bytes (`Uint8Array`)   |
+| `decodeImage(bytes)`         | `decoder::decode`              | the QR content (`string`)  |
+| `libraryVersion()`           | `encoder::get_library_version` | the core version (`string`) |
 
 Core errors become JavaScript `Error` objects carrying the core's message. The crate builds as
 `cdylib` (the wasm module) plus `rlib` so `tests/web.rs` can link it.

@@ -1,4 +1,5 @@
 import ch.ubique.uniffi.plugin.model.RustHost
+import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -27,28 +28,26 @@ kotlin {
                 .get()
                 .toInt()
     }
-    if (RustHost.Platform.MacOS.isCurrent) {
-        iosArm64()
-        iosSimulatorArm64()
-    }
-    if (!isReleaseBuild) {
-        // Exists only so the host can run the bindings tests.
-        jvm()
-    }
 
     // These tests call the native library through JNA / cinterop, so they run on the host JVM and on the iOS
     // simulator. They are not in commonTest: that would also be an Android host test, which cannot load the host
     // library (the Android JNA artifact has no desktop dispatcher), and AGP warns when commonTest exists without
     // Android host tests. The Android packaging is checked by building :androidApp.
-    sourceSets {
-        val ffiTestSources = layout.projectDirectory.dir("src/ffiTest/kotlin")
-        listOf("jvmTest", "iosTest").forEach { name ->
-            // iosTest exists only on macOS and jvmTest only outside release builds.
-            matching { it.name == name }.configureEach {
-                kotlin.srcDir(ffiTestSources)
-                dependencies { implementation(libs.kotlin.test) }
-            }
-        }
+    // Wired next to the targets that create the source sets, through accessors that fail if a source set is missing.
+    val ffiTestSources = layout.projectDirectory.dir("src/ffiTest/kotlin")
+    val addFfiTests: KotlinSourceSet.() -> Unit = {
+        kotlin.srcDir(ffiTestSources)
+        dependencies { implementation(libs.kotlin.test) }
+    }
+    if (RustHost.Platform.MacOS.isCurrent) {
+        iosArm64()
+        iosSimulatorArm64()
+        sourceSets.iosTest { addFfiTests() }
+    }
+    if (!isReleaseBuild) {
+        // Exists only so the host can run the bindings tests.
+        jvm()
+        sourceSets.jvmTest { addFfiTests() }
     }
 }
 
