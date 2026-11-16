@@ -10,7 +10,6 @@ import com.p2.apps.rustyqr.ui.UiText
 import com.p2.apps.rustyqr.ui.mvi.AnimationPhase
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.GenerateScreenState
-import com.p2.apps.rustyqr.ui.mvi.isQrInputTooLong
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -72,17 +71,18 @@ class GenerateViewModel(
     }
 
     private fun handleGenerate() {
-        val input = state.value.inputText.trim()
+        val current = state.value
 
-        if (input.isBlank()) return
+        if (current.inputText.isBlank()) return
 
-        if (isQrInputTooLong(input)) {
+        if (current.isInputTooLong) {
             state.update {
                 it.copy(error = UiText.Res(Res.string.generate_error_too_long))
             }
             return
         }
 
+        val input = current.inputText.trim()
         viewModelScope.launch {
             state.update { it.copy(isGenerating = true, error = null) }
             val result =

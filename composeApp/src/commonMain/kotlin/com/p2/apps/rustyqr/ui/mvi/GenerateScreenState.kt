@@ -37,6 +37,12 @@ data class GenerateScreenState(
     val error: UiText? = null,
     val message: UiText? = null,
 ) {
+    /** Whether the trimmed input exceeds [MAX_QR_INPUT_LENGTH]. */
+    val isInputTooLong: Boolean get() = isQrInputTooLong(inputText)
+
+    /** Whether the Generate action is available for the current input. */
+    val canGenerate: Boolean get() = inputText.isNotBlank() && !isInputTooLong
+
     override fun equals(other: Any?): Boolean = this === other || (other is GenerateScreenState && sameContentAs(other))
 
     private fun sameContentAs(other: GenerateScreenState): Boolean =

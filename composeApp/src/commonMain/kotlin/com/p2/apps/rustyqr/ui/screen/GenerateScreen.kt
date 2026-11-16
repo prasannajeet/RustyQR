@@ -40,7 +40,6 @@ import com.p2.apps.rustyqr.ui.components.QrResultCard
 import com.p2.apps.rustyqr.ui.mvi.AnimationPhase
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.GenerateScreenState
-import com.p2.apps.rustyqr.ui.mvi.isQrInputTooLong
 import com.p2.apps.rustyqr.ui.resolve
 import com.p2.apps.rustyqr.ui.viewmodels.GenerateViewModel
 import org.jetbrains.compose.resources.stringResource
@@ -185,6 +184,7 @@ private fun InputForm(
 
         QrInputField(
             inputText = state.inputText,
+            isInputTooLong = state.isInputTooLong,
             onTextChange = { onIntent(GenerateQRCodeScreenIntent.UpdateText(it)) },
         )
 
@@ -192,7 +192,7 @@ private fun InputForm(
 
         GenerateButton(
             isGenerating = state.isGenerating,
-            inputText = state.inputText,
+            enabled = state.canGenerate,
             onGenerate = {
                 keyboardController?.hide()
                 focusManager.clearFocus(force = true)
@@ -205,10 +205,9 @@ private fun InputForm(
 @Composable
 private fun QrInputField(
     inputText: String,
+    isInputTooLong: Boolean,
     onTextChange: (String) -> Unit,
 ) {
-    val isInputTooLong = isQrInputTooLong(inputText)
-
     val keyboardOptions =
         KeyboardOptions(
             capitalization = KeyboardCapitalization.None,
@@ -260,20 +259,17 @@ private fun QrInputField(
 @Composable
 private fun GenerateButton(
     isGenerating: Boolean,
-    inputText: String,
+    enabled: Boolean,
     onGenerate: () -> Unit,
 ) {
     val buttonText =
         stringResource(
             if (isGenerating) Res.string.generate_loading else Res.string.generate_button,
         )
-    val buttonEnabled =
-        inputText.isNotBlank() &&
-            !isQrInputTooLong(inputText)
     AmberButton(
         text = buttonText,
         onClick = onGenerate,
-        enabled = buttonEnabled,
+        enabled = enabled,
         loading = isGenerating,
     )
 }
