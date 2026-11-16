@@ -278,8 +278,9 @@ rustyqr-bindings/build/generated/jniLibs/mergeUniffiAndroidJniLibs/
 ```
 
 `composeApp` sets `abiFilters` to the same three ABIs, so another ABI that a dependency ships
-cannot install and then crash for lack of a Rust library. All three are built with 16KB ELF page
-alignment (Android's November 2025 requirement); NDK 28+ handles that automatically.
+cannot install and then crash for lack of a Rust library. The two 64-bit ABIs (`arm64-v8a`, `x86_64`) are linked with 16KB ELF page
+alignment (LOAD `align 0x4000`), which is what Android's November 2025 requirement covers; NDK 28+
+does that automatically. `armeabi-v7a` stays at 4KB (`0x1000`), because the NDK aligns only 64-bit ABIs.
 
 ### How JNA loads the `.so` at runtime
 
@@ -290,7 +291,7 @@ plugin's runtime artifact brings it in, so `composeApp` declares nothing extra:
 ```mermaid
 graph LR
     A["Kotlin call:<br/>generatePng(...)"]
-    B["JNA (net.java.dev.jna)<br/>lookup 'generate_png' in loaded .so"]
+    B["JNA (net.java.dev.jna)<br/>lookup 'uniffi_rusty_qr_ffi_fn_func_generate_png' in loaded .so"]
     C["librusty_qr_ffi.so<br/>(ABI-correct slice only)"]
     D["Rust function executes"]
 
@@ -425,9 +426,9 @@ sequenceDiagram
     participant Rust as Rust core
 
     UI->>VM: onIntent(Generate)
-    VM->>Bridge: QrBridge.generateQrPng(text, 256)<br/>on the injected IO dispatcher
-    Bridge->>Gen: generatePng(content, 256u)
-    Gen->>JNA: native call generate_png
+    VM->>Bridge: QrBridge.generateQrPng(text, 512)<br/>on the injected IO dispatcher
+    Bridge->>Gen: generatePng(content, 512u)
+    Gen->>JNA: native call uniffi_rusty_qr_ffi_fn_func_generate_png
     JNA->>SO: dlsym lookup + call
     SO->>Rust: generate_png(content, size)
     Rust-->>SO: Result[Vec u8, FfiQrError]
@@ -435,7 +436,7 @@ sequenceDiagram
     JNA-->>Gen: marshaled return value
     Gen-->>Bridge: ByteArray (PNG bytes)
     Bridge-->>VM: Either[QrError, ByteArray]
-    VM-->>UI: state.qrImage = ImageBitmap(...)
+    VM-->>UI: state.qrImageBytes = PNG bytes
 ```
 
 ### iOS
@@ -451,8 +452,8 @@ sequenceDiagram
     participant Rust as Rust core
 
     UI->>VM: onIntent(Generate)
-    VM->>Bridge: QrBridge.generateQrPng(text, 256)<br/>on the injected IO dispatcher
-    Bridge->>Gen: generatePng(content, 256u)
+    VM->>Bridge: QrBridge.generateQrPng(text, 512)<br/>on the injected IO dispatcher
+    Bridge->>Gen: generatePng(content, 512u)
     Gen->>CI: uniffi_rusty_qr_ffi_fn_func_generate_png(...)
     CI->>A: C ABI call (statically linked symbol)
     A->>Rust: generate_png(content, size)
@@ -461,7 +462,7 @@ sequenceDiagram
     CI-->>Gen: lifted into ByteArray
     Gen-->>Bridge: ByteArray (PNG bytes)
     Bridge-->>VM: Either[QrError, ByteArray]
-    VM-->>UI: state.qrImage = ImageBitmap(...)
+    VM-->>UI: state.qrImageBytes = PNG bytes
 ```
 
 The key difference: on Android JNA does a **runtime** symbol lookup into a dynamically loaded

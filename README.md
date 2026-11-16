@@ -5,8 +5,8 @@
 ### QR Scanner/Generator app for Android and iOS - powered by a Rust based logic for encoding/decoding
 
 <p>
-  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
-  <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.11.0-4285F4?logo=jetpackcompose&logoColor=white" />
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.4.0-7F52FF?logo=kotlin&logoColor=white" />
+  <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.12.2-4285F4?logo=jetpackcompose&logoColor=white" />
   <img alt="Rust" src="https://img.shields.io/badge/Rust-edition%202021-CE422B?logo=rust&logoColor=white" />
   <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-0.32-3B6FE0" />
   <img alt="Android" src="https://img.shields.io/badge/Android-minSdk%2029-3DDC84?logo=android&logoColor=white" />
@@ -87,8 +87,9 @@ to Rust as raw grayscale (Y-plane) buffers — no image encoding overhead. Decod
 synthetic frame takes about 2.2 ms on Apple Silicon (Criterion benchmark,
 [`rustySDK/BENCHMARKS.md`](rustySDK/BENCHMARKS.md)); on-device figures are pending. The Scan tab opens in an **idle** state — no camera feed, no permission prompt —
 with a centered **Start Scanning** button. Tapping the button requests camera permission (first time)
-or re-checks status, then activates the preview and frame analyzer. A scan gate (atomic-style flag)
-prevents double-fire on successful decode.
+or re-checks status, then activates the preview and frame analyzer. A scan gate (`ScanViewModel.scanGate`, a plain main-thread flag)
+prevents double-fire on successful decode; the frame analyzer reads a separate `AtomicBoolean`
+that the camera preview keeps in sync with the scanning state.
 
 ### Scan Result Sheet
 
@@ -121,7 +122,7 @@ Steps to clone, build, and run on Android and iOS — in order.
 ### 1. Install platform IDEs
 
 - **Android**: install [Android Studio](https://developer.android.com/studio), then open SDK
-  Manager → install platform-tools, an SDK platform (API 36), and SDK Tools → NDK (Side by side).
+  Manager → install platform-tools, an SDK platform (API 37), and SDK Tools → NDK (Side by side).
   Gradle must find the SDK: export `ANDROID_HOME` (for example
   `export ANDROID_HOME="$HOME/Library/Android/sdk"` on macOS) or put `sdk.dir=<path>` in
   `local.properties`. The UniFFI Gradle plugin uses the newest NDK under `<sdk>/ndk`; no NDK
@@ -175,8 +176,10 @@ completes, the `iosApp` run configuration appears in the run-configurations drop
 pick a simulator, and hit Run. Or open `iosApp/iosApp.xcodeproj` in Xcode and run the `iosApp`
 scheme.
 
-Either way, the Xcode build runs a pre-build script that calls Gradle
-(`:composeApp:embedAndSignAppleFrameworkForXcode`). Gradle builds the Rust static library, generates
+When Xcode builds the app (directly, or from `xcodebuild`), a pre-build script calls Gradle
+(`:composeApp:embedAndSignAppleFrameworkForXcode`). When you run from Android Studio, the IDE sets
+`OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED=YES`, the script exits early, and the IDE runs that Gradle task
+itself. Gradle builds the Rust static library, generates
 the bindings and links everything into the `ComposeApp` framework, so the first build takes several
 minutes. Xcode passes `-PreleaseBuild=true` for every configuration except Debug.
 
@@ -207,7 +210,7 @@ generated `iosApp.xcodeproj`.
 ```bash
 cd rustySDK
 cargo test --workspace                           # all tests
-cargo clippy --workspace -- -D warnings          # lint
+cargo clippy --workspace --all-targets -- -D warnings  # lint
 cargo bench -p rusty-qr-core                     # benchmarks
 cargo deny check                                 # supply chain audit
 ```
@@ -230,24 +233,27 @@ graph TB
         MVI["MVI ViewModels<br/>State · Intent · ViewModel"]
         BRIDGE_EXP["expect bridges<br/>(bridge/ package)"]
         QRB["QrBridge<br/>(one object, no actuals)"]
-        BIND["Generated UniFFI Kotlin<br/>(:rustyqr-bindings)"]
+    end
+
+    subgraph "rustyqr-bindings — generated UniFFI Kotlin"
+        BIND["Generated bindings<br/>(commonMain API)"]
+        BRIDGE_AND["androidMain: JNA → .so"]
+        BRIDGE_IOS["nativeMain: cinterop → .a"]
     end
 
     subgraph "androidMain — Android actuals"
-        BRIDGE_AND["Generated actual → JNA → .so"]
         CAM_AND["CameraPreview → CameraX ImageAnalysis"]
         MISC_AND["Permissions · Haptics · OpenUrl ·<br/>Share · Save · ImageDecoder"]
     end
 
     subgraph "iosMain — iOS actuals (KMM side)"
-        BRIDGE_IOS["Generated actual → cinterop → .a"]
         CAM_IOS["CameraPreview → AVFoundation UIKitView"]
         MISC_IOS["Haptics · OpenUrl · Share · Save"]
     end
 
     subgraph "rustySDK — Rust core + FFI"
         FFI["rusty-qr-ffi<br/>UniFFI proc-macro exports"]
-        CORE["rusty-qr-core<br/>encoder · decoder · scanner"]
+        CORE["rusty-qr-core<br/>encoder · decoder"]
     end
 
     MVI --> QRB
@@ -398,7 +404,7 @@ Rusty-QR/
 │   ├── src/commonMain/         # Shared Kotlin: UI, ViewModels, bridges (expect)
 │   ├── src/androidMain/        # Android actuals + CameraX
 │   └── src/iosMain/            # iOS actuals (Kotlin/Native)
-│   └── README.md               # Android build pipeline + androidMain details
+│   └── README.md               # shared KMP conventions and bridge layout
 │
 ├── rustyqr-bindings/           # Gradle module: runs Cargo, generates the UniFFI Kotlin bindings
 │   └── build/uniffi/bindings/  # generated Kotlin (gitignored)
@@ -430,8 +436,8 @@ For per-module details, see the nested READMEs linked above.
 
 | Component        | Technology                         | Version       |
 |------------------|------------------------------------|---------------|
-| Shared UI        | Compose Multiplatform              | 1.11.0-beta01 |
-| Shared logic     | Kotlin Multiplatform               | 2.3.20        |
+| Shared UI        | Compose Multiplatform              | 1.12.2        |
+| Shared logic     | Kotlin Multiplatform               | 2.4.0         |
 | Error handling   | ArrowKT `Either`                   | —             |
 | Android camera   | CameraX                            | —             |
 | iOS camera       | AVFoundation                       | —             |
@@ -458,7 +464,7 @@ For per-module details, see the nested READMEs linked above.
 | Check                  | Tool            | Command                                                                        |
 |------------------------|-----------------|--------------------------------------------------------------------------------|
 | Rust formatting        | `rustfmt`       | `cargo fmt --check`                                                            |
-| Rust linting           | Clippy          | `cargo clippy --workspace -- -D warnings`                                      |
+| Rust linting           | Clippy          | `cargo clippy --workspace --all-targets -- -D warnings`                        |
 | Rust tests             | Cargo test      | `cargo test --workspace`                                                       |
 | Rust benchmarks        | Criterion       | `cargo bench -p rusty-qr-core`                                                 |
 | Rust supply chain      | cargo-deny      | `cargo deny check`                                                             |

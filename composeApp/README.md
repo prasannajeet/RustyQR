@@ -2,11 +2,11 @@
 
 # composeApp — Kotlin Multiplatform Module
 
-### Shared Compose UI. One ViewModel per screen. Thin platform actuals call Rust through UniFFI.
+### Shared Compose UI. One ViewModel per screen. Common `QrBridge` code calls Rust through the generated UniFFI bindings.
 
 <p>
-  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
-  <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.11.0-4285F4?logo=jetpackcompose&logoColor=white" />
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.4.0-7F52FF?logo=kotlin&logoColor=white" />
+  <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.12.2-4285F4?logo=jetpackcompose&logoColor=white" />
   <img alt="KMP" src="https://img.shields.io/badge/KMP-commonMain%20%7C%20androidMain%20%7C%20iosMain-7F52FF?logo=kotlin&logoColor=white" />
   <img alt="MVI" src="https://img.shields.io/badge/Architecture-MVI-1976D2" />
   <img alt="ArrowKT" src="https://img.shields.io/badge/ArrowKT-Either-7B3FE4" />
@@ -76,8 +76,9 @@ These apply to the whole module — they work the same way whether you're buildi
 
 The Xcode project tasks (`generateXcodeProject`, `cleanXcodeProject`) are documented in the iOS
 README. Rust builds and binding generation have no tasks of their own here: the `:rustyqr-bindings`
-module runs them whenever an app build needs them (`./gradlew :rustyqr-bindings:buildBindings` runs
-only the generator).
+module runs them whenever an app build needs them (`./gradlew :rustyqr-bindings:buildBindings` installs the
+bindgen, builds the host library and generates the Kotlin bindings, without cross-compiling the
+Android or iOS libraries).
 
 ---
 
@@ -101,7 +102,7 @@ composeApp/src/
 │       │   ├── navigation/                 # Tab sealed hierarchy
 │       │   └── theme/                      # RustyQrTheme, Color, Type, Shape, Motion
 │       └── bridge/                         # platform contracts: expect declarations, plus the QrBridge object
-│           ├── QrBridge.kt                 # object (not an expect): generatePng, decodeQr, decodeQrFromRaw, getLibraryVersion
+│           ├── QrBridge.kt                 # object (not an expect): generateQrPng, decodeQr, decodeQrFromRaw, getLibraryVersion
 │           ├── CameraPreview.kt            # @Composable — platform draws the live preview + decodes frames
 │           ├── CameraPermission.kt         # expect funs — status check, request, permanent-denied, openAppSettings
 │           ├── HapticFeedback.kt           # expect fun — triggerImpactHaptic
@@ -186,7 +187,7 @@ Every time shared code needs platform hardware or a platform API, it goes throug
 `expect / actual` declaration in the `bridge/` package. The one exception is Rust:
 
 ```
-commonMain/bridge/QrBridge.kt     object QrBridge { fun generatePng(...): Either<QrError, ByteArray> }
+commonMain/bridge/QrBridge.kt     object QrBridge { fun generateQrPng(...): Either<QrError, ByteArray> }
         │
         └─► :rustyqr-bindings generated Kotlin (commonMain API, one actual per platform)
               ├─ Android: JNA → librusty_qr_ffi.so
@@ -195,8 +196,9 @@ commonMain/bridge/QrBridge.kt     object QrBridge { fun generatePng(...): Either
 
 `QrBridge` is **one `commonMain` object over the generated bindings**, not an `expect`. The bindings
 module already contains the per-platform actuals, so `composeApp` needs none. `QrBridge` calls the
-generated functions, wraps each call in `Either.catch`, and maps `FfiQrException` to the app's
-`QrError`.
+generated functions, wraps `generateQrPng`, `decodeQr` and `decodeQrFromRaw` in `Either.catch`, and
+maps `FfiQrException` to the app's `QrError`. `getLibraryVersion()` is not wrapped: it returns a
+plain `String` and can throw.
 
 ### Conventions
 
