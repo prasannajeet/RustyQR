@@ -18,6 +18,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.p2.apps.rustyqr.camera.packLumaRows
 import com.p2.apps.rustyqr.debug.FrameRecorder
+import com.p2.apps.rustyqr.debug.FrameTimings
 import com.p2.apps.rustyqr.model.ScanResult
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -85,6 +86,8 @@ private class FrameAnalysis(
     val onQrDecoded: (ScanResult) -> Unit,
     val readyFired: AtomicBoolean,
     val onCameraReady: () -> Unit,
+    // One per composition: [executor] is single-threaded and only it touches this, so no locking is needed.
+    val timings: FrameTimings = FrameTimings(),
 )
 
 private fun bindCamera(
@@ -132,24 +135,37 @@ private fun bindCamera(
     }, ContextCompat.getMainExecutor(context))
 }
 
-/** Decodes one scanning frame, then offers it to the debug [frameRecorder]. Always closes [imageProxy]. */
+/** Analyzes one scanning frame, timed by [FrameAnalysis.timings]. Always closes [imageProxy]. */
 private fun analyzeFrame(
     imageProxy: ImageProxy,
     analysis: FrameAnalysis,
     context: Context,
 ) = imageProxy.use { proxy ->
+    analysis.timings.startFrame()
     val plane = proxy.planes[0]
-    if (plane.pixelStride != 1) return@use
+    if (plane.pixelStride == 1) decodePlane(proxy, plane, analysis, context)
+}
+
+/** Decodes the Y plane, then offers it to the debug [frameRecorder]. */
+private fun decodePlane(
+    proxy: ImageProxy,
+    plane: ImageProxy.PlaneProxy,
+    analysis: FrameAnalysis,
+    context: Context,
+) {
     val buffer = plane.buffer
     val bytes = ByteArray(buffer.remaining())
     buffer.get(bytes)
 
-    val packed = packLumaRows(bytes, proxy.width, proxy.height, plane.rowStride).getOrNull() ?: return@use
+    val packed = packLumaRows(bytes, proxy.width, proxy.height, plane.rowStride).getOrNull() ?: return
+    analysis.timings.endCopy()
     val decoded = QrBridge.decodeQrFromRaw(packed, proxy.width, proxy.height)
+    analysis.timings.endRust(decoded)
     // Left (no QR found) is silently discarded — expected for most frames
     decoded.onRight { result ->
         ContextCompat.getMainExecutor(context).execute { analysis.onQrDecoded(result) }
     }
     // After the result is dispatched, so the blocking write cannot delay it. `bytes` keeps the row padding.
     frameRecorder.record(bytes, proxy.width, proxy.height, plane.rowStride, decoded.getOrNull()?.content)
+    analysis.timings.endFrame()
 }
