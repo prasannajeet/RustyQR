@@ -6,6 +6,8 @@ on:
 env:
   CARGO_TERM_COLOR: always
   NDK_VERSION: "30.0.14904198"
+  # Gradle reads this as -PndkVersion for every invocation, so the configuration cache sees one configuration.
+  ORG_GRADLE_PROJECT_ndkVersion: "30.0.14904198"
 
 jobs:
   rust-checks:
@@ -32,7 +34,7 @@ jobs:
             ~/.cargo/git/
             rustySDK/target/
           key: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
-          restore-keys: rust-check-${{ runner.os }}-
+          restore-keys: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
 
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -75,14 +77,17 @@ jobs:
       # The Kotlin bindgen the plugin compiles with `cargo install` on its first run (several minutes). Keyed on the
       # plugin version alone, so a library bump does not discard the Rust build cache above.
       - id: plugin-version
-        run: echo "version=$(grep -E '^uniffi-plugin *=' gradle/libs.versions.toml | tr -d ' ')" >> "$GITHUB_OUTPUT"
+        run: |
+          version="$(sed -nE 's/^uniffi-plugin *= *"([^"]+)".*/\1/p' gradle/libs.versions.toml)"
+          test -n "$version" || { echo "uniffi-plugin version not found in gradle/libs.versions.toml" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v4
         with:
           path: build/uniffi/bindgen/
           key: uniffi-bindgen-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
 
-      # --- Android SDK + NDK (the build pins it with -PndkVersion) ---
+      # --- Android SDK + NDK (the build pins it with ORG_GRADLE_PROJECT_ndkVersion) ---
       - uses: android-actions/setup-android@v3
 
       - uses: actions/cache@v4
@@ -92,16 +97,21 @@ jobs:
           key: ndk-${{ runner.os }}-${{ env.NDK_VERSION }}
 
       - if: steps.cache-ndk.outputs.cache-hit != 'true'
-        run: sdkmanager "ndk;${{ env.NDK_VERSION }}"
+        run: sdkmanager "ndk;$NDK_VERSION"
+
+      # The plugin silently falls back to the newest NDK when the pinned folder is missing, so fail here instead.
+      - run: |
+          test -d "$ANDROID_HOME/ndk/$NDK_VERSION/toolchains/llvm/prebuilt" \
+            || { echo "Pinned NDK $NDK_VERSION is not installed under $ANDROID_HOME/ndk" >&2; exit 1; }
 
       # --- Gradle (dependency, wrapper and build caches) ---
       - uses: gradle/actions/setup-gradle@v5
 
       # --- Bindings module tests (builds the host Rust library and generates the bindings) ---
-      - run: ./gradlew :rustyqr-bindings:jvmTest -PndkVersion=${{ env.NDK_VERSION }}
+      - run: ./gradlew :rustyqr-bindings:jvmTest
 
       # --- App unit tests and debug APK (Rust for all three ABIs, built by the plugin) ---
-      - run: ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug -PndkVersion=${{ env.NDK_VERSION }}
+      - run: ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug
 
       # --- Kotlin lint (SwiftLint is macOS only and runs in the iOS workflow) ---
       - run: ./gradlew :composeApp:ktlintCheck :composeApp:detekt :rustyqr-bindings:ktlintCheck :rustyqr-bindings:detekt

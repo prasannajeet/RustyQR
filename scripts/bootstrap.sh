@@ -10,6 +10,8 @@
 #
 set -euo pipefail
 
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
 MODE="interactive"
 for arg in "$@"; do
     case "$arg" in
@@ -211,7 +213,6 @@ fi
 if [[ -n "$ANDROID_SDK" && -d "$ANDROID_SDK" ]]; then
     pass "Android SDK at $ANDROID_SDK"
     # Gradle does not look in the default install locations: it needs sdk.dir or an environment variable.
-    REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
     if $SDK_FROM_FALLBACK && ! grep -qE '^[[:space:]]*sdk\.dir[[:space:]]*=' "$REPO_ROOT/local.properties" 2>/dev/null; then
         fail "Android SDK found only at the default location; Gradle needs sdk.dir or ANDROID_HOME"
         warn "Run: export ANDROID_HOME=\"$ANDROID_SDK\"   (or put sdk.dir=$ANDROID_SDK in local.properties)"
@@ -288,7 +289,7 @@ section "Claude Code"
 CLAUDE_PLUGIN="rust-analyzer-lsp@claude-plugins-official"
 if command -v claude &>/dev/null; then
     # Project-scope plugins resolve from the working directory, so run from the repo root
-    pushd "$(dirname "$0")/.." >/dev/null
+    pushd "$REPO_ROOT" >/dev/null
     CLAUDE_PLUGINS="$(claude plugin list 2>/dev/null || true)"
     if grep -qF "$CLAUDE_PLUGIN" <<<"$CLAUDE_PLUGINS"; then
         pass "claude plugin $CLAUDE_PLUGIN"

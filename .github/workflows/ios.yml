@@ -31,7 +31,7 @@ jobs:
             ~/.cargo/git/
             rustySDK/target/
           key: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
-          restore-keys: rust-check-${{ runner.os }}-
+          restore-keys: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
 
       - run: cargo fmt --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -79,19 +79,27 @@ jobs:
       # The Kotlin bindgen the plugin compiles with `cargo install` on its first run (several minutes). Keyed on the
       # plugin version alone, so a library bump does not discard the Rust build cache above.
       - id: plugin-version
-        run: echo "version=$(grep -E '^uniffi-plugin *=' gradle/libs.versions.toml | tr -d ' ')" >> "$GITHUB_OUTPUT"
+        run: |
+          version="$(sed -nE 's/^uniffi-plugin *= *"([^"]+)".*/\1/p' gradle/libs.versions.toml)"
+          test -n "$version" || { echo "uniffi-plugin version not found in gradle/libs.versions.toml" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v4
         with:
           path: build/uniffi/bindgen/
           key: uniffi-bindgen-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
 
-      # Kotlin/Native toolchain and dependencies (large download on a cold runner).
+      # Kotlin/Native toolchain and dependencies (large download on a cold runner). Keyed on the Kotlin version only.
+      - id: kotlin-version
+        run: |
+          version="$(sed -nE 's/^kotlin *= *"([^"]+)".*/\1/p' gradle/libs.versions.toml)"
+          test -n "$version" || { echo "kotlin version not found in gradle/libs.versions.toml" >&2; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - uses: actions/cache@v4
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
-          restore-keys: konan-${{ runner.os }}-
+          key: konan-${{ runner.os }}-${{ steps.kotlin-version.outputs.version }}
 
       # --- Gradle (dependency, wrapper and build caches) ---
       - uses: gradle/actions/setup-gradle@v5
