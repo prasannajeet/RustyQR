@@ -11,7 +11,9 @@ import kotlin.test.assertTrue
 class FrameRecorderTest {
     private class FakeFiles(
         private val failWrites: Boolean = false,
-        private val failCount: Boolean = false,
+        private val failList: Boolean = false,
+        private val failNames: Set<String> = emptySet(),
+        private val extraNames: List<String> = emptyList(),
     ) : FrameFiles {
         val written = mutableMapOf<String, ByteArray>()
         val manifest = mutableListOf<String>()
@@ -20,7 +22,7 @@ class FrameRecorderTest {
             name: String,
             bytes: ByteArray,
         ): Either<String, Unit> =
-            if (failWrites) {
+            if (failWrites || name in failNames) {
                 Either.Left("disk full")
             } else {
                 written[name] = bytes
@@ -35,8 +37,8 @@ class FrameRecorderTest {
             return Either.Right(Unit)
         }
 
-        override fun countLines(name: String): Either<String, Int> =
-            if (failCount) Either.Left("unreadable") else Either.Right(manifest.size)
+        override fun listNames(): Either<String, List<String>> =
+            if (failList) Either.Left("unreadable") else Either.Right(written.keys.toList() + extraNames)
     }
 
     private class CountingPolicy(
@@ -115,8 +117,8 @@ class FrameRecorderTest {
     }
 
     @Test
-    fun unreadableManifestSkipsTheFrame() {
-        val files = FakeFiles(failCount = true)
+    fun unlistableDirectorySkipsTheFrame() {
+        val files = FakeFiles(failList = true)
         recorder(files).record(ByteArray(1), 1, 1, 1, "x")
         assertTrue(files.written.isEmpty())
         assertTrue(files.manifest.isEmpty())
@@ -126,5 +128,24 @@ class FrameRecorderTest {
     fun unavailableCacheDirectorySkipsTheFrame() {
         val recorder = FrameRecorder("ios", lazy { Either.Left("no caches") }, isEnabled = true)
         recorder.record(ByteArray(1), 1, 1, 1, "x")
+    }
+
+    @Test
+    fun gapFromFailedSaveDoesNotLetALaterLaunchOverwrite() {
+        val files = FakeFiles(failNames = setOf("android-1x1-s1-5.y"))
+        val first = recorder(files)
+        repeat(6) { first.record(byteArrayOf(it.toByte()), 1, 1, 1, "x") }
+        assertEquals(5, files.manifest.size)
+        recorder(files).record(byteArrayOf(9), 1, 1, 1, "y")
+        assertContentEquals(byteArrayOf(5), files.written["android-1x1-s1-6.y"])
+        assertContentEquals(byteArrayOf(9), files.written["android-1x1-s1-7.y"])
+    }
+
+    @Test
+    fun unparseableNamesAreIgnoredWhenSeeding() {
+        val extraNames = listOf("manifest.jsonl", "notes.y", "android-1x1-s1-x.y", "android-3x3-s3-4.y")
+        val files = FakeFiles(extraNames = extraNames)
+        recorder(files).record(ByteArray(1), 1, 1, 1, "x")
+        assertEquals(setOf("android-1x1-s1-5.y"), files.written.keys)
     }
 }

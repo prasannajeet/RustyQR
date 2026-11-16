@@ -17,11 +17,7 @@ private class AndroidFrameFiles(
         line: String,
     ): Either<String, Unit> = io { File(directory, name).appendText(line + "\n") }
 
-    override fun countLines(name: String): Either<String, Int> =
-        io {
-            val file = File(directory, name)
-            if (file.exists()) file.useLines { it.count() } else 0
-        }
+    override fun listNames(): Either<String, List<String>> = io { directory.list()?.toList().orEmpty() }
 
     private fun <T> io(action: () -> T): Either<String, T> =
         Either
