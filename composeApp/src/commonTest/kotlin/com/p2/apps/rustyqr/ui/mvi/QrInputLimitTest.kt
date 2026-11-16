@@ -33,4 +33,10 @@ class QrInputLimitTest {
     fun whitespaceOnlyInputIsNotTooLong() {
         assertFalse(isQrInputTooLong(" ".repeat(MAX_QR_INPUT_LENGTH + 10)))
     }
+
+    @Test
+    fun onlySurroundingWhitespaceIsIgnored() {
+        val innerWhitespace = "a" + " ".repeat(MAX_QR_INPUT_LENGTH - 1) + "a"
+        assertTrue(isQrInputTooLong(innerWhitespace))
+    }
 }
