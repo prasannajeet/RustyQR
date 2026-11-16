@@ -15,14 +15,19 @@ allow_attributes_without_reason = "deny"
 
 # The UniFFI Gradle plugin builds the dev profile for every debug app build. Optimise
 # dependencies (image, rqrr, qrcode, ...) so debug builds scan at realistic speed, while
-# our FFI crate stays unoptimised and debuggable. Dependencies keep only line tables, so
-# backtraces still show file:line but the debug artifacts stay small.
+# our FFI crate stays unoptimised and debuggable. "*" covers third-party packages, including
+# their build scripts and proc macros, and never matches workspace members. Dependencies
+# keep only line tables, so backtraces still show file:line but debug artifacts are smaller.
 [profile.dev.package."*"]
 debug = "line-tables-only"
 opt-level = 3
 
 # rusty-qr-core is optimised too, because the generic decode hot loop (rqrr, image) is
-# monomorphised into it. To step-debug core, build with optimisations off:
-#   cargo build --config 'profile.dev.package.rusty-qr-core.opt-level=0'
+# monomorphised into it. To step-debug core with optimisations off:
+#   - unit tests: cargo test --no-run --config 'profile.dev.package.rusty-qr-core.opt-level=0'
+#   - app builds (Gradle/Xcode run their own cargo, so a one-off --config never reaches them,
+#     and Cargo has no env var for per-package profiles): put
+#     [profile.dev.package.rusty-qr-core] opt-level = 0 in your user-level ~/.cargo/config.toml
+#     (not the tracked rustySDK/.cargo/config.toml), and remove it afterwards.
 [profile.dev.package.rusty-qr-core]
 opt-level = 3
