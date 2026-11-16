@@ -17,7 +17,11 @@ private class AndroidFrameFiles(
         line: String,
     ): Either<String, Unit> = io { File(directory, name).appendText(line + "\n") }
 
-    override fun listNames(): Either<String, List<String>> = io { directory.list()?.toList().orEmpty() }
+    override fun listNames(): Either<String, List<String>> =
+        io {
+            val names = checkNotNull(directory.list()) { "cannot list $directory" }
+            names.toList()
+        }
 
     private fun <T> io(action: () -> T): Either<String, T> =
         Either

@@ -126,8 +126,21 @@ class FrameRecorderTest {
 
     @Test
     fun unavailableCacheDirectorySkipsTheFrame() {
-        val recorder = FrameRecorder("ios", lazy { Either.Left("no caches") }, isEnabled = true)
+        val policy = CountingPolicy()
+        val recorder = FrameRecorder("ios", lazy { Either.Left("no caches") }, isEnabled = true, policy = policy)
         recorder.record(ByteArray(1), 1, 1, 1, "x")
+        assertEquals(1, policy.calls)
+        assertTrue(recorder.isEnabled)
+    }
+
+    @Test
+    fun wantsFramesOnlyWhileEnabledWithBudgetLeft() {
+        val files = FakeFiles()
+        assertFalse(FrameRecorder("ios", lazy { Either.Right(files) }, isEnabled = false).wantsFrames)
+        val recorder = recorder(files)
+        assertTrue(recorder.wantsFrames)
+        repeat(40) { recorder.record(ByteArray(1), 1, 1, 1, "x") }
+        assertFalse(recorder.wantsFrames)
     }
 
     @Test

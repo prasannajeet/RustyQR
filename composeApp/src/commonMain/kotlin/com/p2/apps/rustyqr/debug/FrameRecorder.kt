@@ -47,6 +47,10 @@ class FrameRecorder(
 ) {
     private val nextIndex = AtomicInt(UNSEEDED)
 
+    /** True when a frame offered now could still be saved: recording is on and the frame budget is not spent. */
+    val wantsFrames: Boolean
+        get() = isEnabled && policy.hasBudget()
+
     /**
      * Offers one analysed frame. [luma] is the Y plane as delivered, [rowStride] its bytes per row, and [content]
      * the decoded text or null when nothing decoded.
@@ -73,13 +77,11 @@ class FrameRecorder(
         }
     }
 
-    private fun claimIndex(store: FrameFiles): Either<String, Int> {
-        val seeded =
+    private fun claimIndex(store: FrameFiles): Either<String, Int> =
+        either {
             if (nextIndex.load() == UNSEEDED) {
-                store.listNames().onRight { nextIndex.compareAndSet(UNSEEDED, 1 + highestIndex(it)) }.map { }
-            } else {
-                Either.Right(Unit)
+                nextIndex.compareAndSet(UNSEEDED, 1 + highestIndex(store.listNames().bind()))
             }
-        return seeded.map { nextIndex.fetchAndIncrement() }
-    }
+            nextIndex.fetchAndIncrement()
+        }
 }
