@@ -57,16 +57,15 @@ const ECI_UTF8: u32 = 26;
 ///
 /// * ASCII-only `data` uses the `qrcode` optimizer's mixed-mode segmentation
 ///   (numeric, alphanumeric, byte). ASCII bytes are below 0x80, so they can never
-///   form Kanji pairs.
+///   form Kanji pairs. If that does not fit, a single byte-mode segment is tried
+///   (see [`single_byte_segment_bits`]), because each extra segment header can cost
+///   more bits than it saves.
 /// * Any non-ASCII byte switches to UTF-8 mode: an ECI 26 header, then segments
 ///   that are never Kanji (see [`utf8_segmented_bits`]). `qrcode`'s own parser would
 ///   pack UTF-8 byte pairs that fall in Shift-JIS ranges into Kanji mode, which other
 ///   scanners (iOS Camera, `ZXing`, Google Lens) decode as Shift-JIS and garble.
 ///
-/// If the mixed-mode result does not fit, a single byte-mode segment is tried
-/// (see [`single_byte_segment_bits`]), because each extra segment header can cost
-/// more bits than it saves. Input over [`MAX_ENCODABLE_BYTES`] is rejected first,
-/// so a huge paste costs no parsing.
+/// Input over [`MAX_ENCODABLE_BYTES`] is rejected first, so a huge paste costs no parsing.
 fn encode_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits, QrError> {
     if data.len() > MAX_ENCODABLE_BYTES {
         return Err(QrError::ContentTooLong {
@@ -76,26 +75,26 @@ fn encode_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits
             ),
         });
     }
-    let utf8 = !data.is_ascii();
-    let segmented = if utf8 {
-        utf8_segmented_bits(data, level)
+    if data.is_ascii() {
+        match qrcode::bits::encode_auto(data, level) {
+            Err(qrcode::types::QrError::DataTooLong) => single_byte_segment_bits(data, level),
+            other => other.map_err(map_encode_error),
+        }
     } else {
-        qrcode::bits::encode_auto(data, level).ok()
-    };
-    match segmented {
-        Some(bits) => Ok(bits),
-        None => single_byte_segment_bits(data, level, utf8),
+        utf8_segmented_bits(data, level).ok_or_else(|| QrError::ContentTooLong {
+            reason: format!(
+                "{} UTF-8 bytes do not fit a version 40 QR code at level {level:?}",
+                data.len()
+            ),
+        })
     }
 }
 
-/// Segments non-ASCII `data` without Kanji and packs it behind an ECI 26 header.
+/// Splits `data` into segments that are never Kanji, before any optimisation.
 ///
 /// ASCII runs are segmented by the `qrcode` parser (it cannot emit Kanji for bytes
-/// below 0x80); each run containing bytes of 0x80 or more becomes one byte segment.
-/// The optimizer then merges neighbours wherever that is cheaper, as in `encode_auto`.
-/// Segments are optimised per character-count-width class (versions 1-9, 10-26, 27-40);
-/// the first class that fits wins, with the smallest fitting version inside it.
-fn utf8_segmented_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
+/// below 0x80); each run of bytes of 0x80 or more becomes one byte segment.
+fn kanji_free_segments(data: &[u8]) -> Vec<qrcode::optimize::Segment> {
     let mut segments = Vec::new();
     let mut offset = 0;
     for run in data.chunk_by(|a, b| a.is_ascii() == b.is_ascii()) {
@@ -117,16 +116,62 @@ fn utf8_segmented_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bi
         }
         offset = end;
     }
+    segments
+}
+
+/// The cheaper of the optimised `segments` and one byte segment over all `data_len` bytes, at `version`.
+///
+/// The optimizer merges neighbours only pairwise, and every extra segment header costs bits, so
+/// one whole byte segment is sometimes smaller. Ties keep the optimised segments.
+fn cheapest_segments(
+    segments: &[qrcode::optimize::Segment],
+    data_len: usize,
+    version: qrcode::Version,
+) -> Vec<qrcode::optimize::Segment> {
+    let optimized = qrcode::optimize::Optimizer::new(segments.iter().copied(), version).collect::<Vec<_>>();
+    let whole = vec![qrcode::optimize::Segment {
+        mode: qrcode::types::Mode::Byte,
+        begin: 0,
+        end: data_len,
+    }];
+    if qrcode::optimize::total_encoded_len(&whole, version) < qrcode::optimize::total_encoded_len(&optimized, version) {
+        whole
+    } else {
+        optimized
+    }
+}
+
+/// Packs `segments` of `data` behind an ECI 26 header at `version`, or `None` if they do not fit.
+///
+/// `None` can only mean capacity: the segments are never Kanji and ECI 26 is a valid designator,
+/// so for `Version::Normal(1..=40)` the only error the `qrcode` push functions return is `DataTooLong`.
+fn utf8_bits_at(
+    data: &[u8],
+    segments: &[qrcode::optimize::Segment],
+    version: qrcode::Version,
+    level: qrcode::EcLevel,
+) -> Option<qrcode::bits::Bits> {
+    let mut bits = qrcode::bits::Bits::new(version);
+    bits.push_eci_designator(ECI_UTF8).ok()?;
+    bits.push_segments(data, segments.iter().copied()).ok()?;
+    bits.push_terminator(level).ok()?;
+    Some(bits)
+}
+
+/// Segments non-ASCII `data` without Kanji and packs it behind an ECI 26 header.
+///
+/// Segments come from [`kanji_free_segments`], optimised per character-count-width class
+/// (versions 1-9, 10-26, 27-40) and never worse than one whole byte segment
+/// ([`cheapest_segments`]), so any content a single byte segment holds fits here too.
+/// The first class that fits wins, with the smallest fitting version inside it.
+///
+/// `None` only means the data does not fit version 40 at `level`: Kanji is never pushed and
+/// ECI 26 is valid.
+fn utf8_segmented_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
+    let segments = kanji_free_segments(data);
     [(1, 9), (10, 26), (27, 40)].into_iter().find_map(|(low, high)| {
-        let optimized = qrcode::optimize::Optimizer::new(segments.iter().copied(), qrcode::Version::Normal(high))
-            .collect::<Vec<_>>();
-        smallest_fitting_bits(low, high, |version| {
-            let mut bits = qrcode::bits::Bits::new(version);
-            bits.push_eci_designator(ECI_UTF8).ok()?;
-            bits.push_segments(data, optimized.iter().copied()).ok()?;
-            bits.push_terminator(level).ok()?;
-            Some(bits)
-        })
+        let chosen = cheapest_segments(&segments, data.len(), qrcode::Version::Normal(high));
+        smallest_fitting_bits(low, high, |version| utf8_bits_at(data, &chosen, version, level))
     })
 }
 
@@ -136,13 +181,12 @@ fn utf8_segmented_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bi
 /// it fits at every larger one. `high` is probed first, so data that fits nowhere in the
 /// range costs one pass; otherwise the smallest version is found by binary search.
 fn smallest_fitting_bits(
-    low: i16,
-    high: i16,
+    mut low: i16,
+    mut high: i16,
     build: impl Fn(qrcode::Version) -> Option<qrcode::bits::Bits>,
 ) -> Option<qrcode::bits::Bits> {
     let mut best = build(qrcode::Version::Normal(high))?;
     // Invariant: `best` holds the bits for version `high`, which fits; versions below `low` do not.
-    let (mut low, mut high) = (low, high);
     while low < high {
         let middle = low + (high - low) / 2;
         match build(qrcode::Version::Normal(middle)) {
@@ -156,12 +200,12 @@ fn smallest_fitting_bits(
     Some(best)
 }
 
-/// Encodes `data` as one byte-mode segment (behind an ECI 26 header when `utf8`) in the smallest version.
+/// Encodes ASCII `data` as one byte-mode segment in the smallest version.
 ///
 /// Version 40 is probed first: if a single byte segment misses version 40 it
 /// misses every version, so oversized input costs one pass instead of forty.
-fn single_byte_segment_bits(data: &[u8], level: qrcode::EcLevel, utf8: bool) -> Result<qrcode::bits::Bits, QrError> {
-    smallest_fitting_bits(1, 40, |version| byte_segment_bits(data, version, level, utf8)).ok_or_else(|| {
+fn single_byte_segment_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits, QrError> {
+    smallest_fitting_bits(1, 40, |version| byte_segment_bits(data, version, level)).ok_or_else(|| {
         QrError::ContentTooLong {
             reason: format!(
                 "{} UTF-8 bytes do not fit a version 40 QR code at level {level:?}",
@@ -174,17 +218,9 @@ fn single_byte_segment_bits(data: &[u8], level: qrcode::EcLevel, utf8: bool) -> 
 /// Packs `data` as a single byte-mode segment at `version`, or `None` if it does not fit.
 ///
 /// `None` can only mean capacity: for `Version::Normal(1..=40)` the only error the
-/// `qrcode` push functions return is `DataTooLong` (the ECI designator 26 is valid).
-fn byte_segment_bits(
-    data: &[u8],
-    version: qrcode::Version,
-    level: qrcode::EcLevel,
-    utf8: bool,
-) -> Option<qrcode::bits::Bits> {
+/// `qrcode` push functions return is `DataTooLong`.
+fn byte_segment_bits(data: &[u8], version: qrcode::Version, level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
     let mut bits = qrcode::bits::Bits::new(version);
-    if utf8 {
-        bits.push_eci_designator(ECI_UTF8).ok()?;
-    }
     (bits.push_byte_data(data).is_ok() && bits.push_terminator(level).is_ok()).then_some(bits)
 }
 
@@ -368,8 +404,9 @@ mod tests {
         byte
     };
 
-    /// Capacity at level M for content with any non-ASCII byte: [`BYTE_CAPACITY_LEVEL_M`] minus the 12-bit ECI header.
-    const UTF8_CAPACITY_LEVEL_M: usize = 2330;
+    /// Capacity at level M for content with any non-ASCII byte. The 12 ECI bits take the 4 spare bits
+    /// of the byte-mode segment plus one whole byte, so it is one byte below [`BYTE_CAPACITY_LEVEL_M`].
+    const UTF8_CAPACITY_LEVEL_M: usize = BYTE_CAPACITY_LEVEL_M - 1;
 
     /// Upper bound on characters a scanning test tries before giving up.
     const SCAN_LIMIT: usize = 20_000;
@@ -772,6 +809,14 @@ mod tests {
                     fits_agreeing_with_generation(&content, level)?;
                 }
             }
+            // Non-ASCII content holds one byte less than ASCII byte mode (the ECI header).
+            let utf8_capacity = byte - 1;
+            for length in [utf8_capacity - 1, utf8_capacity, utf8_capacity + 1] {
+                let content = format!("{}{}", "é".repeat(length / 2), "a".repeat(length % 2));
+                assert_eq!(content.len(), length);
+                let fits = fits_agreeing_with_generation(&content, level)?;
+                assert_eq!(fits, length <= utf8_capacity, "{length} non-ASCII bytes at {level:?}");
+            }
         }
         Ok(())
     }
@@ -938,32 +983,28 @@ mod tests {
             "must take the byte fallback"
         );
         assert_eq!(encode_bits(data, level)?.version(), qrcode::Version::Normal(35));
-        assert!(byte_segment_bits(data, qrcode::Version::Normal(34), level, false).is_none());
+        assert!(byte_segment_bits(data, qrcode::Version::Normal(34), level).is_none());
         Ok(())
     }
 
     /// The previous linear search, kept as the oracle for the binary search.
-    fn linear_byte_segment_bits(data: &[u8], level: qrcode::EcLevel, utf8: bool) -> Option<qrcode::bits::Bits> {
-        (1..=40).find_map(|version| byte_segment_bits(data, qrcode::Version::Normal(version), level, utf8))
+    fn linear_byte_segment_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
+        (1..=40).find_map(|version| byte_segment_bits(data, qrcode::Version::Normal(version), level))
     }
 
     #[test]
     fn binary_version_search_matches_the_linear_search() -> TestResult {
         let text = "x12345".repeat(500);
-        for (utf8, level) in [false, true].into_iter().flat_map(|utf8| {
-            [
-                qrcode::EcLevel::L,
-                qrcode::EcLevel::M,
-                qrcode::EcLevel::Q,
-                qrcode::EcLevel::H,
-            ]
-            .map(move |level| (utf8, level))
-        }) {
-            // The `utf8` flag only changes the ECI header; the data is the same bytes either way.
+        for level in [
+            qrcode::EcLevel::L,
+            qrcode::EcLevel::M,
+            qrcode::EcLevel::Q,
+            qrcode::EcLevel::H,
+        ] {
             for length in 1..=3000 {
                 let data = text.as_bytes().get(..length).ok_or("pattern too short")?;
-                let binary = single_byte_segment_bits(data, level, utf8).ok();
-                let linear = linear_byte_segment_bits(data, level, utf8);
+                let binary = single_byte_segment_bits(data, level).ok();
+                let linear = linear_byte_segment_bits(data, level);
                 assert_eq!(
                     binary.as_ref().map(qrcode::bits::Bits::version),
                     linear.as_ref().map(qrcode::bits::Bits::version),
@@ -976,6 +1017,95 @@ mod tests {
                 );
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn utf8_segments_never_contain_kanji() {
+        // CJK text whose UTF-8 byte pairs fall in the Shift-JIS Kanji ranges, and interleavings with ASCII.
+        let samples = [
+            "こんにちは世界".repeat(300),
+            "日本語のテキスト、東京都渋谷区".repeat(100),
+            "你好，世界。欢迎使用二维码生成器".repeat(100),
+            "東1京A".repeat(500),
+            "東12京ABC都-".repeat(300),
+        ];
+        for text in &samples {
+            let data = text.as_bytes();
+            let segments = kanji_free_segments(data);
+            assert!(
+                segments
+                    .iter()
+                    .all(|segment| segment.mode != qrcode::types::Mode::Kanji),
+                "parser output contains Kanji for {text:.12}"
+            );
+            for version in [9, 26, 40] {
+                let version = qrcode::Version::Normal(version);
+                let optimized = qrcode::optimize::Optimizer::new(segments.iter().copied(), version).collect::<Vec<_>>();
+                assert!(
+                    optimized
+                        .iter()
+                        .all(|segment| segment.mode != qrcode::types::Mode::Kanji),
+                    "optimizer output contains Kanji at {version:?} for {text:.12}"
+                );
+                let chosen = cheapest_segments(&segments, data.len(), version);
+                assert!(chosen.iter().all(|segment| segment.mode != qrcode::types::Mode::Kanji));
+            }
+        }
+        // The plain `qrcode` parser does produce Kanji for the same text, so the check above is meaningful.
+        let plain = qrcode::optimize::Parser::new("こんにちは世界".as_bytes()).collect::<Vec<_>>();
+        assert!(plain.iter().any(|segment| segment.mode == qrcode::types::Mode::Kanji));
+    }
+
+    /// Linear oracle for [`utf8_segmented_bits`]: the first version in 1..=40 that fits, with segments
+    /// optimised at that very version and the same cheaper-of-two rule.
+    fn linear_utf8_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
+        let segments = kanji_free_segments(data);
+        (1..=40).find_map(|number| {
+            let version = qrcode::Version::Normal(number);
+            let chosen = cheapest_segments(&segments, data.len(), version);
+            utf8_bits_at(data, &chosen, version, level)
+        })
+    }
+
+    #[test]
+    fn utf8_class_search_matches_the_linear_oracle() -> TestResult {
+        let pattern = "é12345日AB-".repeat(800);
+        let text = pattern.get(..MAX_ENCODABLE_BYTES).map_or(pattern.as_str(), |cut| cut);
+        let mut comparisons = 0_usize;
+        for level in [
+            qrcode::EcLevel::L,
+            qrcode::EcLevel::M,
+            qrcode::EcLevel::Q,
+            qrcode::EcLevel::H,
+        ] {
+            for (end, _) in text.char_indices().skip(1) {
+                let data = text.as_bytes().get(..end).ok_or("prefix")?;
+                let class_search = utf8_segmented_bits(data, level);
+                let linear = linear_utf8_bits(data, level);
+                assert_eq!(
+                    class_search.as_ref().map(qrcode::bits::Bits::version),
+                    linear.as_ref().map(qrcode::bits::Bits::version),
+                    "version differs at {end} bytes, level {level:?}"
+                );
+                assert_eq!(
+                    class_search.map(qrcode::bits::Bits::into_bytes),
+                    linear.map(qrcode::bits::Bits::into_bytes),
+                    "bits differ at {end} bytes, level {level:?}"
+                );
+                comparisons += 1;
+            }
+        }
+        println!("utf8 oracle comparisons: {comparisons}");
+        assert!(comparisons > 10_000);
+        Ok(())
+    }
+
+    #[test]
+    fn utf8_encoding_is_never_larger_than_a_single_byte_segment() -> TestResult {
+        // "é12345" at level Q: 10 bytes fit version 1 as one byte segment.
+        let bits = encode_bits("é12345".as_bytes(), qrcode::EcLevel::Q)?;
+        assert_eq!(bits.version(), qrcode::Version::Normal(1));
         Ok(())
     }
 }
