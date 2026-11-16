@@ -132,35 +132,24 @@ private fun bindCamera(
     }, ContextCompat.getMainExecutor(context))
 }
 
-/** Decodes one scanning frame, offers it to the debug [frameRecorder], and always closes [imageProxy]. */
+/** Decodes one scanning frame, then offers it to the debug [frameRecorder]. Always closes [imageProxy]. */
 private fun analyzeFrame(
     imageProxy: ImageProxy,
     analysis: FrameAnalysis,
     context: Context,
-) {
-    val planeProxy = imageProxy.planes[0]
-    if (planeProxy.pixelStride == 1) {
-        val buffer = planeProxy.buffer
-        val bytes = ByteArray(buffer.remaining())
-        buffer.get(bytes)
+) = imageProxy.use { proxy ->
+    val plane = proxy.planes[0]
+    if (plane.pixelStride != 1) return@use
+    val buffer = plane.buffer
+    val bytes = ByteArray(buffer.remaining())
+    buffer.get(bytes)
 
-        packLumaRows(bytes, imageProxy.width, imageProxy.height, planeProxy.rowStride)
-            .getOrNull()
-            ?.let { packed ->
-                val decoded = QrBridge.decodeQrFromRaw(packed, imageProxy.width, imageProxy.height)
-                // The unpacked copy keeps the row padding exactly as delivered.
-                frameRecorder.record(
-                    luma = bytes,
-                    width = imageProxy.width,
-                    height = imageProxy.height,
-                    rowStride = planeProxy.rowStride,
-                    content = decoded.getOrNull()?.content,
-                )
-                // Left (no QR found) is silently discarded — expected for most frames
-                decoded.onRight { result ->
-                    ContextCompat.getMainExecutor(context).execute { analysis.onQrDecoded(result) }
-                }
-            }
+    val packed = packLumaRows(bytes, proxy.width, proxy.height, plane.rowStride).getOrNull() ?: return@use
+    val decoded = QrBridge.decodeQrFromRaw(packed, proxy.width, proxy.height)
+    // Left (no QR found) is silently discarded — expected for most frames
+    decoded.onRight { result ->
+        ContextCompat.getMainExecutor(context).execute { analysis.onQrDecoded(result) }
     }
-    imageProxy.close()
+    // After the result is dispatched, so the blocking write cannot delay it. `bytes` keeps the row padding.
+    frameRecorder.record(bytes, proxy.width, proxy.height, plane.rowStride, decoded.getOrNull()?.content)
 }

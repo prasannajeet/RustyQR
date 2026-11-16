@@ -3,13 +3,16 @@
 package com.p2.apps.rustyqr.bridge
 
 import arrow.core.Either
+import arrow.core.flatMap
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSSearchPathForDirectoriesInDomains
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.stringWithContentsOfFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
@@ -20,19 +23,38 @@ private class IosFrameFiles(
     override fun writeBytes(
         name: String,
         bytes: ByteArray,
-    ): Either<String, Unit> = write("$directory/$name", "wb", bytes)
+    ): Either<String, Unit> = ensureDirectory().flatMap { write("$directory/$name", "wb", bytes) }
 
     override fun appendLine(
         name: String,
         line: String,
-    ): Either<String, Unit> = write("$directory/$name", "ab", (line + "\n").encodeToByteArray())
+    ): Either<String, Unit> {
+        val bytes = (line + "\n").encodeToByteArray()
+        return ensureDirectory().flatMap { write("$directory/$name", "ab", bytes) }
+    }
+
+    override fun countLines(name: String): Either<String, Int> {
+        val path = "$directory/$name"
+        return if (NSFileManager.defaultManager.fileExistsAtPath(path)) {
+            val text = NSString.stringWithContentsOfFile(path, NSUTF8StringEncoding, null)
+            text?.let { Either.Right(it.count { char -> char == '\n' }) } ?: Either.Left("cannot read $path")
+        } else {
+            Either.Right(0)
+        }
+    }
+
+    private fun ensureDirectory(): Either<String, Unit> =
+        if (NSFileManager.defaultManager.createDirectoryAtPath(directory, true, null, null)) {
+            Either.Right(Unit)
+        } else {
+            Either.Left("cannot create $directory")
+        }
 
     private fun write(
         path: String,
         mode: String,
         bytes: ByteArray,
     ): Either<String, Unit> {
-        NSFileManager.defaultManager.createDirectoryAtPath(directory, true, null, null)
         val file = fopen(path, mode)
         val written =
             when {
@@ -40,12 +62,20 @@ private class IosFrameFiles(
                 bytes.isEmpty() -> 0L
                 else -> bytes.usePinned { fwrite(it.addressOf(0), 1u, bytes.size.toULong(), file).toLong() }
             }
-        if (file != null) fclose(file)
-        return if (written == bytes.size.toLong()) Either.Right(Unit) else Either.Left("cannot write $path")
+        // fclose can surface a deferred write error such as ENOSPC, so its result decides success too.
+        val closed = file != null && fclose(file) == 0
+        return if (closed && written == bytes.size.toLong()) Either.Right(Unit) else Either.Left("cannot write $path")
     }
 }
 
-actual fun frameFiles(): FrameFiles {
-    val caches = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, true).firstOrNull()
-    return IosFrameFiles("${caches as? String ?: "."}/frames")
+actual fun frameFiles(): Either<String, FrameFiles> {
+    val caches =
+        NSFileManager.defaultManager
+            .URLForDirectory(NSCachesDirectory, NSUserDomainMask, null, true, null)
+            ?.path
+    return if (caches != null) {
+        Either.Right(IosFrameFiles("$caches/frames"))
+    } else {
+        Either.Left("caches directory unavailable")
+    }
 }

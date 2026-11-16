@@ -20,7 +20,13 @@ interface FrameFiles {
         name: String,
         line: String,
     ): Either<String, Unit>
+
+    /** Counts the lines of the text file [name]; 0 when it does not exist. */
+    fun countLines(name: String): Either<String, Int>
 }
 
-/** Creates the platform [FrameFiles]. Only call this when frame recording is enabled. */
-expect fun frameFiles(): FrameFiles
+/**
+ * Creates the platform [FrameFiles], or [Either.Left] when the cache location is unavailable.
+ * Only call this when frame recording is enabled.
+ */
+expect fun frameFiles(): Either<String, FrameFiles>

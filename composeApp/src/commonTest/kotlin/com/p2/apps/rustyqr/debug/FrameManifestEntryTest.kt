@@ -2,6 +2,8 @@ package com.p2.apps.rustyqr.debug
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class FrameManifestEntryTest {
     private fun entry(content: String?) =
@@ -49,7 +51,7 @@ class FrameManifestEntryTest {
     @Test
     fun outputIsASingleLine() {
         val line = entry("a\nb\r\nc").toJsonLine()
-        assertEquals(false, line.contains('\n') || line.contains('\r'))
+        assertFalse(line.contains('\n') || line.contains('\r'))
     }
 
     private fun assertContent(
@@ -57,6 +59,6 @@ class FrameManifestEntryTest {
         content: String,
     ) {
         val line = entry(content).toJsonLine()
-        assertEquals(true, line.endsWith(",\"content\":$expectedJson}"), line)
+        assertTrue(line.endsWith(",\"content\":$expectedJson}"), line)
     }
 }

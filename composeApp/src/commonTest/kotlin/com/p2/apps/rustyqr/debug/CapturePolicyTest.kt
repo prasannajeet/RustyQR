@@ -29,11 +29,4 @@ class CapturePolicyTest {
         assertFalse(policy.accept(decoded = true))
         assertFalse(policy.accept(decoded = false))
     }
-
-    @Test
-    fun countsAnalysedFrames() {
-        val policy = CapturePolicy()
-        repeat(7) { policy.accept(decoded = false) }
-        assertEquals(7, policy.analysedFrames)
-    }
 }

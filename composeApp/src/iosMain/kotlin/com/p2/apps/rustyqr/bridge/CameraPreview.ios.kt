@@ -15,7 +15,6 @@ import com.p2.apps.rustyqr.debug.FrameRecorder
 import com.p2.apps.rustyqr.model.ScanResult
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ByteVar
-import kotlinx.cinterop.CPointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.plus
 import kotlinx.cinterop.readBytes
@@ -168,29 +167,32 @@ private class FrameDelegate(
 
     private fun decodeFrame(pixelBuffer: CVPixelBufferRef) {
         CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
-        try {
-            val frame = copyLumaPlane(pixelBuffer) ?: return
-            val decoded = QrBridge.decodeQrFromRaw(frame.bytes, frame.width, frame.height)
-            // Copy the padded plane only when recording; otherwise the frame path pays nothing for it.
-            if (frameRecorder.isEnabled) {
-                frameRecorder.record(
-                    luma = frame.rawBytes(),
-                    width = frame.width,
-                    height = frame.height,
-                    rowStride = frame.bytesPerRow,
-                    content = decoded.getOrNull()?.content,
-                )
+        // Copy only while locked; decoding and recording work on the copies.
+        val frame =
+            try {
+                copyLumaPlane(pixelBuffer, keepPadded = frameRecorder.isEnabled)
+            } finally {
+                CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
             }
-            decoded.onRight { result ->
-                dispatch_async(dispatch_get_main_queue()) { onQrDecoded(result) }
-            }
-        } finally {
-            CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly)
+        if (frame == null) return
+        val decoded = QrBridge.decodeQrFromRaw(frame.bytes, frame.width, frame.height)
+        decoded.onRight { result ->
+            dispatch_async(dispatch_get_main_queue()) { onQrDecoded(result) }
+        }
+        // After the result is dispatched, so the blocking write cannot delay it. Null unless recording is on.
+        frame.padded?.let { padded ->
+            frameRecorder.record(padded, frame.width, frame.height, frame.bytesPerRow, decoded.getOrNull()?.content)
         }
     }
 
-    /** Copies plane 0 of the (locked) [pixelBuffer] into a tightly packed luma array, or null if unusable. */
-    private fun copyLumaPlane(pixelBuffer: CVPixelBufferRef): LumaFrame? {
+    /**
+     * Copies plane 0 of the (locked) [pixelBuffer] into a tightly packed luma array, or null if unusable.
+     * With [keepPadded], also copies the plane as delivered, row padding included.
+     */
+    private fun copyLumaPlane(
+        pixelBuffer: CVPixelBufferRef,
+        keepPadded: Boolean,
+    ): LumaFrame? {
         val baseAddress = CVPixelBufferGetBaseAddressOfPlane(pixelBuffer, 0u)
         val width = CVPixelBufferGetWidthOfPlane(pixelBuffer, 0u).toInt()
         val height = CVPixelBufferGetHeightOfPlane(pixelBuffer, 0u).toInt()
@@ -207,24 +209,19 @@ private class FrameDelegate(
             val rowStart = (bytePtr + row.toLong() * bytesPerRow.toLong()) ?: continue
             rowStart.readBytes(width).copyInto(dst, destinationOffset = row * width)
         }
-        return LumaFrame(dst, width, height, bytePtr, bytesPerRow)
+        val padded = if (keepPadded) bytePtr.readBytes(bytesPerRow * height) else null
+        return LumaFrame(dst, width, height, bytesPerRow, padded)
     }
 }
 
-/**
- * A packed luma copy plus the locked source plane it came from. [source] is only valid while the pixel buffer
- * stays locked, so [rawBytes] must be called before unlocking.
- */
+/** A packed luma copy; [padded] is the plane as delivered (row padding included), only set when recording. */
 private class LumaFrame(
     val bytes: ByteArray,
     val width: Int,
     val height: Int,
-    private val source: CPointer<ByteVar>,
     val bytesPerRow: Int,
-) {
-    /** Copies `bytesPerRow * height` bytes of the source plane, row padding included. */
-    fun rawBytes(): ByteArray = source.readBytes(bytesPerRow * height)
-}
+    val padded: ByteArray?,
+)
 
 /** Process-scoped so the debug frame budget is per app launch. */
 private val frameRecorder = FrameRecorder(platform = "ios")
