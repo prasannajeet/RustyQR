@@ -120,5 +120,5 @@ jobs:
             -scheme iosApp \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4'
 
-      # --- Lint: ktlint + detekt + swiftlint for both modules (ktlint on iosMain/iosTest only runs on macOS) ---
+      # --- Lint: ktlint + detekt + swiftlint for all three modules (ktlint on iosMain/iosTest only runs on macOS) ---
       - run: ./gradlew :composeApp:lintAll

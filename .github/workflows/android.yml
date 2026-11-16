@@ -166,15 +166,15 @@ jobs:
       - run: ./gradlew :rustyqr-bindings:jvmTest
 
       # --- App unit tests and debug APK (Rust for all three ABIs, built by the plugin) ---
-      - run: ./gradlew :composeApp:testDebugUnitTest :composeApp:assembleDebug
+      - run: ./gradlew :composeApp:testAndroidHostTest :androidApp:assembleDebug
 
       # --- Kotlin lint (SwiftLint is macOS only and runs in the iOS workflow) ---
-      - run: ./gradlew :composeApp:ktlintCheck :composeApp:detekt :rustyqr-bindings:ktlintCheck :rustyqr-bindings:detekt
+      - run: ./gradlew :composeApp:ktlintCheck :composeApp:detekt :rustyqr-bindings:ktlintCheck :rustyqr-bindings:detekt :androidApp:ktlintCheck :androidApp:detekt
 
       # --- Upload APK as artifact ---
       - uses: actions/upload-artifact@v4
         if: success()
         with:
           name: app-debug
-          path: composeApp/build/outputs/apk/debug/composeApp-debug.apk
+          path: androidApp/build/outputs/apk/debug/androidApp-debug.apk
           retention-days: 7

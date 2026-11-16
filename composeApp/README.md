@@ -1,6 +1,6 @@
 <div align="center">
 
-# composeApp — Kotlin Multiplatform Module
+# composeApp — Kotlin Multiplatform Library
 
 ### Shared Compose UI. One ViewModel per screen. Common `QrBridge` code calls Rust through the generated UniFFI bindings.
 
@@ -41,7 +41,7 @@ The Rust library is built automatically by the `:rustyqr-bindings` Gradle module
 UniFFI bindings. Platform builds are documented in the platform READMEs:
 
 ```bash
-./gradlew :composeApp:assembleDebug   # Android — see src/androidMain/README.md
+./gradlew :androidApp:assembleDebug   # Android — see src/androidMain/README.md
 ```
 
 iOS builds go through Xcode — see `../iosApp/README.md`.
@@ -52,7 +52,7 @@ The Rust profile follows the `releaseBuild` Gradle property, not the build type.
 need `-PreleaseBuild=true`:
 
 ```bash
-./gradlew :composeApp:assembleRelease -PreleaseBuild=true   # or bundleRelease
+./gradlew :androidApp:assembleRelease -PreleaseBuild=true   # or bundleRelease
 ```
 
 Android release packaging (`assembleRelease`, `bundleRelease`, `assemble`, `build`) and Kotlin/Native release
@@ -64,7 +64,10 @@ configuration except Debug. With `-PreleaseBuild=true`, `:rustyqr-bindings:jvmTe
 
 ## Module-Level Gradle Tasks
 
-These apply to the whole module — they work the same way whether you're building for Android or iOS.
+`composeApp` is a KMP library: it has no launcher of its own. The Android app shell (`MainActivity`, `Application`,
+manifest, icons, APK packaging) lives in `:androidApp`, which depends on this module. `:composeApp:lintAll` also runs
+`:androidApp:ktlintCheck` and `:androidApp:detekt` (the type-resolved `:androidApp:detektDebug`). Host tests:
+`:composeApp:testAndroidHostTest`.
 
 | Task                                    | What it does                                                            |
 |-----------------------------------------|-------------------------------------------------------------------------|
@@ -253,19 +256,20 @@ plain `String` and can throw.
 
 `./gradlew :composeApp:lintAll` runs ktlint, detekt, and SwiftLint in a single invocation. The same
 three tools also run automatically as a pre-commit hook (installed by
-`./gradlew :composeApp:installGitHooks`, which also runs on `preBuild` / `clean`).
+`./gradlew :composeApp:installGitHooks`, which also runs on `:androidApp:preBuild` and `clean`).
 
 | Tool       | Scope                   | Config                                           |
 |------------|-------------------------|--------------------------------------------------|
-| ktlint     | Kotlin sources          | `composeApp/.editorconfig` — Android mode, continuation indent 4 |
-| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — detekt defaults (max line length 120) plus the Compose `FunctionNaming` allowance; no suppressions. Type resolution covers androidMain and commonMain (detekt 1.x cannot type-resolve Kotlin/Native), iosMain and commonTest get the untyped scan |
+| ktlint     | Kotlin sources          | `composeApp/.editorconfig` and `androidApp/.editorconfig` — Android mode, continuation indent 4 |
+| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — detekt defaults (max line length 120) plus the Compose `FunctionNaming` allowance; no suppressions. Type resolution covers androidMain and commonMain (`detektAndroidMain`) and `androidApp/src/main` (`detektDebug`) (detekt 1.x cannot type-resolve Kotlin/Native), iosMain and commonTest get the untyped scan |
 | SwiftLint  | `iosApp/` Swift sources | `.swiftlint.yml` — `trailing_whitespace` and `line_length` enabled |
 | rustfmt    | `rustySDK/` Rust sources | `rustySDK/rustfmt.toml` — edition 2024, max line width 120 (separate pre-commit step) |
 
 Auto-fix Kotlin formatting with `./gradlew :composeApp:ktlintFormat`.
 
 **Prerequisite:** `detekt` (and therefore `lintAll` and the pre-commit hook) also runs the type-resolved
-`detektAndroidDebug` task, which compiles the Android target. On a fresh checkout the gitignored
+`detektAndroidMain` task (and `:androidApp:detektDebug`), which compiles the Android target. On a fresh checkout the
+gitignored
 `rustyqr-bindings/build/uniffi/bindings` UniFFI bindings do not exist yet, so run
 `./gradlew :rustyqr-bindings:assemble` once before linting.
 
