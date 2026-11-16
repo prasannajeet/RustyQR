@@ -153,14 +153,6 @@ if command -v rustup &>/dev/null; then
     fi
 fi
 
-# cargo-ndk
-if command -v cargo-ndk &>/dev/null; then
-    pass "cargo-ndk $(cargo ndk --version 2>/dev/null | awk '{print $2}')"
-else
-    fail "cargo-ndk missing"
-    maybe_install "cargo-ndk" "cargo install cargo-ndk" || true
-fi
-
 # rust-analyzer — rustup ships a proxy that fails until the component is added,
 # so run it rather than relying on `command -v`
 if rust-analyzer --version &>/dev/null; then
@@ -218,18 +210,16 @@ else
     warn "Install Android Studio (https://developer.android.com/studio) then open SDK Manager to install platform-tools + an SDK."
 fi
 
-if [[ -n "${ANDROID_NDK_HOME:-}" && -d "$ANDROID_NDK_HOME" ]]; then
-    pass "ANDROID_NDK_HOME → $ANDROID_NDK_HOME"
-elif [[ -n "$ANDROID_SDK" && -d "$ANDROID_SDK/ndk" ]]; then
-    LATEST_NDK="$(ls "$ANDROID_SDK/ndk" 2>/dev/null | sort -V | tail -1)"
-    if [[ -n "$LATEST_NDK" ]]; then
-        warn "NDK found at $ANDROID_SDK/ndk/$LATEST_NDK but ANDROID_NDK_HOME is not exported"
-        warn "Add to your shell rc: export ANDROID_NDK_HOME=\"$ANDROID_SDK/ndk/$LATEST_NDK\""
-        MISSING+=("ANDROID_NDK_HOME env var")
-    else
-        fail "Android NDK not installed"
-        warn "Install via Android Studio → SDK Manager → SDK Tools → NDK (Side by side)"
+# The UniFFI Gradle plugin picks the newest installed NDK itself, so any NDK under the SDK works.
+NDK_FOUND=""
+for sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$ANDROID_SDK"; do
+    if [[ -n "$sdk" && -d "$sdk/ndk" ]] && [[ -n "$(ls "$sdk/ndk" 2>/dev/null)" ]]; then
+        NDK_FOUND="$sdk/ndk/$(ls "$sdk/ndk" | sort -V | tail -1)"
+        break
     fi
+done
+if [[ -n "$NDK_FOUND" ]]; then
+    pass "Android NDK at $NDK_FOUND"
 else
     fail "Android NDK not found"
     warn "Install via Android Studio → SDK Manager → SDK Tools → NDK (Side by side)"
@@ -243,7 +233,9 @@ if $IS_MACOS; then
     section "iOS toolchain"
 
     if command -v xcodebuild &>/dev/null; then
-        XCODE_VER="$(xcodebuild -version 2>/dev/null | head -1 | awk '{print $2}')"
+        # Capture first, then take the first line: `xcodebuild -version | head -1` can die of SIGPIPE under pipefail.
+        XCODE_OUT="$(xcodebuild -version 2>/dev/null || true)"
+        XCODE_VER="$(awk 'NR == 1 {print $2}' <<<"$XCODE_OUT")"
         pass "Xcode $XCODE_VER"
         if [[ "$XCODE_VER" != 26.* ]]; then
             warn "project pins Xcode 26.x — you have $XCODE_VER; builds may drift"
@@ -312,7 +304,7 @@ if (( ${#MISSING[@]} > 0 )); then
 fi
 
 echo "${GREEN}${BOLD}All set.${RESET} Build with:"
-echo "  ./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug   # Android"
+echo "  ./gradlew :composeApp:assembleDebug                  # Android (Gradle builds Rust and the bindings)"
 if $IS_MACOS; then
-    echo "  ./gradlew :composeApp:buildRustIos                                 # iOS"
+    echo "  ./gradlew :composeApp:generateXcodeProject           # iOS: then build iosApp/iosApp.xcodeproj in Xcode"
 fi

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/ffi", "crates/uniffi-bindgen"]
+members = ["crates/core", "crates/ffi"]
 resolver = "2"
 
 [workspace.lints.clippy]
@@ -27,7 +27,7 @@ opt-level = 3
 #   - unit tests: cargo test --no-run --config 'profile.dev.package.rusty-qr-core.opt-level=0'
 #   - app builds (Gradle/Xcode run their own cargo, so a one-off --config never reaches them,
 #     and Cargo has no env var for per-package profiles): put
-#     [profile.dev.package.rusty-qr-core] opt-level = 0 in your user-level ~/.cargo/config.toml
-#     (not the tracked rustySDK/.cargo/config.toml), and remove it afterwards.
+#     [profile.dev.package.rusty-qr-core] opt-level = 0 in your user-level ~/.cargo/config.toml,
+#     and remove it afterwards.
 [profile.dev.package.rusty-qr-core]
 opt-level = 3
