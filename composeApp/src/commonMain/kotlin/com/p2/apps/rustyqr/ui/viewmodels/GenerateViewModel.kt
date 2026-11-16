@@ -73,11 +73,11 @@ class GenerateViewModel(
     private fun handleGenerate() {
         val current = state.value
 
-        if (current.inputText.isBlank()) return
-
-        if (current.isInputTooLong) {
-            state.update {
-                it.copy(error = UiText.Res(Res.string.generate_error_too_long))
+        if (!current.canGenerate) {
+            if (current.isInputTooLong) {
+                state.update {
+                    it.copy(error = UiText.Res(Res.string.generate_error_too_long))
+                }
             }
             return
         }
