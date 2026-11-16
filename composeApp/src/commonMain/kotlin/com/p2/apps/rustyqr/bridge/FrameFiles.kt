@@ -21,8 +21,8 @@ interface FrameFiles {
         line: String,
     ): Either<String, Unit>
 
-    /** Counts the lines of the text file [name]; 0 when it does not exist. */
-    fun countLines(name: String): Either<String, Int>
+    /** Lists the file names in the frames directory; empty when it does not exist yet. */
+    fun listNames(): Either<String, List<String>>
 }
 
 /**

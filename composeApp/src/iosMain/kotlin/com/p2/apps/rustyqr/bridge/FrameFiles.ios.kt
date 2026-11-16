@@ -9,10 +9,7 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSString
-import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUserDomainMask
-import platform.Foundation.stringWithContentsOfFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
@@ -33,15 +30,13 @@ private class IosFrameFiles(
         return ensureDirectory().flatMap { write("$directory/$name", "ab", bytes) }
     }
 
-    override fun countLines(name: String): Either<String, Int> {
-        val path = "$directory/$name"
-        return if (NSFileManager.defaultManager.fileExistsAtPath(path)) {
-            val text = NSString.stringWithContentsOfFile(path, NSUTF8StringEncoding, null)
-            text?.let { Either.Right(it.count { char -> char == '\n' }) } ?: Either.Left("cannot read $path")
+    override fun listNames(): Either<String, List<String>> =
+        if (NSFileManager.defaultManager.fileExistsAtPath(directory)) {
+            val names = NSFileManager.defaultManager.contentsOfDirectoryAtPath(directory, null)
+            names?.filterIsInstance<String>()?.let { Either.Right(it) } ?: Either.Left("cannot list $directory")
         } else {
-            Either.Right(0)
+            Either.Right(emptyList())
         }
-    }
 
     private fun ensureDirectory(): Either<String, Unit> =
         if (NSFileManager.defaultManager.createDirectoryAtPath(directory, true, null, null)) {

@@ -12,6 +12,14 @@ import kotlin.time.Clock
 
 private const val MANIFEST_NAME = "manifest.jsonl"
 private const val UNSEEDED = 0
+private const val FRAME_SUFFIX = ".y"
+
+/** Highest `n` among names ending in `-<n>.y`; names that do not parse are ignored. 0 when there is none. */
+private fun highestIndex(names: List<String>): Int =
+    names
+        .filter { it.endsWith(FRAME_SUFFIX) }
+        .mapNotNull { it.removeSuffix(FRAME_SUFFIX).substringAfterLast('-').toIntOrNull() }
+        .maxOrNull() ?: 0
 
 /**
  * Saves camera frames for use as test data and benchmark input: the Y plane exactly as delivered (row padding
@@ -21,8 +29,9 @@ private const val UNSEEDED = 0
  * [record] returns on its first statement: nothing is allocated, the policy is not consulted and [files] is never
  * initialised. Callers that must build the arguments (the iOS plane copy) check [isEnabled] first.
  *
- * Frames are numbered by manifest line, seeded from the manifest once per launch, so files from earlier launches
- * are never overwritten. If the cache directory or the manifest cannot be used, the frame is skipped.
+ * Frames are numbered one above the highest existing `-<n>.y` file, seeded once per launch, so no existing file is
+ * ever overwritten, even after failed saves left gaps. If the cache directory cannot be used or listed, the frame
+ * is skipped.
  *
  * Writes are blocking file I/O on the caller's thread, which is a camera analysis thread. Failed writes are
  * dropped, since this is a debug aid. Create one instance per app launch: it holds the per-launch frame budget.
@@ -55,7 +64,7 @@ class FrameRecorder(
                 // The index is claimed atomically, so it is unique even when threads overlap. A failed save burns
                 // it, which leaves a gap but never a manifest line that points at replaced bytes.
                 val index = claimIndex(store).bind()
-                val name = "$platform-${width}x$height-s$rowStride-$index.y"
+                val name = "$platform-${width}x$height-s$rowStride-$index$FRAME_SUFFIX"
                 val layout = FrameLayout(width, height, rowStride)
                 val entry = FrameManifestEntry(name, platform, layout, clockMillis(), content)
                 store.writeBytes(name, luma).bind()
@@ -67,7 +76,7 @@ class FrameRecorder(
     private fun claimIndex(store: FrameFiles): Either<String, Int> {
         val seeded =
             if (nextIndex.load() == UNSEEDED) {
-                store.countLines(MANIFEST_NAME).onRight { nextIndex.compareAndSet(UNSEEDED, it + 1) }.map { }
+                store.listNames().onRight { nextIndex.compareAndSet(UNSEEDED, 1 + highestIndex(it)) }.map { }
             } else {
                 Either.Right(Unit)
             }
