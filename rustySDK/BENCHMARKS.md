@@ -9,10 +9,10 @@ Measured on Apple Silicon (M-series) via `cargo bench -p rusty-qr-core` (Criteri
 | `generate_png` 4096px   | ~175 ms  | —          | stress test |
 | `decode` PNG 256px      | ~2.3 ms  | < 20 ms    | PASS        |
 | `decode` PNG 1080px     | ~15.4 ms | < 100 ms   | PASS        |
-| `decode_from_raw` 256px | ~2.2 ms  | < 20 ms    | PASS        |
+| `decode_from_raw` 256px | ~2.2 ms  | < 20 ms    | synthetic only; not yet measured on device |
 | `round_trip` 256px      | ~3.4 ms  | —          | end-to-end  |
 
-All PRD 5.1 performance targets met with significant margin.
+The PNG PRD 5.1 targets are met with significant margin; the camera-path target awaits an on-device measurement.
 
 ## How to reproduce
 

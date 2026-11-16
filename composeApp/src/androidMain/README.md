@@ -6,13 +6,13 @@
 
 <p>
   <img alt="Android" src="https://img.shields.io/badge/Android-minSdk%2029-3DDC84?logo=android&logoColor=white" />
-  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.4.0-7F52FF?logo=kotlin&logoColor=white" />
   <img alt="CameraX" src="https://img.shields.io/badge/CameraX-ImageAnalysis-3DDC84?logo=android&logoColor=white" />
   <img alt="JNA" src="https://img.shields.io/badge/JNA-via%20UniFFI%20runtime-777777" />
   <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-auto--bindings-3B6FE0" />
 </p>
 
-<p><b>Rust <code>.so</code> × 3 ABIs · UniFFI Kotlin · CameraX Y-plane path · 16KB page-aligned</b></p>
+<p><b>Rust <code>.so</code> × 3 ABIs · UniFFI Kotlin · CameraX Y-plane path · 16KB page-aligned on 64-bit ABIs</b></p>
 
 <sub>This source set holds Android-specific <code>actual</code> implementations for the expect
 declarations in <code>commonMain</code> plus the single-activity Compose host. The shared Compose
@@ -66,7 +66,7 @@ Gradle sees that the Rust sources and bindings are up to date and skips them.
 |-----------------------------------------------|-----------------------------------------------------------------------|
 | `:composeApp:assembleDebug`                   | Debug APK; builds Rust (3 ABIs) and the bindings first               |
 | `:composeApp:installDebug`                    | Install debug APK to connected device / emulator                      |
-| `:rustyqr-bindings:buildBindings`             | Generate the Kotlin bindings only                                     |
+| `:rustyqr-bindings:buildBindings`             | Install the bindgen, build the host library, generate the bindings    |
 | `:rustyqr-bindings:mergeUniffiAndroidJniLibs` | Collect the `.so` files per ABI                                       |
 
 Build options:
@@ -146,7 +146,7 @@ sequenceDiagram
 
     CAM->>ANA: ImageProxy (Y-plane luma buffer)
     ANA->>FLAG: get()
-    alt false (idle, or result sheet visible)
+    alt false (result sheet visible)
         FLAG-->>ANA: skip frame, close proxy
     else true
         ANA->>ANA: copy Y-plane, strip row padding
@@ -202,7 +202,8 @@ Rust directly — they're different languages with different runtimes. Two thing
 The `:rustyqr-bindings` module does both, through the Ubique UniFFI Gradle plugin
 (`ch.ubique.uniffi.plugin`). `composeApp` depends on that module, so
 `./gradlew :composeApp:assembleDebug` is the only command you run. Nothing else is a developer
-entry point: there is no `make`, no script and no separate Rust task.
+entry point: there is no script and no separate Rust task. `rustySDK/Makefile` exists only for the
+Rust checks (`make test` runs cargo test, clippy and `fmt --check`); it does not build the app.
 
 ### What the plugin does
 
@@ -229,10 +230,12 @@ uniffi {
 | `armeabi-v7a` | Older 32-bit ARM devices               | `armv7-linux-androideabi`    | `librusty_qr_ffi.so`           |
 | `x86_64`      | Android emulator on a Mac              | `x86_64-linux-android`       | `librusty_qr_ffi.so`           |
 
-All `.so` files are built with **16KB ELF page alignment** (`align 2**14`), compliant with
+The two 64-bit `.so` files (`arm64-v8a`, `x86_64`) are built with **16KB ELF page alignment**
+(LOAD `align 0x4000`), compliant with
 [Android's 16KB page size requirement](https://developer.android.com/guide/practices/page-sizes)
-effective November 2025. Handled automatically by NDK 28+ — no extra linker flags. AGP handles zip
-alignment at packaging time.
+effective November 2025, which applies to 64-bit ABIs only. Handled automatically by NDK 28+ — no
+extra linker flags. The `armeabi-v7a` library stays at 4KB (`0x1000`): the NDK aligns only 64-bit
+ABIs. AGP handles zip alignment at packaging time.
 
 **2. Generate Kotlin bindings.** The plugin also builds a host library, `buildBindings` reads the
 UniFFI metadata embedded in it, and the generator emits Kotlin into
@@ -298,7 +301,7 @@ sequenceDiagram
 on x86 and vice versa.
 
 **One Kotlin API** because the Kotlin code is architecture-independent — it calls Rust functions by
-name (e.g. `generate_png`), and JNA resolves those names against whichever `.so` was loaded on the
+name (e.g. `uniffi_rusty_qr_ffi_fn_func_generate_png`), and JNA resolves those names against whichever `.so` was loaded on the
 device. The UniFFI metadata is identical in every library, so one of them is enough as the input
 for binding generation.
 
