@@ -167,7 +167,7 @@ on an emulator or device.
 ### 5. Build and run on iOS
 
 ```bash
-./gradlew :composeApp:generateXcodeProject
+./gradlew generateXcodeProject
 ```
 
 This regenerates `iosApp.xcodeproj` from `project.yml`. Then **sync Gradle in Android Studio**
@@ -185,7 +185,7 @@ minutes. Xcode passes `-PreleaseBuild=true` for every configuration except Debug
 
 For a **physical iOS device**, set your Team in Xcode → Signing & Capabilities (open
 `iosApp/iosApp.xcodeproj` once), or export `TEAM_ID=<your_team_id>` in your shell rc and re-run
-`./gradlew :composeApp:generateXcodeProject` to bake it into the generated project.
+`./gradlew generateXcodeProject` to bake it into the generated project.
 
 Deeper details on the build pipeline (Cargo runs, UniFFI binding generation, how each platform
 loads the Rust library) live in the platform READMEs —
@@ -199,7 +199,7 @@ loads the Rust library) live in the platform READMEs —
 (semver) and `build_number` (monotonically increasing Int). Android reads it for
 `versionName`/`versionCode`; iOS reads it via env-var expansion in `iosApp/project.yml` for
 `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION`. Bump it before each release; on iOS, rerun
-`./gradlew :composeApp:generateXcodeProject` after the bump to propagate the new values into the
+`./gradlew generateXcodeProject` after the bump to propagate the new values into the
 generated `iosApp.xcodeproj`.
 
 <details>
@@ -426,7 +426,7 @@ Rusty-QR/
 ├── build-logic/                # Convention plugin `rustyqr.kotlin-lint`: shared detekt + ktlint setup for every module
 ├── .editorconfig               # ktlint style for every Kotlin module
 ├── docs/                       # PRD, implementation plan, ADRs
-└── .husky/                     # Git hooks (pre-commit lint, commit-msg format)
+└── .husky/                     # Git hooks (pre-commit lint, commit-msg format); `installGitHooks` sets core.hooksPath
 ```
 
 For per-module details, see the nested READMEs linked above.
@@ -472,9 +472,9 @@ For per-module details, see the nested READMEs linked above.
 | Rust tests             | Cargo test      | `cargo test --workspace`                                                       |
 | Rust benchmarks        | Criterion       | `cargo bench -p rusty-qr-core`                                                 |
 | Rust supply chain      | cargo-deny      | `cargo deny check`                                                             |
-| Kotlin formatting      | ktlint          | `./gradlew :composeApp:ktlintCheck` (`:composeApp:lintAll` covers androidApp)  |
-| Kotlin static analysis | detekt          | `./gradlew :composeApp:detekt` (`:composeApp:lintAll` covers androidApp)       |
-| Swift linting          | SwiftLint       | `./gradlew :composeApp:swiftlint`                                              |
+| Kotlin formatting      | ktlint          | `./gradlew :<module>:ktlintCheck`; `./gradlew lintKotlin` covers every module   |
+| Kotlin static analysis | detekt          | `./gradlew :<module>:detekt`; `./gradlew lintKotlin` covers every module       |
+| Swift linting          | SwiftLint       | `./gradlew swiftlint`                                                          |
 | Pre-commit hook        | Husky           | `lintAll` on staged `.kt`/`.kts`/`.swift`; `cargo fmt --check` on staged `.rs` |
 | Commit messages        | commit-msg hook | Enforces conventional commits (`type(scope): message`)                         |
 | iOS CI                 | GitHub Actions  | Rust checks + iOS simulator tests + xcodebuild + `lintAll`                     |

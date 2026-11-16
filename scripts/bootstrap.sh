@@ -367,5 +367,5 @@ fi
 echo "${GREEN}${BOLD}All set.${RESET} Build with:"
 echo "  ./gradlew :androidApp:assembleDebug                  # Android (Gradle builds Rust and the bindings)"
 if $IS_MACOS; then
-    echo "  ./gradlew :composeApp:generateXcodeProject           # iOS: then build iosApp/iosApp.xcodeproj in Xcode"
+    echo "  ./gradlew generateXcodeProject                   # iOS: then build iosApp/iosApp.xcodeproj in Xcode"
 fi

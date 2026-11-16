@@ -84,7 +84,7 @@ jobs:
           toolchain: ${{ steps.pin.outputs.version }}
           targets: aarch64-apple-ios-sim
 
-      # --- Install XcodeGen and SwiftLint (the macos-26 image has neither; :composeApp:swiftlint calls /opt/homebrew/bin) ---
+      # --- Install XcodeGen and SwiftLint (the macos-26 image has neither; the swiftlint task calls /opt/homebrew/bin) ---
       - run: brew install xcodegen swiftlint
 
       # Cargo registry and Rust build artifacts.
@@ -122,6 +122,10 @@ jobs:
           path: ~/.konan
           key: konan-${{ runner.os }}-${{ steps.kotlin-version.outputs.version }}
 
+      # --- Android SDK: lintAll runs the type-resolved detekt tasks of composeApp and androidApp, which need it ---
+      - uses: android-actions/setup-android@v3
+      - run: test -d "$ANDROID_HOME/platforms" || { echo "Android SDK missing" >&2; exit 1; }
+
       # --- Gradle (dependency, wrapper and build caches) ---
       - uses: gradle/actions/setup-gradle@v5
 
@@ -129,7 +133,7 @@ jobs:
       - run: ./gradlew :rustyqr-bindings:iosSimulatorArm64Test :composeApp:iosSimulatorArm64Test
 
       # --- Regenerate iosApp.xcodeproj (Gradle owns this) ---
-      - run: ./gradlew :composeApp:generateXcodeProject
+      - run: ./gradlew generateXcodeProject
 
       - run: test -d iosApp/iosApp.xcodeproj
 
@@ -141,5 +145,6 @@ jobs:
             -scheme iosApp \
             -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4'
 
-      # --- Lint: ktlint + detekt + swiftlint for all three modules (ktlint on iosMain/iosTest only runs on macOS) ---
-      - run: ./gradlew :composeApp:lintAll
+      # --- Lint: ktlint + detekt for composeApp, androidApp, rustyqr-bindings, build-logic and the root scripts, plus
+      # swiftlint (ktlint on iosMain/iosTest only runs on macOS) ---
+      - run: ./gradlew lintAll
