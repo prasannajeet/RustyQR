@@ -157,6 +157,24 @@ if command -v rustup &>/dev/null; then
     fi
 fi
 
+# WebAssembly (browser) target and packager, used by rustySDK/crates/wasm
+if command -v rustup &>/dev/null; then
+    if grep -q '^wasm32-unknown-unknown$' <<<"$INSTALLED_TARGETS"; then
+        pass "rust target wasm32-unknown-unknown"
+    else
+        fail "rust target wasm32-unknown-unknown missing"
+        maybe_install "rust target wasm32-unknown-unknown" "rustup target add wasm32-unknown-unknown" || true
+    fi
+fi
+
+# Capture first, then take the first line: a pipe into `head` can die of SIGPIPE under pipefail.
+if WASM_PACK_OUT="$(wasm-pack --version 2>/dev/null)"; then
+    pass "wasm-pack $(awk 'NR == 1 {print $2}' <<<"$WASM_PACK_OUT")"
+else
+    fail "wasm-pack missing"
+    maybe_install "wasm-pack" "cargo install wasm-pack --locked" || true
+fi
+
 # rust-analyzer — rustup ships a proxy that fails until the component is added,
 # so run it rather than relying on `command -v`
 if rust-analyzer --version &>/dev/null; then

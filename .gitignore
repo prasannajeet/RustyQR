@@ -55,6 +55,9 @@ androidApp/release/
 # Rust
 rustySDK/target/
 
+# wasm-pack output (rustySDK/crates/wasm)
+rustySDK/crates/wasm/pkg/
+
 # XcodeGen: iosApp .xcodeproj is generated from project.yml — never commit
 iosApp/iosApp.xcodeproj/
 
