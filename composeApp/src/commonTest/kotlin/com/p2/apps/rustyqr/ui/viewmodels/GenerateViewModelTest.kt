@@ -7,6 +7,7 @@ import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.generate_error_too_long
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 class GenerateViewModelTest {
@@ -19,7 +20,7 @@ class GenerateViewModelTest {
 
         val state = viewModel.state.value
         assertEquals(UiText.Res(Res.string.generate_error_too_long), state.error)
-        assertEquals(false, state.isGenerating)
+        assertFalse(state.isGenerating)
         assertNull(state.qrImageBytes)
     }
 }

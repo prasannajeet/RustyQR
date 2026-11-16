@@ -3,6 +3,7 @@ package com.p2.apps.rustyqr.ui.mvi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class GenerateScreenStateTest {
@@ -33,9 +34,22 @@ class GenerateScreenStateTest {
     }
 
     @Test
-    fun derivedPropertiesDoNotAffectEquality() {
-        val tooLong = GenerateScreenState(inputText = "a".repeat(MAX_QR_INPUT_LENGTH + 1))
-        assertEquals(tooLong, tooLong.copy())
-        assertEquals(tooLong.hashCode(), tooLong.copy().hashCode())
+    fun statesWithEqualByteContentsAreEqual() {
+        val first = GenerateScreenState(qrImageBytes = byteArrayOf(1, 2))
+        val second = GenerateScreenState(qrImageBytes = byteArrayOf(1, 2))
+        assertEquals(first, second)
+        assertEquals(first.hashCode(), second.hashCode())
+    }
+
+    @Test
+    fun statesWithDifferentByteContentsAreNotEqual() {
+        val first = GenerateScreenState(qrImageBytes = byteArrayOf(1, 2))
+        val second = GenerateScreenState(qrImageBytes = byteArrayOf(1, 3))
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun statesWithDifferentInputTextAreNotEqual() {
+        assertNotEquals(GenerateScreenState(inputText = "a"), GenerateScreenState(inputText = "b"))
     }
 }
