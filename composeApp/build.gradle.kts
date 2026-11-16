@@ -11,41 +11,11 @@ plugins {
     id("rustyqr.kotlin-lint")
 }
 
-/**
- * Fails when a file under composeResources/font is not a real font. Saved GitHub HTML pages named *.ttf once shipped
- * and the app silently fell back to the system font. Compose resources cannot be read from host tests, so this
- * checks the files' magic numbers directly.
- */
-abstract class VerifyFontFiles : DefaultTask() {
-    @get:InputFiles
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val fonts: ConfigurableFileCollection
-
-    @TaskAction
-    fun verify() {
-        val magics = listOf("00010000", "4f54544f", "74727565", "774f4646", "774f4632") // sfnt, OTTO, true, wOFF, wOF2
-        val bad =
-            fonts.files.filter { file ->
-                val header = file.inputStream().use { it.readNBytes(MAGIC_SIZE_BYTES) }
-                header.joinToString("") { "%02x".format(it) } !in magics
-            }
-        if (bad.isNotEmpty()) {
-            throw GradleException(
-                "Not font files (bad magic number): ${bad.joinToString { it.name }}. " +
-                    "Replace them with real TrueType/OpenType/WOFF fonts.",
-            )
-        }
-    }
-
-    private companion object {
-        const val MAGIC_SIZE_BYTES = 4
-    }
-}
-
 tasks.register<VerifyFontFiles>("verifyFontFiles") {
     group = "verification"
     description = "Fails if any file under composeResources/font is not a real font."
     fonts.from(fileTree("src/commonMain/composeResources/font"))
+    marker.set(layout.buildDirectory.file("verifyFontFiles/ok"))
 }
 
 kotlin {

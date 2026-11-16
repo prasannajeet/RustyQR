@@ -505,8 +505,9 @@ For per-module details, see the nested READMEs linked above.
 | Rust supply chain      | cargo-deny      | `cargo deny check`                                                             |
 | Kotlin formatting      | ktlint          | `./gradlew :<module>:ktlintCheck`; `./gradlew lintKotlin` covers every module   |
 | Kotlin static analysis | detekt 2.0.0-alpha.6 | `./gradlew :<module>:detekt` (also runs the type-resolved `detektMainAndroid`, `detektDebug`, `detektTestJvm`); `./gradlew lintKotlin` covers every module |
+| Font files             | `verifyFontFiles` | `./gradlew :composeApp:verifyFontFiles` (part of `lintKotlin`): every file in `composeResources/font/` must be a real `.ttf`/`.otf` |
 | Swift linting          | SwiftLint       | `./gradlew swiftlint`                                                          |
-| Pre-commit hook        | Husky           | `lintAll` on staged `.kt`/`.kts`/`.swift`; `cargo fmt --check` on staged `.rs` |
+| Pre-commit hook        | Husky           | `lintAll` on staged `.kt`/`.kts`/`.swift`; `verifyFontFiles` on staged font files; `cargo fmt --check` on staged `.rs` |
 | Commit messages        | commit-msg hook | Enforces conventional commits (`type(scope): message`)                         |
 | iOS CI                 | GitHub Actions  | Rust checks + iOS simulator tests + xcodebuild + `lintAll`                     |
 
@@ -517,12 +518,14 @@ For per-module details, see the nested READMEs linked above.
 ## Third-party fonts
 
 The app bundles two typefaces in `composeApp/src/commonMain/composeResources/font/`. Both are licensed under the
-SIL Open Font License 1.1; the full texts are in [`third_party/fonts/`](third_party/fonts).
+SIL Open Font License 1.1. The licence texts ship inside the app (APK and iOS bundle) from
+[`composeResources/files/licenses/`](composeApp/src/commonMain/composeResources/files/licenses), and the source
+URLs, versions and file hashes are recorded in [`third_party/fonts/README.md`](third_party/fonts/README.md).
 
-| Font           | Version | Source                                                           | Licence text                                                          |
-|----------------|---------|------------------------------------------------------------------|-----------------------------------------------------------------------|
-| Inter          | 4.1     | https://github.com/rsms/inter/releases/tag/v4.1                  | [`Inter-OFL.txt`](third_party/fonts/Inter-OFL.txt)                    |
-| JetBrains Mono | 2.242   | https://github.com/JetBrains/JetBrainsMono                       | [`JetBrainsMono-OFL.txt`](third_party/fonts/JetBrainsMono-OFL.txt)    |
+| Font           | Version | Source                                                                       | Licence                                                                                              |
+|----------------|---------|------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------|
+| Inter          | 4.1     | [rsms/inter v4.1](https://github.com/rsms/inter/releases/tag/v4.1)           | [`Inter-OFL.txt`](composeApp/src/commonMain/composeResources/files/licenses/Inter-OFL.txt)           |
+| JetBrains Mono | 2.242   | [JetBrainsMono v2.242](https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.242) | [`JetBrainsMono-OFL.txt`](composeApp/src/commonMain/composeResources/files/licenses/JetBrainsMono-OFL.txt) |
 
 ---
 

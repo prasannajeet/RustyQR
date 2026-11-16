@@ -12,9 +12,10 @@ echo "Running pre-commit quality checks..."
 STAGED_KT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.kts\?$' || true)
 STAGED_SWIFT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.swift$' || true)
 STAGED_RS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.rs$' || true)
+STAGED_FONT_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep 'composeResources/font/' || true)
 
-if [ -z "$STAGED_KT_FILES" ] && [ -z "$STAGED_SWIFT_FILES" ] && [ -z "$STAGED_RS_FILES" ]; then
-    echo "No staged Kotlin, Swift, or Rust files, skipping lint checks."
+if [ -z "$STAGED_KT_FILES" ] && [ -z "$STAGED_SWIFT_FILES" ] && [ -z "$STAGED_RS_FILES" ] && [ -z "$STAGED_FONT_FILES" ]; then
+    echo "No staged Kotlin, Swift, Rust, or font files, skipping lint checks."
     exit 0
 fi
 
@@ -26,6 +27,16 @@ if [ -n "$STAGED_KT_FILES" ] || [ -n "$STAGED_SWIFT_FILES" ]; then
         echo "Kotlin/Swift lint failed. Fix issues before committing."
         echo "  - ktlint auto-fix: ./gradlew ktlintFormat (every project incl. the root) and ./gradlew -p build-logic ktlintFormat"
         echo "  - detekt reports:  <module>/build/reports/detekt/ (composeApp, androidApp, rustyqr-bindings)"
+        exit 1
+    fi
+fi
+
+# Font files must be real fonts (lintAll already runs this when Kotlin/Swift files are staged)
+if [ -n "$STAGED_FONT_FILES" ] && [ -z "$STAGED_KT_FILES" ] && [ -z "$STAGED_SWIFT_FILES" ]; then
+    ./gradlew :composeApp:verifyFontFiles --no-daemon -q 2>&1
+    if [ $? -ne 0 ]; then
+        echo ""
+        echo "Font file check failed. Staged files under composeResources/font/ must be real .ttf/.otf fonts."
         exit 1
     fi
 fi
