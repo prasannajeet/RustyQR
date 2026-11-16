@@ -65,6 +65,7 @@ val lintKotlin =
             ":detekt",
             ":composeApp:ktlintCheck",
             ":composeApp:detekt",
+            ":composeApp:verifyFontFiles",
             ":androidApp:ktlintCheck",
             ":androidApp:detekt",
             ":rustyqr-bindings:ktlintCheck",

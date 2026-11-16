@@ -514,7 +514,19 @@ For per-module details, see the nested READMEs linked above.
 
 ---
 
+## Third-party fonts
+
+The app bundles two typefaces in `composeApp/src/commonMain/composeResources/font/`. Both are licensed under the
+SIL Open Font License 1.1; the full texts are in [`third_party/fonts/`](third_party/fonts).
+
+| Font           | Version | Source                                                           | Licence text                                                          |
+|----------------|---------|------------------------------------------------------------------|-----------------------------------------------------------------------|
+| Inter          | 4.1     | https://github.com/rsms/inter/releases/tag/v4.1                  | [`Inter-OFL.txt`](third_party/fonts/Inter-OFL.txt)                    |
+| JetBrains Mono | 2.242   | https://github.com/JetBrains/JetBrainsMono                       | [`JetBrainsMono-OFL.txt`](third_party/fonts/JetBrainsMono-OFL.txt)    |
+
+---
+
 ## License
 
-Released under the [MIT License](LICENSE). Portfolio project — not published to crates.io, Maven
-Central, or CocoaPods.
+Released under the [MIT License](LICENSE). The bundled fonts keep their own licences (see above).
+Portfolio project — not published to crates.io, Maven Central, or CocoaPods.
