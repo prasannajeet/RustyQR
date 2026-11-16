@@ -102,7 +102,13 @@ fn main() -> BenchResult {
     bench_round_trip_256(&mut c)?;
     bench_content_fits(&mut c, "content_fits_2331B_byte", &"a".repeat(2331), true)?;
     bench_content_fits(&mut c, "content_fits_5596_numeric", &"7".repeat(5596), true)?;
-    bench_content_fits(&mut c, "content_fits_7KB_overflow", &"a".repeat(7 * 1024), false)?;
+    // Worst case that still fits: the optimizer overflows, so the single byte segment search runs.
+    let mixed = "x12345".repeat(400);
+    let mixed_2331 = mixed.get(..2331).ok_or("pattern too short")?;
+    bench_content_fits(&mut c, "content_fits_2331B_mixed_fallback", mixed_2331, true)?;
+    bench_content_fits(&mut c, "content_fits_7000B_overflow", &"a".repeat(7000), false)?;
+    // Input beyond the encodable cap is rejected before any parsing.
+    bench_content_fits(&mut c, "content_fits_1MB_cap", &"a".repeat(1024 * 1024), false)?;
     c.final_summary();
     Ok(())
 }

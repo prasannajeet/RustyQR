@@ -11,9 +11,11 @@ Measured on Apple Silicon (M-series) via `cargo bench -p rusty-qr-core` (Criteri
 | `decode` PNG 1080px     | ~15.4 ms | < 100 ms   | PASS        |
 | `decode_from_raw` 256px | ~2.2 ms  | < 20 ms    | synthetic only; not yet measured on device |
 | `round_trip` 256px      | ~3.4 ms  | —          | end-to-end  |
-| `content_fits` 2331 B byte-mode | ~14 µs | < 1 ms | PASS |
-| `content_fits` 5596 digits (numeric) | ~22 µs | < 1 ms | PASS |
-| `content_fits` 7 KB overflow | ~69 µs | < 1 ms | PASS |
+| `content_fits` 2331 B byte-mode | ~15 µs | design budget < 1 ms | PASS |
+| `content_fits` 5596 digits (numeric) | ~18 µs | design budget < 1 ms | PASS |
+| `content_fits` 2331 B mixed fallback (`x12345`) | ~76 µs | design budget < 1 ms | PASS |
+| `content_fits` 7000 B overflow | ~46 µs | design budget < 1 ms | PASS |
+| `content_fits` 1 MB paste (rejected by the size cap) | ~83 ns | design budget < 1 ms | PASS |
 
 The PNG PRD 5.1 targets are met with significant margin; the camera-path target awaits an on-device measurement.
 

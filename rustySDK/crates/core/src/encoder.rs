@@ -2,7 +2,8 @@
 //!
 //! This module provides [`generate_png`] for turning text content into a PNG
 //! image containing a QR code, [`generate_with_config`] for configurable
-//! generation, and [`get_library_version`] for querying the crate version at
+//! generation, [`content_fits`] and [`content_fits_at_level`] for checking
+//! capacity without rendering, and [`get_library_version`] for querying the crate version at
 //! runtime.
 //!
 //! # Pipeline
@@ -26,18 +27,10 @@ const MAX_SIZE: u32 = 4096;
 /// Error-correction level used by [`generate_png`].
 const GENERATE_PNG_LEVEL: QrErrorCorrection = QrErrorCorrection::Medium;
 
-/// Maximum content length, in UTF-8 bytes, that always encodes with [`generate_png`].
+/// Most bytes any QR code can hold: numeric mode at version 40, level L.
 ///
-/// Content of at most this many UTF-8 bytes always encodes with [`generate_png`]:
-/// it is the byte-mode capacity of a version 40 QR code at error-correction
-/// level M, and encoding falls back to a single byte-mode segment whenever the
-/// mixed-mode segmentation does not fit. Longer content encodes only if it
-/// packs into numeric or alphanumeric mode. [`generate_with_config`] with another
-/// level has a different capacity.
-pub const MAX_BYTE_CONTENT_LEN_LEVEL_M: usize = MAX_BYTE_CONTENT_LEN_LEVEL_M_U32 as usize;
-
-/// [`MAX_BYTE_CONTENT_LEN_LEVEL_M`] as a `u32`, the type exported across FFI. The `usize` constant derives from it.
-pub const MAX_BYTE_CONTENT_LEN_LEVEL_M_U32: u32 = 2331;
+/// Longer input cannot fit at any level, so [`encode_bits`] rejects it before parsing.
+const MAX_ENCODABLE_BYTES: usize = 7089;
 
 /// Converts a `qrcode` encoding error, reporting oversized data as its own variant.
 fn map_encode_error(error: qrcode::types::QrError) -> QrError {
@@ -61,8 +54,17 @@ fn map_encode_error(error: qrcode::types::QrError) -> QrError {
 /// [`QrError::ContentTooLong`]": `QrCode::with_bits` cannot fail on capacity.
 /// The `qrcode` optimizer's mixed-mode segmentation is tried first; if it does not
 /// fit, a single byte-mode segment is tried (see [`single_byte_segment_bits`]),
-/// because each extra segment header can cost more bits than it saves.
+/// because each extra segment header can cost more bits than it saves. Input over
+/// [`MAX_ENCODABLE_BYTES`] is rejected first, so a huge paste costs no parsing.
 fn encode_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits, QrError> {
+    if data.len() > MAX_ENCODABLE_BYTES {
+        return Err(QrError::ContentTooLong {
+            reason: format!(
+                "{} UTF-8 bytes exceed the {MAX_ENCODABLE_BYTES} a QR code can hold",
+                data.len()
+            ),
+        });
+    }
     match qrcode::bits::encode_auto(data, level) {
         Err(qrcode::types::QrError::DataTooLong) => single_byte_segment_bits(data, level),
         other => other.map_err(map_encode_error),
@@ -72,7 +74,9 @@ fn encode_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits
 /// Encodes `data` as one byte-mode segment in the smallest version that holds it.
 ///
 /// Version 40 is probed first: if a single byte segment misses version 40 it
-/// misses every version, so oversized input costs one pass instead of forty.
+/// misses every version, so oversized input costs one pass instead of forty. Whether a
+/// single byte segment fits only improves as the version grows, so the smallest
+/// fitting version is found by binary search.
 fn single_byte_segment_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::bits::Bits, QrError> {
     let Some(largest) = byte_segment_bits(data, qrcode::Version::Normal(40), level) else {
         return Err(QrError::ContentTooLong {
@@ -82,12 +86,25 @@ fn single_byte_segment_bits(data: &[u8], level: qrcode::EcLevel) -> Result<qrcod
             ),
         });
     };
-    Ok((1..40)
-        .find_map(|version| byte_segment_bits(data, qrcode::Version::Normal(version), level))
-        .unwrap_or(largest))
+    // Invariant: `best` holds the bits for version `high`, which fits; versions below `low` do not.
+    let (mut low, mut high, mut best) = (1, 40, largest);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        match byte_segment_bits(data, qrcode::Version::Normal(middle), level) {
+            Some(bits) => {
+                high = middle;
+                best = bits;
+            }
+            None => low = middle + 1,
+        }
+    }
+    Ok(best)
 }
 
 /// Packs `data` as a single byte-mode segment at `version`, or `None` if it does not fit.
+///
+/// `None` can only mean capacity: for `Version::Normal(1..=40)` the only error the
+/// `qrcode` push functions return is `DataTooLong`.
 fn byte_segment_bits(data: &[u8], version: qrcode::Version, level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
     let mut bits = qrcode::bits::Bits::new(version);
     (bits.push_byte_data(data).is_ok() && bits.push_terminator(level).is_ok()).then_some(bits)
@@ -188,7 +205,7 @@ pub fn generate_with_config(content: &str, config: QrConfig) -> Result<Vec<u8>, 
 
 /// Reports whether [`generate_png`] can encode `content` (error-correction level M).
 ///
-/// `Ok(false)` exactly when [`generate_png`] would return [`QrError::ContentTooLong`].
+/// `Ok(false)` exactly when [`generate_png`], for any valid size, would return [`QrError::ContentTooLong`].
 /// It runs the same bit-building path as generation but stops before
 /// Reed-Solomon, matrix and PNG rendering, so it is cheap enough to call per keystroke.
 ///
@@ -202,7 +219,7 @@ pub fn content_fits(content: &str) -> Result<bool, QrError> {
 
 /// Reports whether [`generate_with_config`] can encode `content` at `error_correction`.
 ///
-/// `Ok(false)` exactly when generation would return [`QrError::ContentTooLong`].
+/// `Ok(false)` exactly when generation, for any valid size, would return [`QrError::ContentTooLong`].
 ///
 /// # Errors
 ///
@@ -273,10 +290,10 @@ mod tests {
     /// Upper bound on characters a scanning test tries before giving up.
     const SCAN_LIMIT: usize = 20_000;
 
-    type TestResult = Result<(), Box<dyn std::error::Error>>;
+    type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
     /// Whether real generation accepts `content`; any error other than `ContentTooLong` is propagated.
-    fn generation_accepts(content: &str, level: QrErrorCorrection) -> Result<bool, Box<dyn std::error::Error>> {
+    fn generation_accepts(content: &str, level: QrErrorCorrection) -> TestResult<bool> {
         let config = QrConfig {
             size: 64,
             error_correction: level,
@@ -289,10 +306,7 @@ mod tests {
     }
 
     /// Asserts `content_fits_at_level` equals real generation and returns the verdict.
-    fn fits_agreeing_with_generation(
-        content: &str,
-        level: QrErrorCorrection,
-    ) -> Result<bool, Box<dyn std::error::Error>> {
+    fn fits_agreeing_with_generation(content: &str, level: QrErrorCorrection) -> TestResult<bool> {
         let fits = content_fits_at_level(content, level)?;
         let generated = generation_accepts(content, level)?;
         assert_eq!(
@@ -308,11 +322,10 @@ mod tests {
     ///
     /// Returns `(longest fitting text, shortest overflowing text)`. Fails if the text overflows
     /// at or below the 2331-byte guarantee.
-    fn scan_to_overflow(unit: &str) -> Result<(String, String), Box<dyn std::error::Error>> {
+    fn scan_to_overflow(unit: &str) -> TestResult<(String, String)> {
         let mut text = String::new();
         for next in unit.chars().cycle().take(SCAN_LIMIT) {
             let previous_len = text.len();
-            let fitting = text.clone();
             text.push(next);
             if !content_fits(&text)? {
                 assert!(
@@ -320,6 +333,7 @@ mod tests {
                     "{} bytes of {unit:?} must always fit",
                     text.len()
                 );
+                let fitting = text.get(..previous_len).ok_or("not a char boundary")?.to_owned();
                 return Ok((fitting, text));
             }
         }
@@ -678,18 +692,7 @@ mod tests {
             for (unit, capacity) in [("7", numeric), ("A", alphanumeric), ("a", byte)] {
                 for length in [capacity - 1, capacity, capacity + 1] {
                     let content = unit.repeat(length);
-                    let fits = fits_agreeing_with_generation(&content, level)?;
-                    if !fits {
-                        let config = QrConfig {
-                            size: 64,
-                            error_correction: level,
-                        };
-                        let result = generate_with_config(&content, config);
-                        assert!(
-                            matches!(result, Err(QrError::ContentTooLong { .. })),
-                            "a non-fit must be ContentTooLong, got {result:?}"
-                        );
-                    }
+                    fits_agreeing_with_generation(&content, level)?;
                 }
             }
         }
@@ -773,6 +776,69 @@ mod tests {
             "got {:?}",
             result.map(|png| png.len())
         );
+        Ok(())
+    }
+
+    #[test]
+    fn input_over_the_encodable_cap_is_rejected_before_parsing() -> TestResult {
+        assert!(content_fits_at_level(
+            &"7".repeat(MAX_ENCODABLE_BYTES),
+            QrErrorCorrection::Low
+        )?);
+        for level in [QrErrorCorrection::Low, QrErrorCorrection::High] {
+            assert!(!fits_agreeing_with_generation(
+                &"7".repeat(MAX_ENCODABLE_BYTES + 1),
+                level
+            )?);
+            assert!(!fits_agreeing_with_generation(&"a".repeat(1_000_000), level)?);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn byte_fallback_picks_smallest_version() -> TestResult {
+        let text = "x12345".repeat(400);
+        let data = text.as_bytes().get(..1800).ok_or("short")?;
+        let level = qrcode::EcLevel::M;
+        assert!(
+            qrcode::bits::encode_auto(data, level).is_err(),
+            "must take the byte fallback"
+        );
+        assert_eq!(encode_bits(data, level)?.version(), qrcode::Version::Normal(35));
+        assert!(byte_segment_bits(data, qrcode::Version::Normal(34), level).is_none());
+        Ok(())
+    }
+
+    /// The previous linear search, kept as the oracle for the binary search.
+    fn linear_byte_segment_bits(data: &[u8], level: qrcode::EcLevel) -> Option<qrcode::bits::Bits> {
+        (1..=40).find_map(|version| byte_segment_bits(data, qrcode::Version::Normal(version), level))
+    }
+
+    #[test]
+    fn binary_version_search_matches_the_linear_search() -> TestResult {
+        let text = "x12345".repeat(500);
+        for level in [
+            qrcode::EcLevel::L,
+            qrcode::EcLevel::M,
+            qrcode::EcLevel::Q,
+            qrcode::EcLevel::H,
+        ] {
+            for length in 1..=3000 {
+                let data = text.as_bytes().get(..length).ok_or("pattern too short")?;
+                let binary = single_byte_segment_bits(data, level).ok();
+                let linear = linear_byte_segment_bits(data, level);
+                assert_eq!(
+                    binary.as_ref().map(qrcode::bits::Bits::version),
+                    linear.as_ref().map(qrcode::bits::Bits::version),
+                    "version differs at {length} bytes, level {level:?}"
+                );
+                assert_eq!(
+                    binary.map(qrcode::bits::Bits::into_bytes),
+                    linear.map(qrcode::bits::Bits::into_bytes),
+                    "bits differ at {length} bytes, level {level:?}"
+                );
+            }
+        }
         Ok(())
     }
 }
