@@ -4,10 +4,15 @@
 
     <string name="tab_scan">Scan</string>
     <string name="tab_generate">Generate</string>
+    <string name="tab_state_selected_format">Selected, %1$d of %2$d</string>
+    <string name="tab_state_not_selected_format">Not selected, %1$d of %2$d</string>
 
     <string name="generate_input_hint">Add a text content below for which you need a QR code generated</string>
     <string name="generate_input_placeholder">Enter text or URL</string>
     <string name="generate_error_too_long">Content too long for QR code</string>
+    <string name="generate_error_failed">Could not create the QR code</string>
+    <string name="generate_error_save_failed">Could not save the QR code</string>
+    <string name="generate_error_share_failed">Could not share the QR code</string>
     <string name="generate_button">Generate QR Code</string>
     <string name="generate_loading">Generating…</string>
     <string name="generate_preview_format">QR code created for - %1$s</string>
@@ -25,7 +30,6 @@
     <string name="scan_permission_body">To scan QR codes, allow camera access for Rusty QR</string>
     <string name="scan_open_settings">Open Settings</string>
     <string name="scan_grant_permission">Grant Permission</string>
-    <string name="scan_camera_denied_cd">Camera access denied</string>
     <string name="scan_viewfinder_cd">QR scan viewfinder</string>
     <string name="scan_again">Scan Again</string>
     <string name="scan_clip_label">QR content</string>
@@ -35,6 +39,8 @@
     <string name="scan_camera_no_camera_body">This device has no camera Rusty QR can use.</string>
     <string name="scan_camera_failed_title">Camera problem</string>
     <string name="scan_camera_failed_body">Something went wrong with the camera. Try again.</string>
+    <string name="scan_camera_blocked_title">Camera unavailable</string>
+    <string name="scan_camera_blocked_body">Camera access is turned off on this device. Turn it back on, then come back.</string>
     <string name="scan_try_again">Try Again</string>
 
     <string name="content_type_url">URL</string>

@@ -52,12 +52,10 @@ actual fun CameraPreview(
     onCameraError: (CameraFailure) -> Unit,
     modifier: Modifier,
 ) {
-    // Assumed stable: it is the Activity (Scan has no NavHost), and the AndroidView factory below binds only once.
-    // Keying the session on it would not rebind, because the factory does not rerun, so it is deliberately not keyed.
+    // The Activity; not a key, because the factory below binds once and would not rebind.
     val lifecycleOwner = LocalLifecycleOwner.current
-    // Application context: nothing long-lived below may hold the Activity.
+    // Application context, so nothing long-lived holds the Activity.
     val appContext = LocalContext.current.applicationContext
-    // Not keyed: the dispatcher and session below keep the first executor, so a keyed remember would only mislead.
     val mainExecutor = remember { ContextCompat.getMainExecutor(appContext) }
     val dispatcher =
         rememberFrameDispatcher(
@@ -80,11 +78,31 @@ actual fun CameraPreview(
             session.bind(previewView, lifecycleOwner)
             previewView
         },
-        update = { _ -> },
     )
 }
 
 private const val TAG = "CameraPreview"
+
+/**
+ * The failure to report for a camera [state], or null when there is nothing to report.
+ *
+ * Only critical errors count; CameraX retries recoverable ones itself. [stale] is the state object that was already
+ * current when the session started, so it belongs to an earlier session and is ignored. `ERROR_CAMERA_DISABLED`
+ * (documented causes: a device policy, or an open attempt from a background process) is
+ * [CameraFailure.BlockedByDevice], which offers no retry; every other critical error is [CameraFailure.CouldNotStart].
+ */
+internal fun criticalFailure(
+    state: CameraState,
+    stale: CameraState?,
+): CameraFailure? {
+    val error = state.error
+    return when {
+        state === stale -> null
+        error == null || error.type != CameraState.ErrorType.CRITICAL -> null
+        error.code == CameraState.ERROR_CAMERA_DISABLED -> CameraFailure.BlockedByDevice
+        else -> CameraFailure.CouldNotStart
+    }
+}
 
 /** Process-scoped so the debug frame budget is per app launch, not per composition. */
 private val frameRecorder = FrameRecorder(platform = "android")
@@ -184,12 +202,10 @@ private class CameraSession(
      * Recoverable ones are left alone because CameraX retries them. Observed on the main thread.
      */
     private fun onCameraState(state: CameraState) {
-        if (state === staleCameraState) return
-        state.error?.takeIf { it.type == CameraState.ErrorType.CRITICAL }?.let { error ->
-            logInfo(TAG, "Camera reported a critical error, code=${error.code}, cause=${error.cause}")
-            unbindUseCases()
-            dispatcher.fail(CameraFailure.CouldNotStart)
-        }
+        val failure = criticalFailure(state, staleCameraState) ?: return
+        logInfo(TAG, "Camera reported a critical error, code=${state.error?.code}, cause=${state.error?.cause}")
+        unbindUseCases()
+        dispatcher.fail(failure)
     }
 
     /**
@@ -254,7 +270,6 @@ private class FrameAnalyzer(
         if (LOG_FRAME_TIMINGS) timings.endCopy()
         val decoded = QrBridge.decodeQrFromRaw(packed, proxy.width, proxy.height)
         if (LOG_FRAME_TIMINGS) timings.endRust(decoded)
-        // Left (no QR found) is silently discarded — expected for most frames
         decoded.onRight(dispatcher::deliver)
         // After the result is dispatched, so the blocking write cannot delay it. `bytes` keeps the row padding.
         frameRecorder.record(bytes, proxy.width, proxy.height, plane.rowStride, decoded.getOrNull()?.content)

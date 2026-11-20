@@ -469,7 +469,7 @@ sequenceDiagram
     JNA-->>Gen: marshaled return value
     Gen-->>Bridge: ByteArray (PNG bytes)
     Bridge-->>VM: Either[QrError, ByteArray]
-    VM-->>UI: state.qrImageBytes = PNG bytes
+    VM-->>UI: state.qrPng = PNG bytes
 ```
 
 ### iOS
@@ -495,7 +495,7 @@ sequenceDiagram
     CI-->>Gen: lifted into ByteArray
     Gen-->>Bridge: ByteArray (PNG bytes)
     Bridge-->>VM: Either[QrError, ByteArray]
-    VM-->>UI: state.qrImageBytes = PNG bytes
+    VM-->>UI: state.qrPng = PNG bytes
 ```
 
 The key difference: on Android JNA does a **runtime** symbol lookup into a dynamically loaded

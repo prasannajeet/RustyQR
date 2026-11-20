@@ -291,7 +291,7 @@ private val frameRecorder = FrameRecorder(platform = "ios")
  * explicitly, like the Android actual's back camera, so a front-only device reports NoCamera instead of previewing
  * the wrong camera.
  */
-private fun backVideoDevice(): AVCaptureDevice? =
+internal fun backVideoDevice(): AVCaptureDevice? =
     AVCaptureDevice.defaultDeviceWithDeviceType(
         deviceType = AVCaptureDeviceTypeBuiltInWideAngleCamera,
         mediaType = AVMediaTypeVideo,
@@ -304,9 +304,9 @@ private fun createDeviceInput(device: AVCaptureDevice): AVCaptureDeviceInput? =
     Either.catch { AVCaptureDeviceInput(device = device, error = null) }.getOrNull()
 
 /** Left says why the session cannot run; on Left nothing was added to [session]. */
-private fun configureSession(
+internal fun configureSession(
     session: AVCaptureSession,
-    delegate: FrameDelegate,
+    delegate: AVCaptureVideoDataOutputSampleBufferDelegateProtocol,
 ): Either<CameraFailure, Unit> =
     either {
         val device = ensureNotNull(backVideoDevice()) { CameraFailure.NoCamera }
@@ -319,7 +319,7 @@ private fun configureSession(
 private fun addToSession(
     session: AVCaptureSession,
     input: AVCaptureDeviceInput,
-    delegate: FrameDelegate,
+    delegate: AVCaptureVideoDataOutputSampleBufferDelegateProtocol,
 ): Either<CameraFailure, Unit> {
     // Dedicated serial queue for frame delivery — keeps Rust decode off the main thread.
     // Results reach the main queue through FrameDispatcher (postToMainQueue).

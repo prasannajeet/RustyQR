@@ -19,8 +19,18 @@ private const val UTF8_CAPACITY = 2330
 
 private const val MIXED_UNIT = "id=0123456789012345678901234567890123456789;"
 private const val EMOJI = "😀"
-private val EMOJI_COUNTS = listOf(500, 582, 583, 1000, 1500)
-private val MIXED_CONTENT_LENGTHS = listOf(BYTE_CAPACITY, 3000, 3500, 4000, 4500)
+
+// Each emoji is a surrogate pair in Kotlin and 4 bytes of UTF-8, so UTF8_CAPACITY / 4 = 582 fit and 583 do not.
+private const val EMOJI_BYTES = 4
+private const val EMOJI_FIT_COUNT = UTF8_CAPACITY / EMOJI_BYTES
+private const val EMOJI_OVERFLOW_COUNT = EMOJI_FIT_COUNT + 1
+private const val EMOJI_FAR_BELOW_COUNT = 500
+private const val EMOJI_FAR_ABOVE_COUNT = 1000
+
+// Mixed content (a byte-mode prefix, a long digit run, a byte-mode suffix) is split into segments, so more than
+// BYTE_CAPACITY characters can fit. The verdicts are pinned: the Rust encoder decides them.
+private const val MIXED_FITTING_LENGTH = 3500
+private const val MIXED_OVERFLOWING_LENGTH = 4500
 
 class ContentFitsBindingsTest {
     @Test
@@ -56,24 +66,36 @@ class ContentFitsBindingsTest {
     }
 
     @Test
-    fun contentFitsAgreesWithGenerationForMixedContent() {
-        for (length in MIXED_CONTENT_LENGTHS) {
-            assertAgreesWithGeneration(MIXED_UNIT.repeat(length).take(length), "length $length")
-        }
+    fun mixedContentVerdictsArePinned() {
+        assertVerdict(mixedContent(BYTE_CAPACITY), fits = true, message = "mixed length $BYTE_CAPACITY")
+        assertVerdict(mixedContent(MIXED_FITTING_LENGTH), fits = true, message = "mixed length $MIXED_FITTING_LENGTH")
+        assertVerdict(
+            mixedContent(MIXED_OVERFLOWING_LENGTH),
+            fits = false,
+            message = "mixed length $MIXED_OVERFLOWING_LENGTH",
+        )
     }
 
     @Test
-    fun contentFitsAgreesWithGenerationForSurrogatePairs() {
-        for (count in EMOJI_COUNTS) {
-            assertAgreesWithGeneration(EMOJI.repeat(count), "emoji count $count")
-        }
+    fun surrogatePairsAreMeasuredInUtf8Bytes() {
+        val fitting = EMOJI.repeat(EMOJI_FIT_COUNT)
+        assertEquals(EMOJI_FIT_COUNT * 2, fitting.length, "each emoji is a surrogate pair")
+        assertTrue(fitting.encodeToByteArray().size <= UTF8_CAPACITY)
+        assertTrue(EMOJI.repeat(EMOJI_OVERFLOW_COUNT).encodeToByteArray().size > UTF8_CAPACITY)
+
+        assertVerdict(EMOJI.repeat(EMOJI_FAR_BELOW_COUNT), fits = true, message = "emoji count $EMOJI_FAR_BELOW_COUNT")
+        assertVerdict(fitting, fits = true, message = "emoji count $EMOJI_FIT_COUNT")
+        assertVerdict(EMOJI.repeat(EMOJI_OVERFLOW_COUNT), fits = false, message = "emoji count $EMOJI_OVERFLOW_COUNT")
+        assertVerdict(EMOJI.repeat(EMOJI_FAR_ABOVE_COUNT), fits = false, message = "emoji count $EMOJI_FAR_ABOVE_COUNT")
     }
 
-    private fun assertAgreesWithGeneration(
+    private fun assertVerdict(
         content: String,
+        fits: Boolean,
         message: String,
     ) {
-        if (contentFits(content)) {
+        assertEquals(fits, contentFits(content), message)
+        if (fits) {
             assertTrue(generatePng(content, QR_SIZE_PX).isNotEmpty(), message)
         } else {
             assertFailsWith<FfiQrException.ContentTooLong>(message) { generatePng(content, QR_SIZE_PX) }
@@ -91,4 +113,6 @@ class ContentFitsBindingsTest {
     }
 
     private fun digitRunContent(length: Int): String = DIGIT_RUN_UNIT.repeat(length).take(length)
+
+    private fun mixedContent(length: Int): String = MIXED_UNIT.repeat(length).take(length)
 }

@@ -33,13 +33,16 @@ internal fun rememberFrameDispatcher(
     val latestOnDecoded by rememberUpdatedState(onQrDecoded)
     val latestOnReady by rememberUpdatedState(onCameraReady)
     val latestOnError by rememberUpdatedState(onCameraError)
+    // Each callback must be a lambda that reads the State at call time. Passing a value (`onQrDecoded =
+    // latestOnDecoded`) or a reference (`latestOnDecoded::invoke`) would capture the first callback for the life of
+    // the camera, because this block runs once.
     val dispatcher =
         remember {
             FrameDispatcher(
                 isScanning = { latestScanning },
-                currentOnQrDecoded = { latestOnDecoded },
-                currentOnCameraReady = { latestOnReady },
-                currentOnCameraError = { latestOnError },
+                onQrDecoded = { latestOnDecoded(it) },
+                onCameraReady = { latestOnReady() },
+                onCameraError = { latestOnError(it) },
                 postToMain = postToMain,
             )
         }

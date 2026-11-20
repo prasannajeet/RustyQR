@@ -55,6 +55,13 @@ androidApp/release/
 # Rust
 rustySDK/target/
 
+# Output folders of the retired Rust build scripts. The UniFFI Gradle plugin now writes under build/; stale copies in
+# an old checkout must not be picked up by `git add -A`.
+/composeApp/src/androidMain/kotlin/generated/
+/composeApp/src/androidMain/jniLibs/
+/iosApp/Frameworks/
+/iosApp/generated/
+
 # wasm-pack output (rustySDK/crates/wasm)
 rustySDK/crates/wasm/pkg/
 

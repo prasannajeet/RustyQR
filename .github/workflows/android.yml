@@ -3,12 +3,12 @@ name: Android Build
 on:
   workflow_dispatch:
 
+# Read-only token for every job. Checkouts do not persist it either, so third-party actions never see it.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
-  # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
-  # toolchain and all of those targets on top of what each job installs. With it, a job uses only what the action
-  # installed (its own `targets:`) and fails loudly on a mismatch.
-  RUSTUP_AUTO_INSTALL: "0"
   NDK_VERSION: "30.0.14904198"
   # Gradle reads this as -PndkVersion for every invocation, so the configuration cache sees one configuration.
   ORG_GRADLE_PROJECT_ndkVersion: "30.0.14904198"
@@ -16,82 +16,24 @@ env:
 jobs:
   rust-checks:
     name: Rust tests & lint
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rustySDK
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: pin
-        name: Read the pinned Rust version
-        shell: bash
-        run: |
-          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
-          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
-          echo "version=$channel" >> "$GITHUB_OUTPUT"
-
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
-        id: toolchain
-        with:
-          toolchain: ${{ steps.pin.outputs.version }}
-          components: clippy, rustfmt
-
-      # Cache Rust build artifacts — keyed on Cargo.lock so it busts on dependency changes
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            rustySDK/target/
-          key: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
-          restore-keys: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
-
-      - run: cargo fmt --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
-
-      # Supply chain: advisories, licences, bans and sources. Installed on the runner, not run through the Docker
-      # action, whose rustup would download the whole pinned toolchain and every target on each run.
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-deny@0.19.0
-      - run: cargo deny --manifest-path Cargo.toml check
+    uses: ./.github/workflows/rust-checks.yml
 
   wasm:
     name: WebAssembly package
     # Pinned image: its Chrome and ChromeDriver are what the headless tests use.
     runs-on: ubuntu-24.04
-    env:
-      WASM_PACK_VERSION: "0.15.1"
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
-
-      - id: pin
-        name: Read the pinned Rust version
-        shell: bash
-        run: |
-          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
-          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
-          echo "version=$channel" >> "$GITHUB_OUTPUT"
-
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
-        id: toolchain
         with:
-          toolchain: ${{ steps.pin.outputs.version }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-rust
+        with:
           targets: wasm32-unknown-unknown
           components: clippy
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            rustySDK/target/
-          key: rust-wasm-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
-          restore-keys: rust-wasm-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
+          cache-prefix: wasm
 
       # wasm-pack downloads the wasm-bindgen CLI and wasm-opt here; the CLI version follows Cargo.lock.
       - uses: actions/cache@v4
@@ -99,15 +41,10 @@ jobs:
           path: ~/.cache/.wasm-pack
           key: wasm-pack-tools-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
 
-      # wasm-pack is compiled from source, so cache the binary per wasm-pack version and toolchain.
-      - id: wasm-pack-cache
-        uses: actions/cache@v4
+      # A prebuilt binary, so a Rust toolchain bump does not recompile wasm-pack.
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6 (v2), 2026-11-18
         with:
-          path: ~/.cargo/bin/wasm-pack
-          key: wasm-pack-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ env.WASM_PACK_VERSION }}
-
-      - if: steps.wasm-pack-cache.outputs.cache-hit != 'true'
-        run: cargo install wasm-pack --locked --version "$WASM_PACK_VERSION"
+          tool: wasm-pack@0.15.1
 
       - run: cargo clippy -p rusty-qr-wasm --target wasm32-unknown-unknown --all-targets --manifest-path rustySDK/Cargo.toml -- -D warnings
 
@@ -120,6 +57,7 @@ jobs:
       - name: Report wasm size
         run: |
           wasm=rustySDK/crates/wasm/pkg/rusty_qr_wasm_bg.wasm
+          test -f "$wasm" || { echo "::error::$wasm was not built"; exit 1; }
           echo "raw: $(wc -c < "$wasm") bytes"
           echo "gzip -9: $(gzip -9 -c "$wasm" | wc -c) bytes"
 
@@ -127,52 +65,29 @@ jobs:
     name: Android APK
     runs-on: ubuntu-latest
     needs: rust-checks
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      # --- Rust toolchain (the UniFFI Gradle plugin runs cargo itself) ---
-      - id: pin
-        name: Read the pinned Rust version
-        shell: bash
-        run: |
-          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
-          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
-          echo "version=$channel" >> "$GITHUB_OUTPUT"
-
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
-        id: toolchain
+      # --- Rust toolchain (the UniFFI Gradle plugin runs cargo itself). The cache holds the Android ABIs plus the
+      # host library for the JVM tests. ---
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
-          toolchain: ${{ steps.pin.outputs.version }}
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+          cache-prefix: android
 
-      # Cargo registry and Rust build artifacts (Android ABIs plus the host library for the JVM tests).
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/cache-uniffi-bindgen
         with:
-          path: |
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            rustySDK/target/
-          key: rust-android-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
-          restore-keys: rust-android-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
-
-      # The Kotlin bindgen the plugin compiles with `cargo install` on its first run (several minutes). Keyed on the
-      # plugin version alone, so a library bump does not discard the Rust build cache above.
-      - id: plugin-version
-        run: |
-          version="$(sed -nE 's/^uniffi-plugin *= *"([^"]+)".*/\1/p' gradle/libs.versions.toml)"
-          test -n "$version" || { echo "uniffi-plugin version not found in gradle/libs.versions.toml" >&2; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
-        with:
-          path: build/uniffi/bindgen/
-          key: uniffi-bindgen-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
+          toolchain-key: ${{ steps.rust.outputs.cachekey }}
 
       # --- Android SDK + NDK (the build pins it with ORG_GRADLE_PROJECT_ndkVersion) ---
       - uses: android-actions/setup-android@v4

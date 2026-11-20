@@ -23,6 +23,9 @@ interface FrameFiles {
 
     /** Lists the file names in the frames directory; empty when it does not exist yet. */
     fun listNames(): Either<String, List<String>>
+
+    /** Reads the text file [name] as lines; empty when it does not exist yet. */
+    fun readLines(name: String): Either<String, List<String>>
 }
 
 /**

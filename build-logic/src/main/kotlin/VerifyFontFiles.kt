@@ -45,14 +45,16 @@ abstract class VerifyFontFiles : DefaultTask() {
         val signature = signatureOf(bytes)
         val extensionMatches = FONT_SIGNATURES[signature]?.equals(file.extension, ignoreCase = true) == true
         val numTables = if (bytes.size >= HEADER_SIZE_BYTES) readUInt16(bytes, NUM_TABLES_OFFSET) else 0
-        return extensionMatches && numTables > 0 && bytes.size >= HEADER_SIZE_BYTES + TABLE_RECORD_SIZE_BYTES * numTables
+        val hasAllTableRecords = bytes.size >= HEADER_SIZE_BYTES + TABLE_RECORD_SIZE_BYTES * numTables
+        return extensionMatches && numTables > 0 && hasAllTableRecords
     }
 
     private fun signatureOf(bytes: ByteArray) = bytes.take(SIGNATURE_SIZE_BYTES).joinToString("") { "%02x".format(it) }
 
     private fun describeHeader(file: File): String {
         val head = file.inputStream().use { it.readNBytes(SIGNATURE_SIZE_BYTES) }
-        val ascii = String(head.map { if (it in PRINTABLE_ASCII) it else '.'.code.toByte() }.toByteArray(), Charsets.US_ASCII)
+        val printable = head.map { byte -> if (byte in PRINTABLE_ASCII) byte else '.'.code.toByte() }
+        val ascii = String(printable.toByteArray(), Charsets.US_ASCII)
         return "${signatureOf(head)} \"$ascii\""
     }
 

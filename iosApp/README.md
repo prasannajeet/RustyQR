@@ -110,14 +110,16 @@ The iOS Kotlin/Native actuals live under
 ```
 composeApp/src/iosMain/kotlin/com/p2/apps/rustyqr/
 ├── MainViewController.kt         # fun mainViewController(): UIViewController { ComposeUIViewController { App() } }
-├── Platform.ios.kt
 └── bridge/
     ├── CameraPreview.ios.kt      # actual — AVFoundation via UIKitView
-    ├── CameraPermission.ios.kt   # actual — AVCaptureDevice.requestAccess
+    ├── CameraPermission.ios.kt   # actual — AVCaptureDevice.requestAccess; Restricted counts as permanently denied
+    ├── DebugBuild.ios.kt         # actual — Platform.isDebugBinary
+    ├── FrameFiles.ios.kt         # actual — debug frame recording under Caches/frames
+    ├── Logging.ios.kt            # actual — NSLog
     ├── HapticFeedback.ios.kt     # actual — UIImpactFeedbackGenerator
     ├── OpenUrl.ios.kt            # actual — UIApplication.openURL
     ├── PlainTextClipEntry.ios.kt # actual — ClipEntry for plain text
-    ├── ShareQrImage.ios.kt       # actual — UIActivityViewController
+    ├── ShareQrImage.ios.kt       # actual — UIActivityViewController, anchored as a popover on iPad
     ├── SaveQrImage.ios.kt        # actual — PHPhotoLibrary
     └── ImageDecoder.ios.kt       # actual — UIImage → ImageBitmap
 ```

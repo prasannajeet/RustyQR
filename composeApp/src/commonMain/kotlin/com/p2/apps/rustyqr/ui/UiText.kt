@@ -9,10 +9,6 @@ import org.jetbrains.compose.resources.stringResource
  * without depending on a Composable context. Resolved at render time by the UI.
  */
 sealed interface UiText {
-    data class Raw(
-        val value: String,
-    ) : UiText
-
     data class Res(
         val id: StringResource,
     ) : UiText
@@ -21,6 +17,5 @@ sealed interface UiText {
 @Composable
 fun UiText.resolve(): String =
     when (this) {
-        is UiText.Raw -> value
         is UiText.Res -> stringResource(id)
     }

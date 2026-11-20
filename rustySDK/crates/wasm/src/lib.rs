@@ -15,7 +15,7 @@ use wasm_bindgen::prelude::*;
 /// long, the size is out of range, or encoding fails.
 #[wasm_bindgen(js_name = generatePng)]
 pub fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, JsError> {
-    encoder::generate_png(content, size).map_err(|error| JsError::new(&error.to_string()))
+    encoder::generate_png(content, size).map_err(JsError::from)
 }
 
 /// Decodes the QR code in an encoded image (PNG or JPEG) and returns its content.
@@ -26,9 +26,7 @@ pub fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, JsError> {
 /// image or hold no readable QR code.
 #[wasm_bindgen(js_name = decodeImage)]
 pub fn decode_image(bytes: &[u8]) -> Result<String, JsError> {
-    decoder::decode(bytes)
-        .map(|scan| scan.content)
-        .map_err(|error| JsError::new(&error.to_string()))
+    decoder::decode(bytes).map(|scan| scan.content).map_err(JsError::from)
 }
 
 /// Returns the version of the Rust core library.

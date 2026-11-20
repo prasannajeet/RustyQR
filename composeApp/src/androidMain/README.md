@@ -76,8 +76,8 @@ Build options:
 - **NDK:** by default the plugin uses the newest NDK under `<sdk>/ndk`. Pin one with
   `-PndkVersion=<version>`.
 - **ABIs:** debug builds cover `arm64-v8a`, `armeabi-v7a` and `x86_64`, from `androidAbis` in
-  `gradle.properties`. Passing fewer (`-PandroidAbis=arm64-v8a`) builds faster, but only devices of
-  that ABI can run the result.
+  `gradle.properties`. Passing fewer (`-PandroidAbis=arm64-v8a`) builds faster and limits the APK to
+  those ABIs too, so only devices of that ABI can install the result. Release builds always ship all three.
 
 Module-level linting and format tasks (ktlint, detekt) live on each module; `lintAll` and `installGitHooks` are root
 tasks — see the [module README](../../README.md).
@@ -96,10 +96,13 @@ composeApp/src/androidMain/
 │   ├── BridgeHostActivityHolder.kt     # Weak-ref holder so bridges reach the foreground Activity
 │   ├── AppContextHolder.kt             # Internal static Application context for bridges (permissions, share, save)
 │   ├── AppContextInitializer.kt        # androidx.startup Initializer that seeds AppContextHolder (declared in the manifest)
-│   ├── Platform.android.kt             # Platform() actual
+│   ├── PendingPermissionRequest.kt     # Process-scoped camera permission callbacks, kept across Activity recreation
 │   └── bridge/
 │       ├── CameraPreview.android.kt    # actual — CameraX PreviewView + ImageAnalysis; dispatches via commonMain camera/FrameDispatcher.kt
-│       ├── CameraPermission.android.kt # actual — ActivityResultLauncher
+│       ├── CameraPermission.android.kt # actual — ActivityResultLauncher via PendingPermissionRequest
+│       ├── DebugBuild.android.kt       # actual — FLAG_DEBUGGABLE
+│       ├── FrameFiles.android.kt       # actual — debug frame recording under cacheDir/frames
+│       ├── Logging.android.kt          # actual — Log.i
 │       ├── HapticFeedback.android.kt   # actual — HapticFeedbackType via View
 │       ├── OpenUrl.android.kt          # actual — Intent(ACTION_VIEW)
 │       ├── PlainTextClipEntry.android.kt # actual — ClipEntry for plain text
@@ -162,7 +165,7 @@ sequenceDiagram
         else Either.Right (QR decoded)
             JNI-->>ANA: ScanResult(content)
             ANA->>VM: FrameDispatcher.deliver → mainExecutor.execute { latest onQrDecoded }
-            VM->>VM: scanGate — first-write-wins, main thread only
+            VM->>VM: ignore if the sheet is already open (first decode wins, main thread only)
             VM->>VM: triggerHaptic()
             VM->>VM: isScanning=false, sheetContent=result, isSheetVisible=true
             VM-->>UI: StateFlow emits
@@ -174,14 +177,14 @@ sequenceDiagram
 
 Key design decisions on Android:
 
-- **Two flags, two jobs.** The analyzer never closes over `isScanning` or the callbacks.
-  `CameraPreview.android.kt` reads them through `rememberUpdatedState` and hands providers to
-  `FrameDispatcher` (`commonMain/.../camera/FrameDispatcher.kt`), which calls them when needed, so
-  the latest value always wins (the screen's `ScanScreenState.isScanning` is read on the analysis
-  executor's thread, as snapshot state). Separately, `ScanViewModel.scanGate` is a plain `Boolean` that
-  is read and written only on the main thread. It is the first-write-wins guard that keeps a
-  second `FrameDecoded`, already posted to the main thread before the state change reaches the
-  analyzer, from reopening the sheet.
+- **Two guards, two jobs.** The analyzer never closes over `isScanning` or the callbacks.
+  `CameraPreview.android.kt` calls `rememberFrameDispatcher` (`commonMain/.../camera/RememberFrameDispatcher.kt`),
+  which reads them through `rememberUpdatedState` and passes wrapper lambdas to
+  `FrameDispatcher` (`commonMain/.../camera/FrameDispatcher.kt`), so the latest value always wins
+  (the screen's `ScanScreenState.isScanning` is read on the analysis executor's thread, as snapshot
+  state). Separately, `ScanViewModel` ignores a `FrameDecoded` while the result sheet is open. That
+  check runs only on the main thread and keeps a second decode, already posted before the state
+  change reaches the analyzer, from replacing the first result.
 - **Camera session binds only while the user is actively scanning** — `CameraPreview` is gated on
   `isCameraActive`. On decode the analyzer stops decoding frames once `isScanning` turns false
   (the camera remains bound while the result sheet is open); on dismiss the screen returns to idle
@@ -259,8 +262,8 @@ The API lands in `commonMain` (`expect` declarations and the types), with an And
 calls the `.so` through JNA.
 
 **3. Package the libraries.** `mergeUniffiAndroidJniLibs` collects the three `.so` files as the
-module's `jniLibs`. `androidApp` filters its APK to the same three ABIs (`abiFilters`), so an
-ABI that a dependency ships but Rust does not cover cannot install and then crash.
+module's `jniLibs`. `androidApp` filters its APK to the ABIs Rust was built for (`abiFilters`, per build
+type), so an ABI that a dependency ships but Rust does not cover cannot install and then crash.
 
 ### How Gradle picks up the artifacts
 
@@ -379,13 +382,9 @@ After cleaning, rebuild with `./gradlew :androidApp:assembleDebug`.
 </details>
 
 <details>
-<summary><b>Troubleshooting</b> — emulator crashes, detekt complaints, missing haptics</summary>
+<summary><b>Troubleshooting</b> — detekt complaints, missing haptics</summary>
 
 <br/>
-
-**Emulator crashes on scan launch with `UnsatisfiedLinkError`.** The APK has no `.so` for the
-emulator's ABI, typically because the build was made with `-PandroidAbis=arm64-v8a` and the
-emulator is x86_64. Rebuild without that property, so all three ABIs are built.
 
 **Gradle says the SDK location is not found.** Export `ANDROID_HOME` or add `sdk.dir=<path>` to
 `local.properties`.

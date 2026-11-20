@@ -51,7 +51,8 @@ impl QrErrorCorrection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[must_use]
 pub struct QrConfig {
-    /// Output image size in pixels (width = height). Must be 1..=4096.
+    /// Output image size in pixels (width = height). Must be 1..=4096, and at least the code's width in modules
+    /// plus 8 for the quiet zone (29 for the smallest code, 185 for the largest).
     pub size: u32,
     /// Error correction level.
     pub error_correction: QrErrorCorrection,

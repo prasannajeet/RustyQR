@@ -32,7 +32,8 @@ import com.p2.apps.rustyqr.model.CameraFailure
 import org.jetbrains.compose.resources.StringResource
 import org.jetbrains.compose.resources.stringResource
 import rustyqr.composeapp.generated.resources.Res
-import rustyqr.composeapp.generated.resources.scan_camera_denied_cd
+import rustyqr.composeapp.generated.resources.scan_camera_blocked_body
+import rustyqr.composeapp.generated.resources.scan_camera_blocked_title
 import rustyqr.composeapp.generated.resources.scan_camera_failed_body
 import rustyqr.composeapp.generated.resources.scan_camera_failed_title
 import rustyqr.composeapp.generated.resources.scan_camera_no_camera_body
@@ -54,47 +55,23 @@ internal fun PermissionDeniedContent(
     onGrantPermission: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
-    val columnModifier =
-        Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(32.dp)
-    Column(
-        modifier = columnModifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        CameraOffIcon(contentDescription = stringResource(Res.string.scan_camera_denied_cd))
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        MessageBlock(
-            title = stringResource(Res.string.scan_permission_title),
-            body = stringResource(Res.string.scan_permission_body),
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
+    val action =
         if (isPermanentlyDenied) {
-            AmberButton(
-                text = stringResource(Res.string.scan_open_settings),
-                onClick = onOpenSettings,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            MessageAction(text = stringResource(Res.string.scan_open_settings), onClick = onOpenSettings)
         } else {
-            AmberButton(
-                text = stringResource(Res.string.scan_grant_permission),
-                onClick = onGrantPermission,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            MessageAction(text = stringResource(Res.string.scan_grant_permission), onClick = onGrantPermission)
         }
-    }
+    ScanMessage(
+        title = stringResource(Res.string.scan_permission_title),
+        body = stringResource(Res.string.scan_permission_body),
+        action = action,
+    )
 }
 
 /**
  * Shown when the camera is unusable; mirrors [PermissionDeniedContent]. Retryable failures offer "Try Again", which
- * restarts the camera; [CameraFailure.NoCamera] shows the message alone.
+ * restarts the camera. Failures that retrying cannot fix ([CameraFailure.NoCamera], [CameraFailure.BlockedByDevice])
+ * show the message alone.
  */
 @Composable
 internal fun CameraFailureContent(
@@ -102,6 +79,35 @@ internal fun CameraFailureContent(
     onTryAgain: () -> Unit,
 ) {
     val (titleRes, bodyRes) = failure.messages()
+    val action =
+        if (failure.isRetryable) {
+            MessageAction(text = stringResource(Res.string.scan_try_again), onClick = onTryAgain)
+        } else {
+            null
+        }
+    ScanMessage(title = stringResource(titleRes), body = stringResource(bodyRes), action = action)
+}
+
+private fun CameraFailure.messages(): Pair<StringResource, StringResource> =
+    when (this) {
+        CameraFailure.NoCamera -> Res.string.scan_camera_no_camera_title to Res.string.scan_camera_no_camera_body
+        CameraFailure.CouldNotStart -> Res.string.scan_camera_failed_title to Res.string.scan_camera_failed_body
+        CameraFailure.BlockedByDevice -> Res.string.scan_camera_blocked_title to Res.string.scan_camera_blocked_body
+    }
+
+/** The one button under a message. */
+private class MessageAction(
+    val text: String,
+    val onClick: () -> Unit,
+)
+
+/** A centered camera-off icon, [title] and [body], with [action] as a full-width button below when there is one. */
+@Composable
+private fun ScanMessage(
+    title: String,
+    body: String,
+    action: MessageAction?,
+) {
     val columnModifier =
         Modifier
             .fillMaxSize()
@@ -114,34 +120,27 @@ internal fun CameraFailureContent(
         verticalArrangement = Arrangement.Center,
     ) {
         // The title already says what happened, so the icon adds no spoken description.
-        CameraOffIcon(contentDescription = null)
+        CameraOffIcon()
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        MessageBlock(title = stringResource(titleRes), body = stringResource(bodyRes))
+        MessageBlock(title = title, body = body)
 
-        // Retrying can never help without a camera, so that failure shows the message alone.
-        if (failure.isRetryable) {
+        if (action != null) {
             Spacer(modifier = Modifier.height(32.dp))
 
             AmberButton(
-                text = stringResource(Res.string.scan_try_again),
-                onClick = onTryAgain,
+                text = action.text,
+                onClick = action.onClick,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
     }
 }
 
-private fun CameraFailure.messages(): Pair<StringResource, StringResource> =
-    when (this) {
-        CameraFailure.NoCamera -> Res.string.scan_camera_no_camera_title to Res.string.scan_camera_no_camera_body
-        CameraFailure.CouldNotStart -> Res.string.scan_camera_failed_title to Res.string.scan_camera_failed_body
-    }
-
 /** Camera icon with a strike-through line. */
 @Composable
-private fun CameraOffIcon(contentDescription: String?) {
+private fun CameraOffIcon() {
     Box(contentAlignment = Alignment.Center) {
         Surface(
             modifier = Modifier.size(80.dp),
@@ -151,7 +150,7 @@ private fun CameraOffIcon(contentDescription: String?) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Outlined.CameraAlt,
-                    contentDescription = contentDescription,
+                    contentDescription = null,
                     modifier = Modifier.size(36.dp),
                     tint = MaterialTheme.colorScheme.primary,
                 )

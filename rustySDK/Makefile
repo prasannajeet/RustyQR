@@ -9,6 +9,6 @@ test:
 clean:
 	cargo clean
 	@echo "Cleaned Rust build artifacts"
-	@echo "Note: generated bindings and the Xcode project are cleaned by the Gradle 'clean' tasks"
+	@echo "Note: generated bindings are cleaned by the Gradle 'clean' tasks; the Xcode project by ./gradlew cleanXcodeProject"
 
 all: test

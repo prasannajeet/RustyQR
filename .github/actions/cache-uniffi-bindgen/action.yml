@@ -1,0 +1,33 @@
+name: Cache the UniFFI bindgen
+description: >-
+  Caches the Kotlin bindgen that the UniFFI Gradle plugin compiles with `cargo install` on its first run (several
+  minutes). Keyed on the toolchain and the plugin version alone, so a library bump does not discard the Rust build
+  cache. Run it after actions/checkout and setup-rust.
+
+inputs:
+  toolchain-key:
+    description: The setup-rust action's `cachekey` output.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # GitHub does not enforce `required: true` for composite actions; an empty key would silently drop the toolchain
+    # from the cache key.
+    - name: Require the toolchain key
+      shell: bash
+      env:
+        TOOLCHAIN_KEY: ${{ inputs.toolchain-key }}
+      run: test -n "$TOOLCHAIN_KEY" || { echo "::error::cache-uniffi-bindgen needs the toolchain-key input"; exit 1; }
+
+    - id: plugin-version
+      shell: bash
+      run: |
+        version="$(sed -nE 's/^uniffi-plugin *= *"([^"]+)".*/\1/p' gradle/libs.versions.toml)"
+        test -n "$version" || { echo "uniffi-plugin version not found in gradle/libs.versions.toml" >&2; exit 1; }
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache@v4
+      with:
+        path: build/uniffi/bindgen/
+        key: uniffi-bindgen-${{ runner.os }}-${{ inputs.toolchain-key }}-${{ steps.plugin-version.outputs.version }}

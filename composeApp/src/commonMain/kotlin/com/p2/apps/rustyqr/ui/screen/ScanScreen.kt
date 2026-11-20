@@ -17,14 +17,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.p2.apps.rustyqr.bridge.CameraPreview
 import com.p2.apps.rustyqr.ui.components.AmberButton
@@ -45,13 +48,16 @@ import rustyqr.composeapp.generated.resources.scan_start_scanning
  * Scan screen — camera preview with QR scanning, scanner overlay, and result bottom sheet.
  *
  * Opens in an idle state — the camera stays cold until the user taps "Start Scanning".
- * Permission is checked lazily at that point; there is no eager permission poll on resume.
+ * Permission is checked lazily at that point. On resume the ViewModel re-checks it while the denied screen shows,
+ * and restarts a camera that device policy had blocked, because the user may have changed either in Settings.
  *
  * Wires [ScanViewModel] to [ScanContent].
  */
 @Composable
 fun ScanScreen(viewModel: ScanViewModel = viewModel { ScanViewModel() }) {
     val state by viewModel.state.collectAsState()
+
+    NotifyOnResume(onResumed = { viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed) })
 
     ScanContent(
         state = state,
@@ -110,11 +116,28 @@ private fun ScanContent(
     }
 }
 
+/** Calls [onResumed] each time the host lifecycle resumes while this is in composition. */
+@Composable
+private fun NotifyOnResume(onResumed: () -> Unit) {
+    val latestOnResumed by rememberUpdatedState(onResumed)
+    LifecycleResumeEffect(Unit) {
+        latestOnResumed()
+        onPauseOrDispose { }
+    }
+}
+
 @Composable
 private fun CameraScanLayer(
     state: ScanScreenState,
     onIntent: (ScanQRCodeScreenIntent) -> Unit,
 ) {
+    // The preview is a new session each time this enters composition, so it needs the warm-up loader again.
+    // A disposable effect runs in the same apply step as the preview's own effects, before any frame can arrive.
+    DisposableEffect(Unit) {
+        onIntent(ScanQRCodeScreenIntent.PreviewStarted)
+        onDispose { }
+    }
+
     // Camera preview fills screen edge-to-edge (no inset padding on this layer)
     CameraPreview(
         isScanning = state.isScanning,

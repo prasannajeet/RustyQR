@@ -23,9 +23,11 @@ import com.p2.apps.rustyqr.model.ScanResult
  *                        Android device without a back camera), found before anything is started.
  *                      - [CameraFailure.CouldNotStart]: the session could not be set up (camera permission missing,
  *                        input or output rejected, CameraX failed to initialise or bind), or it failed after
- *                        starting: a critical CameraX camera-state error (camera disabled by policy, fatal camera
- *                        error, stream configuration failure, do-not-disturb mode) on Android, or an
- *                        `AVCaptureSessionRuntimeError` on iOS.
+ *                        starting: a critical CameraX camera-state error (fatal camera error, stream configuration
+ *                        failure) on Android, or an `AVCaptureSessionRuntimeError` on iOS.
+ *                      - [CameraFailure.BlockedByDevice]: Android only. CameraX refused to open the camera
+ *                        (`ERROR_CAMERA_DISABLED`: a device policy, or an open attempt from a background process).
+ *                        Retrying cannot help; the screen restarts the camera on resume.
  *                      Not reported: errors CameraX retries itself (recoverable camera-state errors) and iOS session
  *                      interruptions, which the system resumes. [onCameraReady] does not fire for a session that
  *                      failed before its first frame, and frames stop being decoded once a failure is reported.

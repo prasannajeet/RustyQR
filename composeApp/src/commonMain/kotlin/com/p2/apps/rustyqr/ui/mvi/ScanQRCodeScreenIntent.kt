@@ -7,7 +7,7 @@ import com.p2.apps.rustyqr.model.ScanResult
  * User intents for the Scan screen.
  */
 sealed interface ScanQRCodeScreenIntent {
-    /** Camera frame was successfully decoded. First decode locks the scan gate. */
+    /** A camera frame decoded. The first decode opens the result sheet; later ones are ignored while it is open. */
     data class FrameDecoded(
         val result: ScanResult,
     ) : ScanQRCodeScreenIntent
@@ -15,7 +15,7 @@ sealed interface ScanQRCodeScreenIntent {
     /** User dismissed the result sheet (swipe or "Scan Again" button). */
     data object DismissSheet : ScanQRCodeScreenIntent
 
-    /** User tapped "Scan Again" — alias for [DismissSheet], both unlock the gate. */
+    /** User tapped "Scan Again" — alias for [DismissSheet], both close the sheet. */
     data object ResumeScanning : ScanQRCodeScreenIntent
 
     /** Permission check result received. */
@@ -42,4 +42,14 @@ sealed interface ScanQRCodeScreenIntent {
 
     /** First camera frame has been delivered — clears the warm-up loader overlay. */
     data object CameraReady : ScanQRCodeScreenIntent
+
+    /** A camera preview session began: show the warm-up loader again until it delivers its first frame. */
+    data object PreviewStarted : ScanQRCodeScreenIntent
+
+    /**
+     * The Scan screen resumed. Sent when the host lifecycle resumes (returning to the app, rotation) and when the
+     * screen enters composition (switching back to the Scan tab). The ViewModel re-checks a denied permission and
+     * restarts a camera the device had blocked.
+     */
+    data object ScreenResumed : ScanQRCodeScreenIntent
 }

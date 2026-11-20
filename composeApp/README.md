@@ -64,8 +64,8 @@ configuration except Debug. With `-PreleaseBuild=true`, `:rustyqr-bindings:jvmTe
 
 ## Module-Level Gradle Tasks
 
-`composeApp` is a KMP library: it has no launcher of its own. The Android app shell (`MainActivity`, `Application`,
-manifest, icons, APK packaging) lives in `:androidApp`, which depends on this module. The repository-wide tasks
+`composeApp` is a KMP library: it has no launcher of its own. The Android app shell (`MainActivity`, the
+manifest, icons, APK packaging; no custom `Application`) lives in `:androidApp`, which depends on this module. The repository-wide tasks
 (`lintAll`, `swiftlint`, `installGitHooks`, `generateXcodeProject`, `cleanXcodeProject`) belong to the root project, so
 run them as `./gradlew lintAll` and so on. Host tests: `:composeApp:testAndroidHostTest`.
 
@@ -92,8 +92,9 @@ composeApp/src/
 ├── commonMain/
 │   └── kotlin/com/p2/apps/rustyqr/
 │       ├── App.kt                          # Root composable — hosts navigation + theme
-│       ├── Platform.kt                     # expect fun Platform(): String
-│       ├── model/                          # Shared data types (ScanResult, QrError, ...)
+│       ├── model/                          # Shared data types (ScanResult, QrError, CameraFailure, ...)
+│       ├── camera/                         # FrameDispatcher + rememberFrameDispatcher: thread-safe camera callbacks
+│       ├── debug/                          # Debug-only frame recording and timings (DebugFlags, FrameRecorder, ...)
 │       ├── ui/
 │       │   ├── screen/                     # ScanScreen, GenerateScreen — shared Compose
 │       │   ├── components/                 # PillTabBar, ScanResultSheet, AmberButton, ...
@@ -102,12 +103,17 @@ composeApp/src/
 │       │   ├── navigation/                 # Tab sealed hierarchy
 │       │   └── theme/                      # RustyQrTheme, Color, Type, Shape, Motion
 │       └── bridge/                         # platform contracts: expect declarations, plus the QrBridge object
-│           ├── QrBridge.kt                 # object (not an expect), implements QrEncoder: generateQrPng, contentFits, decodeQr, decodeQrFromRaw, getLibraryVersion
+│           ├── QrBridge.kt                 # object (not an expect), implements QrEncoder: generateQrPng, contentFits, decodeQr, decodeQrFromRaw
 │           ├── QrEncoder.kt                # plain interface (not an expect): generateQrPng + contentFits, the seam GenerateViewModel tests fake
 │           ├── CameraPreview.kt            # @Composable — platform draws the live preview + decodes frames
 │           ├── CameraPermission.kt         # expect funs — status check, request, permanent-denied, openAppSettings
-│           ├── HapticFeedback.kt           # expect fun — triggerImpactHaptic
-│           ├── OpenUrl.kt                  # expect fun — openUrlExternally
+│           ├── CameraPermissions.kt        # plain interface + PlatformCameraPermissions, the seam ScanViewModel tests fake
+│           ├── DebugBuild.kt               # expect val isDebugBuild
+│           ├── FrameFiles.kt               # FrameFiles interface + expect fun frameFiles() for debug frame recording
+│           ├── HapticFeedback.kt           # expect fun — triggerHaptic
+│           ├── Logging.kt                  # expect fun — logInfo
+│           ├── OpenUrl.kt                  # expect fun — openUrl
+│           ├── PlainTextClipEntry.kt       # expect fun — clipboard entry for plain text
 │           ├── ShareQrImage.kt             # expect fun — system share sheet with PNG bytes
 │           ├── SaveQrImage.kt              # expect fun — save PNG to gallery / photos
 │           └── ImageDecoder.kt             # expect fun — platform image bytes → ImageBitmap
@@ -198,8 +204,8 @@ commonMain/bridge/QrBridge.kt     object QrBridge : QrEncoder { fun generateQrPn
 `QrBridge` is **one `commonMain` object over the generated bindings**, not an `expect`. The bindings
 module already contains the per-platform actuals, so `composeApp` needs none. `QrBridge` calls the
 generated functions, wraps `generateQrPng`, `contentFits`, `decodeQr` and `decodeQrFromRaw` in
-`Either.catch`, and maps `FfiQrException` to the app's `QrError`. `getLibraryVersion()` is not wrapped:
-it returns a plain `String` and can throw. `QrBridge` implements the plain `QrEncoder` interface
+`Either.catch`, and maps `FfiQrException` to the app's `QrError`. Any other throwable becomes
+`EncodingFailed` on the encode paths and `DecodingFailed` on the decode paths. `QrBridge` implements the plain `QrEncoder` interface
 (`generateQrPng`, `contentFits`), which `GenerateViewModel` takes as its last constructor parameter so
 tests can fake it.
 

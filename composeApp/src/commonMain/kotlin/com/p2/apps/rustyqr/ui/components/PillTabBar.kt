@@ -33,6 +33,8 @@ import org.jetbrains.compose.resources.stringResource
 import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.tab_generate
 import rustyqr.composeapp.generated.resources.tab_scan
+import rustyqr.composeapp.generated.resources.tab_state_not_selected_format
+import rustyqr.composeapp.generated.resources.tab_state_selected_format
 
 // Brand pill shape — intentional MD3 deviation (full pill container).
 private val PillShape = RoundedCornerShape(24.dp)
@@ -98,6 +100,17 @@ private data class TabPosition(
 )
 
 @Composable
+private fun tabStateDescription(
+    isSelected: Boolean,
+    position: TabPosition,
+): String =
+    stringResource(
+        if (isSelected) Res.string.tab_state_selected_format else Res.string.tab_state_not_selected_format,
+        position.number,
+        position.count,
+    )
+
+@Composable
 private fun PillTabItem(
     tab: Tab,
     isSelected: Boolean,
@@ -127,7 +140,7 @@ private fun PillTabItem(
         animationSpec = tween(durationMillis = 300, easing = StandardEasing),
         label = "tabTextColor",
     )
-    val tabStateDescription = if (isSelected) "selected" else "not selected"
+    val stateText = tabStateDescription(isSelected, position)
     val tabItemModifier =
         modifier
             .clip(TabShape)
@@ -135,7 +148,7 @@ private fun PillTabItem(
             .semantics {
                 // stateDescription is merged into the selectable node below so
                 // TalkBack announces e.g. "Scan tab, selected, 1 of 2".
-                stateDescription = "$tabStateDescription, ${position.number} of ${position.count}"
+                stateDescription = stateText
             }.selectable(
                 selected = isSelected,
                 role = Role.Tab,

@@ -6,10 +6,13 @@ import arrow.core.Either
 import arrow.core.flatMap
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSCachesDirectory
+import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.dataWithContentsOfFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
@@ -38,6 +41,23 @@ private class IosFrameFiles(
             Either.Right(emptyList())
         }
 
+    override fun readLines(name: String): Either<String, List<String>> {
+        val path = "$directory/$name"
+        return if (NSFileManager.defaultManager.fileExistsAtPath(path)) {
+            NSData.dataWithContentsOfFile(path)?.let { Either.Right(linesOf(it)) } ?: Either.Left("cannot read $path")
+        } else {
+            Either.Right(emptyList())
+        }
+    }
+
+    // Lossy like Android's readLines: a torn last write must not stop the frame numbers being seeded.
+    private fun linesOf(data: NSData): List<String> {
+        val text = (data.bytes?.readBytes(data.length.toInt()) ?: ByteArray(0)).decodeToString()
+        // A trailing newline does not add an empty last line.
+        val lines = text.lines()
+        return if (lines.lastOrNull() == "") lines.dropLast(1) else lines
+    }
+
     private fun ensureDirectory(): Either<String, Unit> =
         if (NSFileManager.defaultManager.createDirectoryAtPath(directory, true, null, null)) {
             Either.Right(Unit)
@@ -63,14 +83,12 @@ private class IosFrameFiles(
     }
 }
 
-actual fun frameFiles(): Either<String, FrameFiles> {
-    val caches =
-        NSFileManager.defaultManager
-            .URLForDirectory(NSCachesDirectory, NSUserDomainMask, null, true, null)
-            ?.path
-    return if (caches != null) {
-        Either.Right(IosFrameFiles("$caches/frames"))
-    } else {
-        Either.Left("caches directory unavailable")
-    }
-}
+/** The `Caches/frames` directory the debug frames go to, or null when the caches directory is unavailable. */
+internal fun framesDirectory(): String? =
+    NSFileManager.defaultManager
+        .URLForDirectory(NSCachesDirectory, NSUserDomainMask, null, true, null)
+        ?.path
+        ?.let { "$it/frames" }
+
+actual fun frameFiles(): Either<String, FrameFiles> =
+    framesDirectory()?.let { Either.Right(IosFrameFiles(it)) } ?: Either.Left("caches directory unavailable")

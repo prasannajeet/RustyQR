@@ -87,9 +87,9 @@ to Rust as raw grayscale (Y-plane) buffers — no image encoding overhead. Decod
 synthetic frame takes about 2.2 ms on Apple Silicon (Criterion benchmark,
 [`rustySDK/BENCHMARKS.md`](rustySDK/BENCHMARKS.md)); on-device figures are pending. The Scan tab opens in an **idle** state — no camera feed, no permission prompt —
 with a centered **Start Scanning** button. Tapping the button requests camera permission (first time)
-or re-checks status, then activates the preview and frame analyzer. A scan gate (`ScanViewModel.scanGate`, a plain main-thread flag)
-prevents double-fire on successful decode; the frame analyzer reads a separate `AtomicBoolean`
-that the camera preview keeps in sync with the scanning state.
+or re-checks status, then activates the preview and frame analyzer. The first decode opens the
+result sheet, and `ScanViewModel` ignores further decodes while it is open; the frame analyzer reads
+the latest `isScanning` through `FrameDispatcher`.
 
 ### Scan Result Sheet
 
@@ -354,17 +354,22 @@ packages:
 ```
 commonMain/kotlin/com/p2/apps/rustyqr/bridge/
 ├── QrEncoder.kt            // interface seam for generate + contentFits (plain interface, not an expect)
-├── QrBridge.kt             // Rust FFI — generate/decode/contentFits/version (an object implementing QrEncoder, not an expect)
+├── QrBridge.kt             // Rust FFI — generate/decode/contentFits (an object implementing QrEncoder, not an expect)
+├── CameraPermissions.kt    // interface seam for the permission calls (plain interface + object, not an expect)
 ├── CameraPreview.kt        // camera composable
 ├── CameraPermission.kt     // runtime permission check + request
+├── DebugBuild.kt           // whether this is a debug build
+├── FrameFiles.kt           // debug frame recording files
 ├── HapticFeedback.kt       // tap/success haptic
+├── Logging.kt              // platform log line
 ├── OpenUrl.kt              // open http(s) URL in system browser
+├── PlainTextClipEntry.kt   // clipboard entry for plain text
 ├── ShareQrImage.kt         // system share sheet for PNG bytes
 ├── SaveQrImage.kt          // save PNG to gallery / Photos
 └── ImageDecoder.kt         // PNG bytes → ImageBitmap
 ```
 
-Every file except `QrEncoder.kt` and `QrBridge.kt` is an `expect` with a matching `*.android.kt` and `*.ios.kt` actual.
+Every file except `QrEncoder.kt`, `QrBridge.kt` and `CameraPermissions.kt` holds an `expect` with a matching `*.android.kt` and `*.ios.kt` actual.
 `QrBridge` is one `commonMain` object over the generated bindings. The `MatchingDeclarationName` detekt rule
 is enabled; it accepts the `*.android.kt` / `*.ios.kt` actual naming convention, and actual-only
 helper classes are kept `private` so they do not need to match the file name. No lint

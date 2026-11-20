@@ -23,6 +23,12 @@ private class AndroidFrameFiles(
             names.toList()
         }
 
+    override fun readLines(name: String): Either<String, List<String>> =
+        io {
+            val file = File(directory, name)
+            if (file.exists()) file.readLines() else emptyList()
+        }
+
     private fun <T> io(action: () -> T): Either<String, T> =
         Either
             .catch {

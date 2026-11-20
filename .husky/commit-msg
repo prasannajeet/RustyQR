@@ -1,8 +1,16 @@
 #!/bin/sh
 
-# Get the commit message
+# Only the subject is validated: the first line that is neither empty nor a comment. A later body line that happens
+# to look like a valid header (or to start with "Merge branch") must not let a bad subject through.
 commit_msg_file=$1
-commit_msg=$(cat "$commit_msg_file")
+# git 2.45+ reads core.commentString (any string); older versions and this hook's fallback use core.commentChar. Both
+# default to "#", and "auto" lets git pick a character per message, so "#" is the best guess for it.
+comment_string=$(git config core.commentString || git config core.commentChar || true)
+case "$comment_string" in
+  "" | auto) comment_string='#' ;;
+esac
+# A trailing CR (CRLF message) is dropped first, so a CR-only line counts as blank and the subject carries no CR.
+commit_msg=$(awk -v c="$comment_string" '{ sub(/\r$/, "") } $0 !~ /^[[:space:]]*$/ && substr($0, 1, length(c)) != c { print; exit }' "$commit_msg_file")
 
 # Define the expected format using regex
 # Format: type(scope): message

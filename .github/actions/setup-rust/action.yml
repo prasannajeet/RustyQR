@@ -1,0 +1,60 @@
+name: Set up Rust
+description: >-
+  Installs the Rust toolchain pinned by rust-toolchain.toml and restores the cargo registry and build cache.
+  Run it after actions/checkout. It also exports RUSTUP_AUTO_INSTALL=0 to the rest of the job, so rustup never
+  installs toolchains or targets beyond the ones requested here.
+
+inputs:
+  targets:
+    description: Comma-separated extra rustup targets to install (none by default).
+    required: false
+    default: ""
+  components:
+    description: Comma-separated rustup components to install (none by default).
+    required: false
+    default: ""
+  cache-prefix:
+    description: >-
+      Names the cache (rust-<prefix>-...). Jobs that build different targets or run different cargo commands use
+      different prefixes, so they do not overwrite one another's artifacts.
+    required: true
+
+outputs:
+  cachekey:
+    description: The toolchain's cache key (rustc version and host), for keying other caches on the toolchain.
+    value: ${{ steps.toolchain.outputs.cachekey }}
+
+runs:
+  using: composite
+  steps:
+    # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
+    # toolchain and all of those targets on top of what the job installs. With it, the job uses only what this action
+    # installed (its `targets:` and `components:`) and fails loudly on a mismatch. Set before anything runs rustup.
+    - name: Stop rustup installing toolchains on its own
+      shell: bash
+      run: echo "RUSTUP_AUTO_INSTALL=0" >> "$GITHUB_ENV"
+
+    - id: pin
+      name: Read the pinned Rust version
+      shell: bash
+      run: |
+        channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
+        test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
+        echo "version=$channel" >> "$GITHUB_OUTPUT"
+
+    - id: toolchain
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
+      with:
+        toolchain: ${{ steps.pin.outputs.version }}
+        targets: ${{ inputs.targets }}
+        components: ${{ inputs.components }}
+
+    # Cargo registry and Rust build artifacts, keyed on Cargo.lock so the cache turns over when dependencies change.
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/
+          ~/.cargo/git/
+          rustySDK/target/
+        key: rust-${{ inputs.cache-prefix }}-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+        restore-keys: rust-${{ inputs.cache-prefix }}-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-

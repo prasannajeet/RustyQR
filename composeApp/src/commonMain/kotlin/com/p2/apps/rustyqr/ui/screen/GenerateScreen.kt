@@ -131,13 +131,14 @@ private fun GenerateContent(
                 InputForm(state = state, onIntent = onIntent)
             },
             resultContent = {
-                if (state.qrImageBytes != null) {
+                val qrPng = state.qrPng
+                if (qrPng != null) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         QrResultCard(
-                            qrImageBytes = state.qrImageBytes,
+                            qrImageBytes = qrPng.bytes,
                             modifier = Modifier.fillMaxWidth(),
                             onClose = { onIntent(GenerateQRCodeScreenIntent.ClearResult) },
                             onShare = { onIntent(GenerateQRCodeScreenIntent.ShareQr) },
