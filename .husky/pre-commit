@@ -20,11 +20,11 @@ fi
 
 # Kotlin + Swift lint
 if [ -n "$STAGED_KT_FILES" ] || [ -n "$STAGED_SWIFT_FILES" ]; then
-    ./gradlew :composeApp:lintAll --no-daemon -q 2>&1
+    ./gradlew lintAll --no-daemon -q 2>&1
     if [ $? -ne 0 ]; then
         echo ""
         echo "Kotlin/Swift lint failed. Fix issues before committing."
-        echo "  - ktlint auto-fix: ./gradlew :composeApp:ktlintFormat :androidApp:ktlintFormat :rustyqr-bindings:ktlintFormat (build-logic: ./gradlew -p build-logic ktlintFormat)"
+        echo "  - ktlint auto-fix: ./gradlew ktlintFormat (every project incl. the root) and ./gradlew -p build-logic ktlintFormat"
         echo "  - detekt reports:  composeApp/build/reports/detekt/ and androidApp/build/reports/detekt/"
         exit 1
     fi

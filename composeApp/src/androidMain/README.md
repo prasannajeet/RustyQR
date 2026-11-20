@@ -79,8 +79,8 @@ Build options:
   `gradle.properties`. Passing fewer (`-PandroidAbis=arm64-v8a`) builds faster, but only devices of
   that ABI can run the result.
 
-Module-level linting and format tasks (ktlint, detekt, lintAll, installGitHooks) live on the parent
-`composeApp` module — see the [module README](../../README.md).
+Module-level linting and format tasks (ktlint, detekt) live on each module; `lintAll` and `installGitHooks` are root
+tasks — see the [module README](../../README.md).
 
 ---
 

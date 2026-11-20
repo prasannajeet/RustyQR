@@ -7,7 +7,9 @@ ktlint {
     android.set(true)
     verbose.set(true)
     filter {
-        exclude { it.file.path.contains("/build/") }
+        // Only this project's own build output; a checkout under some /build/ directory must still be linted.
+        val buildDir = layout.buildDirectory.get().asFile
+        exclude { it.file.startsWith(buildDir) }
     }
 }
 

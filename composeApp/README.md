@@ -65,17 +65,14 @@ configuration except Debug. With `-PreleaseBuild=true`, `:rustyqr-bindings:jvmTe
 ## Module-Level Gradle Tasks
 
 `composeApp` is a KMP library: it has no launcher of its own. The Android app shell (`MainActivity`, `Application`,
-manifest, icons, APK packaging) lives in `:androidApp`, which depends on this module. `:composeApp:lintAll` also runs
-`:androidApp:ktlintCheck` and `:androidApp:detekt` (the type-resolved `:androidApp:detektDebug`). Host tests:
-`:composeApp:testAndroidHostTest`.
+manifest, icons, APK packaging) lives in `:androidApp`, which depends on this module. The repository-wide tasks
+(`lintAll`, `swiftlint`, `installGitHooks`, `generateXcodeProject`, `cleanXcodeProject`) belong to the root project, so
+run them as `./gradlew lintAll` and so on. Host tests: `:composeApp:testAndroidHostTest`.
 
 | Task                                    | What it does                                                            |
 |-----------------------------------------|-------------------------------------------------------------------------|
-| `:composeApp:lintAll`                   | Runs ktlint + detekt + SwiftLint in one go                              |
 | `:composeApp:ktlintCheck` / `...Format` | Kotlin lint / auto-fix (Android mode, continuation indent 4)            |
 | `:composeApp:detekt`                    | Static analysis (max line length 120)                                   |
-| `:composeApp:swiftlint`                 | SwiftLint on `iosApp/` Swift sources                                    |
-| `:composeApp:installGitHooks`           | Install pre-commit (`lintAll` + `cargo fmt --check`) and commit-msg hooks |
 
 The Xcode project tasks (`generateXcodeProject`, `cleanXcodeProject`) are documented in the iOS
 README. Rust builds and binding generation have no tasks of their own here: the `:rustyqr-bindings`
@@ -254,9 +251,9 @@ plain `String` and can throw.
 
 <br/>
 
-`./gradlew :composeApp:lintAll` runs ktlint, detekt, and SwiftLint in a single invocation. The same
+`./gradlew lintAll` (a root task) runs ktlint, detekt, and SwiftLint in a single invocation. The same
 three tools also run automatically as a pre-commit hook (installed by
-`./gradlew :composeApp:installGitHooks`, which also runs on `:androidApp:preBuild` and `clean`).
+`./gradlew installGitHooks`, which points git's `core.hooksPath` at `.husky` so every worktree runs its own hooks, and which also runs on `:androidApp:preBuild`).
 
 | Tool       | Scope                   | Config                                           |
 |------------|-------------------------|--------------------------------------------------|
@@ -265,8 +262,7 @@ three tools also run automatically as a pre-commit hook (installed by
 | SwiftLint  | `iosApp/` Swift sources | `.swiftlint.yml` — `trailing_whitespace` and `line_length` enabled |
 | rustfmt    | `rustySDK/` Rust sources | `rustySDK/rustfmt.toml` — edition 2024, max line width 120 (separate pre-commit step) |
 
-Auto-fix Kotlin formatting with `./gradlew :composeApp:ktlintFormat :androidApp:ktlintFormat
-:rustyqr-bindings:ktlintFormat`
+Auto-fix Kotlin formatting with `./gradlew ktlintFormat` (every project, root included)
 (for `build-logic/`: `./gradlew -p build-logic ktlintFormat`).
 
 **Prerequisite:** `detekt` (and therefore `lintAll` and the pre-commit hook) also runs the type-resolved

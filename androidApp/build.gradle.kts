@@ -112,5 +112,5 @@ androidComponents {
 }
 
 tasks.named("preBuild") {
-    dependsOn(":composeApp:installGitHooks")
+    dependsOn(":installGitHooks")
 }

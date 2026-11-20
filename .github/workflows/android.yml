@@ -201,7 +201,7 @@ jobs:
       - run: ./gradlew :composeApp:testAndroidHostTest :androidApp:assembleDebug
 
       # --- Kotlin lint (SwiftLint is macOS only and runs in the iOS workflow) ---
-      - run: ./gradlew :composeApp:ktlintCheck :composeApp:detekt :rustyqr-bindings:ktlintCheck :rustyqr-bindings:detekt :androidApp:ktlintCheck :androidApp:detekt
+      - run: ./gradlew lintKotlin
 
       # --- Upload APK as artifact ---
       - uses: actions/upload-artifact@v4

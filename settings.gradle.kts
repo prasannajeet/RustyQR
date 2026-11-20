@@ -14,13 +14,14 @@ if (rawVersionName.isBlank()) {
     throw GradleException("version.properties: version_name must not be blank, got '$rawVersionName'")
 }
 val rawBuildNumber = versionProps.getProperty("build_number") ?: ""
-val appBuildNumber: Int = rawBuildNumber.trim().toIntOrNull()
-    ?: throw GradleException("version.properties: build_number must be an integer, got '$rawBuildNumber'")
+val appBuildNumber: Int =
+    rawBuildNumber.trim().toIntOrNull()
+        ?: throw GradleException("version.properties: build_number must be an integer, got '$rawBuildNumber'")
 if (appBuildNumber <= 0) {
     throw GradleException("version.properties: build_number must be positive, got $appBuildNumber")
 }
 val appVersionName: String = rawVersionName.trim()
-// Shared with the project build scripts (composeApp, androidApp) through `gradle.extra`.
+// Shared with the project build scripts (root, androidApp) through `gradle.extra`.
 gradle.extra["appVersionName"] = appVersionName
 gradle.extra["appBuildNumber"] = appBuildNumber
 

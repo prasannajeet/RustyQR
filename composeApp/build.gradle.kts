@@ -11,9 +11,6 @@ plugins {
     id("rustyqr.kotlin-lint")
 }
 
-val appVersionName = gradle.extra["appVersionName"] as String
-val appBuildNumber = gradle.extra["appBuildNumber"] as Int
-
 kotlin {
     compilerOptions {
         // Explicit backing fields (KEEP-278) — lets ViewModels expose
@@ -109,73 +106,6 @@ tasks.named("detekt") {
     dependsOn("detektAndroidMain")
 }
 
-val rootDir = rootProject.projectDir.absolutePath
-
-tasks.register<Exec>("installGitHooks") {
-    group = "git hooks"
-    description = "Installs git hooks for conventional commits and pre-commit checks"
-    commandLine(
-        "sh",
-        "-c",
-        """
-        mkdir -p "$rootDir/.git/hooks"
-        for hook in commit-msg pre-commit; do
-            src="$rootDir/.husky/${'$'}hook"
-            dst="$rootDir/.git/hooks/${'$'}hook"
-            if [ -f "${'$'}src" ]; then
-                cp "${'$'}src" "${'$'}dst"
-                chmod +x "${'$'}dst"
-                echo "Git hook '${'$'}hook' installed successfully!"
-            fi
-        done
-        """.trimIndent(),
-    )
-}
-
-tasks.register<Delete>("cleanXcodeProject") {
-    group = "xcode"
-    description = "Deletes xcodegen-generated artifacts (iosApp.xcodeproj + Info.plist)"
-    delete(
-        File(rootDir, "iosApp/iosApp.xcodeproj"),
-        File(rootDir, "iosApp/iosApp/Info.plist"),
-    )
-}
-
-tasks.register<Exec>("generateXcodeProject") {
-    group = "xcode"
-    description = "Regenerates iosApp.xcodeproj from project.yml via XcodeGen"
-    outputs.upToDateWhen { false }
-    workingDir = File(rootDir, "iosApp")
-    environment("VERSION_NAME", appVersionName)
-    environment("BUILD_NUMBER", appBuildNumber.toString())
-    commandLine("xcodegen", "generate")
-    doLast {
-        logger.lifecycle("\n⚠️  If the iOS run configuration is missing in Android Studio, run: File > Sync Project with Gradle Files")
-    }
-}
-
-tasks.register<Exec>("swiftlint") {
-    group = "verification"
-    description = "Runs SwiftLint on iOS source files"
-    workingDir = File(rootDir, "iosApp")
-    commandLine("/opt/homebrew/bin/swiftlint", "lint", "--config", "$rootDir/.swiftlint.yml", "--strict")
-}
-
-tasks.register("lintAll") {
-    group = "verification"
-    description = "Runs all linters: ktlint, detekt, and swiftlint, for every module"
-    dependsOn(
-        "ktlintCheck",
-        "detekt",
-        "swiftlint",
-        ":androidApp:ktlintCheck",
-        ":androidApp:detekt",
-        ":rustyqr-bindings:ktlintCheck",
-        ":rustyqr-bindings:detekt",
-        gradle.includedBuild("build-logic").task(":ktlintCheck"),
-    )
-}
-
 // Anything that ships (non-debuggable Android variants, wired from :androidApp, and Kotlin/Native release frameworks)
 // must carry the optimised Rust library, which only -PreleaseBuild=true builds. This task has no outputs, so it always
 // runs when it is in the graph and can never be skipped or restored from the build cache.
@@ -200,9 +130,4 @@ tasks.withType<KotlinNativeLink>().configureEach {
     if (binary.buildType == NativeBuildType.RELEASE) {
         dependsOn(verifyReleaseRustProfile)
     }
-}
-
-// Reinstall the hooks on clean (the app module wires installGitHooks into its preBuild)
-tasks.named("clean") {
-    dependsOn("installGitHooks")
 }

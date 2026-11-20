@@ -320,7 +320,7 @@ sequenceDiagram
     participant C as cargo
     participant K as Kotlin/Native
 
-    Dev->>XG: ./gradlew :composeApp:generateXcodeProject
+    Dev->>XG: ./gradlew generateXcodeProject
     XG-->>Dev: iosApp.xcodeproj
 
     Dev->>Xcode: Run (or xcodebuild build)
