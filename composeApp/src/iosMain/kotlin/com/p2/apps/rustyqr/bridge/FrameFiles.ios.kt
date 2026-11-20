@@ -6,13 +6,13 @@ import arrow.core.Either
 import arrow.core.flatMap
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.readBytes
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSCachesDirectory
+import platform.Foundation.NSData
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSString
-import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUserDomainMask
-import platform.Foundation.stringWithContentsOfFile
+import platform.Foundation.dataWithContentsOfFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
@@ -44,13 +44,18 @@ private class IosFrameFiles(
     override fun readLines(name: String): Either<String, List<String>> {
         val path = "$directory/$name"
         return if (NSFileManager.defaultManager.fileExistsAtPath(path)) {
-            val text = NSString.stringWithContentsOfFile(path, NSUTF8StringEncoding, null)
-            // Like Android's readLines, a trailing newline does not add an empty last line.
-            text?.lines()?.let { Either.Right(if (it.lastOrNull() == "") it.dropLast(1) else it) }
-                ?: Either.Left("cannot read $path")
+            NSData.dataWithContentsOfFile(path)?.let { Either.Right(linesOf(it)) } ?: Either.Left("cannot read $path")
         } else {
             Either.Right(emptyList())
         }
+    }
+
+    // Lossy like Android's readLines: a torn last write must not stop the frame numbers being seeded.
+    private fun linesOf(data: NSData): List<String> {
+        val text = (data.bytes?.readBytes(data.length.toInt()) ?: ByteArray(0)).decodeToString()
+        // A trailing newline does not add an empty last line.
+        val lines = text.lines()
+        return if (lines.lastOrNull() == "") lines.dropLast(1) else lines
     }
 
     private fun ensureDirectory(): Either<String, Unit> =
