@@ -29,7 +29,7 @@ jobs:
           test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
           echo "version=$channel" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         id: toolchain
         with:
           toolchain: ${{ steps.pin.outputs.version }}
@@ -78,7 +78,7 @@ jobs:
           test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
           echo "version=$channel" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
         id: toolchain
         with:
           toolchain: ${{ steps.pin.outputs.version }}
@@ -123,8 +123,10 @@ jobs:
           key: konan-${{ runner.os }}-${{ steps.kotlin-version.outputs.version }}
 
       # --- Android SDK: lintAll runs the type-resolved detekt tasks of composeApp and androidApp, which need it ---
-      - uses: android-actions/setup-android@v3
-      - run: test -d "$ANDROID_HOME/platforms" || { echo "Android SDK missing" >&2; exit 1; }
+      - uses: android-actions/setup-android@v4
+      - run: |
+          test -d "$ANDROID_HOME/platforms" \
+            || { echo "no SDK platforms under $ANDROID_HOME (is the runner image SDK missing?)" >&2; exit 1; }
 
       # --- Gradle (dependency, wrapper and build caches) ---
       - uses: gradle/actions/setup-gradle@v5
@@ -138,13 +140,14 @@ jobs:
       - run: test -d iosApp/iosApp.xcodeproj
 
       # --- Build iOS app for simulator (the Xcode script compiles the Kotlin framework and links Rust into it) ---
-      # iPhone 17 on iOS 26.4 exists in the macos-26 image's Xcode 26.4 simulator runtime.
+      # No OS pin: the image's simulator runtimes drift (26.2, 26.4.1 and 26.5 today), so an exact OS can vanish.
+      # xcodebuild takes the first iPhone 17, which builds arm64 only; a generic destination would add x86_64.
       - run: |
           xcodebuild build \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
-            -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.4'
+            -destination 'platform=iOS Simulator,name=iPhone 17'
 
-      # --- Lint: ktlint + detekt for composeApp, androidApp, rustyqr-bindings, build-logic and the root scripts, plus
-      # swiftlint (ktlint on iosMain/iosTest only runs on macOS) ---
+      # --- Lint: ktlint + detekt for composeApp, androidApp, rustyqr-bindings and the root scripts, ktlint for
+      # build-logic, plus swiftlint (ktlint on iosMain/iosTest only runs on macOS) ---
       - run: ./gradlew lintAll
