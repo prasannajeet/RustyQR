@@ -15,7 +15,8 @@ pub enum QrError {
     #[error("Invalid input: {reason}")]
     InvalidInput { reason: String },
 
-    /// The QR encoding step failed (e.g. content exceeds QR data capacity).
+    /// An internal `qrcode` error other than capacity. Content that is simply
+    /// too long is reported as [`QrError::ContentTooLong`] instead.
     #[error("Encoding failed: {reason}")]
     EncodingFailed { reason: String },
 
@@ -26,4 +27,12 @@ pub enum QrError {
     /// An image-processing operation failed (e.g. PNG serialisation error).
     #[error("Image processing error: {reason}")]
     ImageError { reason: String },
+
+    /// Neither the `qrcode` optimizer nor a single byte-mode segment fits the
+    /// largest QR code (version 40) at the requested error-correction level.
+    ///
+    /// Declared last on purpose. Kept in the same order as `FfiQrError`, which
+    /// crosses FFI by declaration index.
+    #[error("Content too long: {reason}")]
+    ContentTooLong { reason: String },
 }

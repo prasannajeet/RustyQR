@@ -20,6 +20,7 @@
 //! | `decode_qr`             | `rusty_qr_core::decoder::decode` |
 //! | `decode_qr_from_raw`    | `rusty_qr_core::decoder::decode_from_raw` |
 //! | `get_library_version`   | `rusty_qr_core::encoder::get_library_version` |
+//! | `max_content_bytes`     | `rusty_qr_core::encoder::MAX_BYTE_CONTENT_LEN_LEVEL_M_U32` |
 
 uniffi::setup_scaffolding!();
 
@@ -94,6 +95,14 @@ pub enum FfiQrError {
         /// Human-readable description of the failure.
         reason: String,
     },
+    /// The content exceeds the capacity of the largest QR code.
+    ///
+    /// Declared last: flat errors cross FFI as their declaration index.
+    #[error("Content too long: {reason}")]
+    ContentTooLong {
+        /// Human-readable description of the failure.
+        reason: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +145,7 @@ impl From<rusty_qr_core::QrError> for FfiQrError {
         match value {
             rusty_qr_core::QrError::InvalidInput { reason } => Self::InvalidInput { reason },
             rusty_qr_core::QrError::EncodingFailed { reason } => Self::EncodingFailed { reason },
+            rusty_qr_core::QrError::ContentTooLong { reason } => Self::ContentTooLong { reason },
             rusty_qr_core::QrError::DecodingFailed { reason } => Self::DecodingFailed { reason },
             rusty_qr_core::QrError::ImageError { reason } => Self::ImageError { reason },
         }
@@ -184,6 +194,14 @@ fn decode_qr_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<FfiScanR
 #[uniffi::export]
 fn get_library_version() -> String {
     rusty_qr_core::encoder::get_library_version()
+}
+
+/// Returns the number of UTF-8 bytes of content that always encodes with `generate_png`.
+///
+/// Longer content encodes only if it packs into numeric or alphanumeric mode.
+#[uniffi::export]
+fn max_content_bytes() -> u32 {
+    rusty_qr_core::encoder::MAX_BYTE_CONTENT_LEN_LEVEL_M_U32
 }
 
 #[cfg(test)]
@@ -245,6 +263,12 @@ mod tests {
                 "encode fail",
             ),
             (
+                rusty_qr_core::QrError::ContentTooLong {
+                    reason: "too long".into(),
+                },
+                "too long",
+            ),
+            (
                 rusty_qr_core::QrError::DecodingFailed {
                     reason: "decode fail".into(),
                 },
@@ -262,6 +286,7 @@ mod tests {
             let ffi_err: FfiQrError = core_err.into();
             let (FfiQrError::InvalidInput { reason }
             | FfiQrError::EncodingFailed { reason }
+            | FfiQrError::ContentTooLong { reason }
             | FfiQrError::DecodingFailed { reason }
             | FfiQrError::ImageError { reason }) = ffi_err;
             assert_eq!(reason, expected_reason);
@@ -273,6 +298,9 @@ mod tests {
 
         let enc: FfiQrError = rusty_qr_core::QrError::EncodingFailed { reason: "x".into() }.into();
         assert!(matches!(enc, FfiQrError::EncodingFailed { .. }));
+
+        let long: FfiQrError = rusty_qr_core::QrError::ContentTooLong { reason: "x".into() }.into();
+        assert!(matches!(long, FfiQrError::ContentTooLong { .. }));
 
         let dec: FfiQrError = rusty_qr_core::QrError::DecodingFailed { reason: "x".into() }.into();
         assert!(matches!(dec, FfiQrError::DecodingFailed { .. }));
@@ -338,6 +366,21 @@ mod tests {
         let ffi_version = get_library_version();
         let core_version = rusty_qr_core::encoder::get_library_version();
         assert_eq!(ffi_version, core_version);
+    }
+
+    #[test]
+    fn max_content_bytes_is_the_boundary_of_generate_png() -> Result<(), Box<dyn std::error::Error>> {
+        let limit = usize::try_from(max_content_bytes())?;
+        assert!(
+            generate_png(&"a".repeat(limit), 256).is_ok(),
+            "content at the limit must encode"
+        );
+        let over = generate_png(&"a".repeat(limit + 1), 256);
+        assert!(
+            matches!(over, Err(FfiQrError::ContentTooLong { .. })),
+            "one byte over must be ContentTooLong, got {over:?}"
+        );
+        Ok(())
     }
 
     // -----------------------------------------------------------------------

@@ -29,6 +29,10 @@ sealed class QrError(
         reason: String,
     ) : QrError(reason)
 
+    class ContentTooLong(
+        reason: String,
+    ) : QrError(reason)
+
     companion object {
         fun from(throwable: Throwable): QrError = DecodingFailed(throwable.message ?: "Unknown error")
     }

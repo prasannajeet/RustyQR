@@ -23,9 +23,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.backhandler.BackHandler
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -33,13 +31,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigationevent.NavigationEventInfo
+import androidx.navigationevent.compose.NavigationBackHandler
+import androidx.navigationevent.compose.rememberNavigationEventState
 import com.p2.apps.rustyqr.ui.components.AmberButton
 import com.p2.apps.rustyqr.ui.components.AnimatedGenerateContent
 import com.p2.apps.rustyqr.ui.components.QrResultCard
 import com.p2.apps.rustyqr.ui.mvi.AnimationPhase
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.GenerateScreenState
-import com.p2.apps.rustyqr.ui.mvi.MAX_QR_INPUT_LENGTH
 import com.p2.apps.rustyqr.ui.resolve
 import com.p2.apps.rustyqr.ui.viewmodels.GenerateViewModel
 import org.jetbrains.compose.resources.stringResource
@@ -58,16 +58,17 @@ private const val PILL_PREVIEW_MAX_CHARS = 40
  *
  * Wires [GenerateViewModel] to [GenerateContent].
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun GenerateScreen(viewModel: GenerateViewModel = viewModel { GenerateViewModel(createSavedStateHandle()) }) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Hardware/gesture back collapses result card back to input (instead of exiting app)
-    BackHandler(enabled = state.animationPhase == AnimationPhase.ShowingResult) {
-        viewModel.onIntent(GenerateQRCodeScreenIntent.ClearResult)
-    }
+    NavigationBackHandler(
+        state = rememberNavigationEventState(currentInfo = NavigationEventInfo.None),
+        isBackEnabled = state.animationPhase == AnimationPhase.ShowingResult,
+        onBackCompleted = { viewModel.onIntent(GenerateQRCodeScreenIntent.ClearResult) },
+    )
 
     val errorText = state.error?.resolve()
     val messageText = state.message?.resolve()
@@ -183,6 +184,7 @@ private fun InputForm(
 
         QrInputField(
             inputText = state.inputText,
+            isInputTooLong = state.isInputTooLong,
             onTextChange = { onIntent(GenerateQRCodeScreenIntent.UpdateText(it)) },
         )
 
@@ -190,7 +192,7 @@ private fun InputForm(
 
         GenerateButton(
             isGenerating = state.isGenerating,
-            inputText = state.inputText,
+            enabled = state.canGenerate,
             onGenerate = {
                 keyboardController?.hide()
                 focusManager.clearFocus(force = true)
@@ -203,10 +205,9 @@ private fun InputForm(
 @Composable
 private fun QrInputField(
     inputText: String,
+    isInputTooLong: Boolean,
     onTextChange: (String) -> Unit,
 ) {
-    val isInputTooLong = inputText.length > MAX_QR_INPUT_LENGTH
-
     val keyboardOptions =
         KeyboardOptions(
             capitalization = KeyboardCapitalization.None,
@@ -258,20 +259,17 @@ private fun QrInputField(
 @Composable
 private fun GenerateButton(
     isGenerating: Boolean,
-    inputText: String,
+    enabled: Boolean,
     onGenerate: () -> Unit,
 ) {
     val buttonText =
         stringResource(
             if (isGenerating) Res.string.generate_loading else Res.string.generate_button,
         )
-    val buttonEnabled =
-        inputText.isNotBlank() &&
-            inputText.length <= MAX_QR_INPUT_LENGTH
     AmberButton(
         text = buttonText,
         onClick = onGenerate,
-        enabled = buttonEnabled,
+        enabled = enabled,
         loading = isGenerating,
     )
 }

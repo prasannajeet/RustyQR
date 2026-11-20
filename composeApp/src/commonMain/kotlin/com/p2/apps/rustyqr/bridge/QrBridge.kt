@@ -89,6 +89,7 @@ private fun ffiErrorToQrError(throwable: Throwable): QrError =
                 is FfiQrException.InvalidInput -> QrError.InvalidInput(throwable.message ?: "Invalid input")
                 is FfiQrException.EncodingFailed -> QrError.EncodingFailed(throwable.message ?: "Encoding failed")
                 is FfiQrException.DecodingFailed -> QrError.DecodingFailed(throwable.message ?: "Decoding failed")
+                is FfiQrException.ContentTooLong -> QrError.ContentTooLong(throwable.message ?: "Content too long")
                 is FfiQrException.ImageException -> QrError.ImageError(throwable.message ?: "Image error")
             }
         else -> QrError.from(throwable)

@@ -23,6 +23,62 @@ use crate::QrError;
 /// Maximum output image size in pixels (width = height).
 const MAX_SIZE: u32 = 4096;
 
+/// Maximum content length, in UTF-8 bytes, that always encodes with [`generate_png`].
+///
+/// Content of at most this many UTF-8 bytes always encodes with [`generate_png`]:
+/// it is the byte-mode capacity of a version 40 QR code at error-correction
+/// level M, and encoding falls back to a single byte-mode segment whenever the
+/// mixed-mode segmentation does not fit. Longer content encodes only if it
+/// packs into numeric or alphanumeric mode. [`generate_with_config`] with another
+/// level has a different capacity.
+pub const MAX_BYTE_CONTENT_LEN_LEVEL_M: usize = MAX_BYTE_CONTENT_LEN_LEVEL_M_U32 as usize;
+
+/// [`MAX_BYTE_CONTENT_LEN_LEVEL_M`] as a `u32`, the type exported across FFI. The `usize` constant derives from it.
+pub const MAX_BYTE_CONTENT_LEN_LEVEL_M_U32: u32 = 2331;
+
+/// Converts a `qrcode` encoding error, reporting oversized data as its own variant.
+fn map_encode_error(error: qrcode::types::QrError) -> QrError {
+    match error {
+        qrcode::types::QrError::DataTooLong => QrError::ContentTooLong {
+            reason: error.to_string(),
+        },
+        qrcode::types::QrError::InvalidVersion
+        | qrcode::types::QrError::UnsupportedCharacterSet
+        | qrcode::types::QrError::InvalidEciDesignator
+        | qrcode::types::QrError::InvalidCharacter => QrError::EncodingFailed {
+            reason: error.to_string(),
+        },
+    }
+}
+
+/// Encodes `data` at `level`, falling back to a single byte-mode segment when
+/// the `qrcode` optimizer's mixed-mode segmentation does not fit.
+///
+/// The optimizer splits text with short digit or uppercase runs into several
+/// segments, and each extra segment header can cost more bits than it saves.
+fn encode(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::QrCode, QrError> {
+    match qrcode::QrCode::with_error_correction_level(data, level) {
+        Err(qrcode::types::QrError::DataTooLong) => encode_single_byte_segment(data, level),
+        other => other.map_err(map_encode_error),
+    }
+}
+
+/// Encodes `data` as one byte-mode segment in the smallest version that holds it.
+fn encode_single_byte_segment(data: &[u8], level: qrcode::EcLevel) -> Result<qrcode::QrCode, QrError> {
+    for version in 1..=40 {
+        let mut bits = qrcode::bits::Bits::new(qrcode::Version::Normal(version));
+        if bits.push_byte_data(data).is_ok() && bits.push_terminator(level).is_ok() {
+            return qrcode::QrCode::with_bits(bits, level).map_err(map_encode_error);
+        }
+    }
+    Err(QrError::ContentTooLong {
+        reason: format!(
+            "{} UTF-8 bytes do not fit a version 40 QR code at level {level:?}",
+            data.len()
+        ),
+    })
+}
+
 /// Validates the common inputs shared by all generation functions.
 ///
 /// # Errors
@@ -59,14 +115,15 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 ///
 /// * [`QrError::InvalidInput`] – `content` is empty, or `size` is 0 or greater
 ///   than 4096.
+/// * [`QrError::ContentTooLong`] – The content exceeds the capacity of the
+///   largest QR code at the chosen error-correction level.
 /// * [`QrError::EncodingFailed`] – The `qrcode` library could not encode the
-///   content (e.g. the data exceeds QR capacity).
+///   content for any other reason.
 /// * [`QrError::ImageError`] – The PNG serialisation step failed.
 pub fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, QrError> {
     validate_generate_inputs(content, size)?;
 
-    let code =
-        qrcode::QrCode::new(content.as_bytes()).map_err(|e| QrError::EncodingFailed { reason: e.to_string() })?;
+    let code = encode(content.as_bytes(), qrcode::EcLevel::M)?;
 
     render_qr_to_png(&code, size)
 }
@@ -86,15 +143,16 @@ pub fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, QrError> {
 ///
 /// * [`QrError::InvalidInput`] – `content` is empty, or `config.size` is 0 or
 ///   greater than 4096.
+/// * [`QrError::ContentTooLong`] – The content exceeds the capacity of the
+///   largest QR code at the chosen error-correction level.
 /// * [`QrError::EncodingFailed`] – The `qrcode` library could not encode the
-///   content (e.g. the data exceeds QR capacity).
+///   content for any other reason.
 /// * [`QrError::ImageError`] – The PNG serialisation step failed.
 pub fn generate_with_config(content: &str, config: QrConfig) -> Result<Vec<u8>, QrError> {
     validate_generate_inputs(content, config.size)?;
 
     // --- QR encoding with specified error correction level ---
-    let code = qrcode::QrCode::with_error_correction_level(content.as_bytes(), config.error_correction.to_ec_level())
-        .map_err(|e| QrError::EncodingFailed { reason: e.to_string() })?;
+    let code = encode(content.as_bytes(), config.error_correction.to_ec_level())?;
 
     render_qr_to_png(&code, config.size)
 }
@@ -309,12 +367,157 @@ mod tests {
 
     #[test]
     fn encode_content_exceeds_qr_capacity() {
-        // QR codes have a maximum data capacity; 3000+ bytes of data should exceed it.
         let huge_content: String = "A".repeat(3500);
         let result = generate_png(&huge_content, 256);
         assert!(
-            matches!(result, Err(QrError::EncodingFailed { .. })),
-            "oversized content should return EncodingFailed, got {result:?}"
+            matches!(result, Err(QrError::ContentTooLong { .. })),
+            "oversized content should return ContentTooLong, got {result:?}"
         );
+    }
+
+    #[test]
+    fn byte_mode_boundary_is_max_byte_content_len() -> Result<(), Box<dyn std::error::Error>> {
+        let at_limit = generate_png(&"a".repeat(MAX_BYTE_CONTENT_LEN_LEVEL_M), 256)?;
+        assert_eq!(at_limit.get(..8), Some(PNG_MAGIC), "content at the limit must encode");
+
+        let over = generate_png(&"a".repeat(MAX_BYTE_CONTENT_LEN_LEVEL_M + 1), 256);
+        assert!(
+            matches!(over, Err(QrError::ContentTooLong { .. })),
+            "one byte over the limit must return ContentTooLong, got {over:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn multibyte_boundary_is_measured_in_utf8_bytes() -> Result<(), Box<dyn std::error::Error>> {
+        // "é" is 2 bytes in UTF-8, so an odd limit needs one extra ASCII byte.
+        let at_limit = format!("a{}", "é".repeat(MAX_BYTE_CONTENT_LEN_LEVEL_M / 2));
+        assert_eq!(at_limit.len(), MAX_BYTE_CONTENT_LEN_LEVEL_M);
+        let encoded = generate_png(&at_limit, 256)?;
+        assert_eq!(encoded.get(..8), Some(PNG_MAGIC), "content at the limit must encode");
+
+        let over = format!("{at_limit}a");
+        assert_eq!(over.len(), MAX_BYTE_CONTENT_LEN_LEVEL_M + 1);
+        let result = generate_png(&over, 256);
+        assert!(
+            matches!(result, Err(QrError::ContentTooLong { .. })),
+            "one UTF-8 byte over the limit must return ContentTooLong, got {result:?}"
+        );
+
+        // Fewer characters than the limit, but more bytes: still too long.
+        let few_chars = "é".repeat(MAX_BYTE_CONTENT_LEN_LEVEL_M / 2 + 1);
+        assert!(few_chars.chars().count() <= MAX_BYTE_CONTENT_LEN_LEVEL_M);
+        assert!(
+            few_chars.len() > MAX_BYTE_CONTENT_LEN_LEVEL_M,
+            "must be over the limit in bytes"
+        );
+        let result = generate_png(&few_chars, 256);
+        assert!(
+            matches!(result, Err(QrError::ContentTooLong { .. })),
+            "limit is in bytes, not characters, got {result:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn digits_only_content_can_exceed_byte_limit() -> Result<(), Box<dyn std::error::Error>> {
+        let digits = "7".repeat(MAX_BYTE_CONTENT_LEN_LEVEL_M + 1);
+        let result = generate_png(&digits, 256)?;
+        assert_eq!(result.get(..8), Some(PNG_MAGIC), "numeric mode packs more characters");
+        Ok(())
+    }
+
+    #[test]
+    fn with_config_oversized_content_returns_content_too_long() {
+        let config = QrConfig {
+            size: 256,
+            error_correction: QrErrorCorrection::High,
+        };
+        let result = generate_with_config(&"a".repeat(MAX_BYTE_CONTENT_LEN_LEVEL_M), config);
+        assert!(
+            matches!(result, Err(QrError::ContentTooLong { .. })),
+            "level H holds less than level M, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn non_capacity_encoding_errors_stay_encoding_failed() {
+        let errors = [
+            qrcode::types::QrError::InvalidVersion,
+            qrcode::types::QrError::UnsupportedCharacterSet,
+            qrcode::types::QrError::InvalidEciDesignator,
+            qrcode::types::QrError::InvalidCharacter,
+        ];
+        for error in errors {
+            let mapped = map_encode_error(error);
+            assert!(matches!(mapped, QrError::EncodingFailed { .. }), "got {mapped:?}");
+        }
+    }
+
+    #[test]
+    fn byte_limit_holds_for_text_with_short_digit_runs() -> Result<(), Box<dyn std::error::Error>> {
+        // Short digit runs make the qrcode optimizer split segments, which can cost
+        // more bits than a single byte-mode segment.
+        let patterns = [
+            "x12345",
+            "Call me at 5551234 or 5559876 tomorrow. ",
+            "order 48213 shipped, tracking 9400111 ok; ",
+        ];
+        for pattern in patterns {
+            let text = pattern.repeat(MAX_BYTE_CONTENT_LEN_LEVEL_M);
+            let at_limit = text.get(..MAX_BYTE_CONTENT_LEN_LEVEL_M).ok_or("pattern too short")?;
+            let png = generate_png(at_limit, 256)?;
+            assert_eq!(png.get(..8), Some(PNG_MAGIC), "{pattern:?} at the limit must encode");
+
+            let over = text.get(..=MAX_BYTE_CONTENT_LEN_LEVEL_M).ok_or("pattern too short")?;
+            let result = generate_png(over, 256);
+            assert!(
+                matches!(result, Err(QrError::ContentTooLong { .. })),
+                "{pattern:?} one byte over must return ContentTooLong, got {result:?}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn digit_run_content_at_the_limit_round_trips() -> Result<(), Box<dyn std::error::Error>> {
+        let text = "x12345".repeat(MAX_BYTE_CONTENT_LEN_LEVEL_M);
+        let at_limit = text.get(..MAX_BYTE_CONTENT_LEN_LEVEL_M).ok_or("pattern too short")?;
+        let png = generate_png(at_limit, 1024)?;
+        let scan = crate::decoder::decode(&png)?;
+        assert_eq!(scan.content, at_limit);
+        Ok(())
+    }
+
+    #[test]
+    fn with_config_holds_the_byte_capacity_of_each_level() -> Result<(), Box<dyn std::error::Error>> {
+        let capacities = [
+            (QrErrorCorrection::Low, 2953),
+            (QrErrorCorrection::Medium, 2331),
+            (QrErrorCorrection::Quartile, 1663),
+            (QrErrorCorrection::High, 1273),
+        ];
+        for (level, capacity) in capacities {
+            let text = "x12345".repeat(capacity);
+            let config = QrConfig {
+                size: 256,
+                error_correction: level,
+            };
+            let at_limit = text.get(..capacity).ok_or("pattern too short")?;
+            let png = generate_with_config(at_limit, config)?;
+            assert_eq!(
+                png.get(..8),
+                Some(PNG_MAGIC),
+                "level {level:?} at {capacity} bytes must encode"
+            );
+
+            let over = text.get(..=capacity).ok_or("pattern too short")?;
+            let result = generate_with_config(over, config);
+            assert!(
+                matches!(result, Err(QrError::ContentTooLong { .. })),
+                "level {level:?} one byte over must return ContentTooLong, got {result:?}"
+            );
+        }
+        Ok(())
     }
 }

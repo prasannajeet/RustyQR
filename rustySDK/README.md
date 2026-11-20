@@ -15,7 +15,7 @@
 
 <p><b>3 crates · 56 tests · 0 panics · sub-20&nbsp;ms decode on the camera path</b></p>
 
-<sub>One codebase, two platforms, zero manual bridging. The SDK exposes five pure functions for QR generation and scanning; UniFFI emits the Kotlin and Swift bindings automatically.</sub>
+<sub>One codebase, two platforms, zero manual bridging. The SDK exposes six pure functions for QR generation and scanning; UniFFI emits the Kotlin and Swift bindings automatically.</sub>
 
 <br/><br/>
 
@@ -78,7 +78,7 @@ types) automatically.
 
 ## What Does This SDK Do?
 
-Five stateless, pure functions. Same input → same output, no side effects, trivially thread-safe.
+Six stateless, pure functions. Same input → same output, no side effects, trivially thread-safe.
 
 | Function               | Input                          | Output         | Use Case                                                     |
 |------------------------|--------------------------------|----------------|--------------------------------------------------------------|
@@ -87,6 +87,7 @@ Five stateless, pure functions. Same input → same output, no side effects, tri
 | `decode_qr`            | PNG/JPEG bytes                 | decoded text   | Decode a QR code from a saved image                          |
 | `decode_qr_from_raw`   | grayscale pixels + dimensions  | decoded text   | Decode from a live camera frame (no image encoding overhead) |
 | `get_library_version`  | —                              | version string | Runtime version check                                        |
+| `max_content_bytes`    | —                              | u32            | UTF-8 byte limit that always encodes with `generate_png` (level M) |
 
 ---
 
@@ -128,7 +129,7 @@ rustySDK/
 │   │   │   ├── encoder.rs     # QR generation (text -> PNG bytes)
 │   │   │   ├── decoder.rs     # QR scanning (image bytes -> text)
 │   │   │   ├── types.rs       # Shared types: QrConfig, ScanResult, QrErrorCorrection
-│   │   │   ├── error.rs       # QrError enum (4 variants)
+│   │   │   ├── error.rs       # QrError enum (5 variants)
 │   │   │   └── command.rs     # Command dispatcher (internal, for testing)
 │   │   ├── tests/             # Integration tests
 │   │   │   ├── round_trip.rs  # Encode -> decode preserves content
@@ -321,8 +322,7 @@ either `Ok(value)` or `Err(error)`:
 // This function returns either a Vec<u8> (success) or a QrError (failure)
 pub fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, QrError> {
     validate_generate_inputs(content, size)?;  // ? = return early if Err
-    let code = qrcode::QrCode::new(content.as_bytes())
-        .map_err(|e| QrError::EncodingFailed { reason: e.to_string() })?;
+    let code = encode(content.as_bytes(), qrcode::EcLevel::M)?;  // ContentTooLong if too long
     render_qr_to_png(&code, size)
 }
 ```
@@ -339,15 +339,16 @@ associated values:
 ```rust
 pub enum QrError {
     InvalidInput { reason: String },     // caller's fault
-    EncodingFailed { reason: String },   // QR encoding library error
+    EncodingFailed { reason: String },   // internal qrcode error, not capacity
     DecodingFailed { reason: String },   // no QR code found
     ImageError { reason: String },       // PNG/JPEG processing error
+    ContentTooLong { reason: String },   // exceeds the largest QR code (declared last)
 }
 ```
 
 UniFFI maps this to:
 
-- **Kotlin**: `sealed class FfiQrException` with subclasses (`InvalidInput`, `EncodingFailed`, etc.)
+- **Kotlin**: `sealed class FfiQrException` with subclasses (`InvalidInput`, `EncodingFailed`, `ContentTooLong`, etc.)
 - **Swift**: `enum FfiQrError` with associated values
 
 ### Traits and Derive Macros
@@ -640,6 +641,7 @@ classDiagram
             EncodingFailed~reason String~
             DecodingFailed~reason String~
             ImageError~reason String~
+            ContentTooLong~reason String~
         }
     }
 
@@ -669,6 +671,7 @@ classDiagram
             EncodingFailed~reason String~
             DecodingFailed~reason String~
             ImageError~reason String~
+            ContentTooLong~reason String~
         }
     }
 
@@ -701,7 +704,7 @@ belongs in core.**
 </details>
 
 <details>
-<summary><b>Error Handling</b> — zero panics, four typed variants, upfront validation</summary>
+<summary><b>Error Handling</b> — zero panics, five typed variants, upfront validation</summary>
 
 <br/>
 
@@ -718,6 +721,7 @@ graph LR
     D --> F[EncodingFailed]
     D --> G[DecodingFailed]
     D --> H[ImageError]
+    D --> I[ContentTooLong]
 ```
 
 The library guarantees **zero panics** in production code. A panic in Rust is equivalent to an
@@ -729,9 +733,10 @@ unhandled exception — it would crash the mobile app. Every error is caught and
 | Variant          | When it occurs                                          | Caller action                              |
 |------------------|---------------------------------------------------------|--------------------------------------------|
 | `InvalidInput`   | Empty content, size = 0, size > 4096, empty image bytes | Fix the input — never retry                |
-| `EncodingFailed` | Content exceeds QR capacity                             | Try shorter content or lower EC level      |
+| `EncodingFailed` | Internal `qrcode` error; not expected for text input    | Report as a bug                            |
 | `DecodingFailed` | No QR code found in image                               | Expected — not all images contain QR codes |
 | `ImageError`     | PNG/JPEG parsing failed, image encoding error           | Check the image format                     |
+| `ContentTooLong` | Content exceeds the largest QR code at the chosen level | Shorten to at most 2331 UTF-8 bytes at level M, or lower the EC level |
 
 ### Validation Pattern
 

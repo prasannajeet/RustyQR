@@ -6,11 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.p2.apps.rustyqr.bridge.QrBridge
 import com.p2.apps.rustyqr.bridge.saveQrImage
 import com.p2.apps.rustyqr.bridge.shareQrImage
+import com.p2.apps.rustyqr.model.QrError
 import com.p2.apps.rustyqr.ui.UiText
 import com.p2.apps.rustyqr.ui.mvi.AnimationPhase
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.GenerateScreenState
-import com.p2.apps.rustyqr.ui.mvi.MAX_QR_INPUT_LENGTH
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -27,6 +27,19 @@ private const val QR_IMAGE_SIZE_PX = 512
 private const val SHARE_FILE_PREFIX = "rusty-qr"
 private const val SHARE_FILE_NAME_MAX_INPUT_CHARS = 24
 private const val KEY_INPUT_TEXT = "generate.inputText"
+
+private val tooLongText = UiText.Res(Res.string.generate_error_too_long)
+
+/** Oversized content has a localised message; other errors show their reason. */
+internal fun QrError.toGenerateErrorText(): UiText =
+    when (this) {
+        is QrError.ContentTooLong -> tooLongText
+        is QrError.InvalidInput,
+        is QrError.EncodingFailed,
+        is QrError.DecodingFailed,
+        is QrError.ImageError,
+        -> UiText.Raw(reason)
+    }
 
 /**
  * Processes [GenerateQRCodeScreenIntent]s and updates [GenerateScreenState].
@@ -72,17 +85,16 @@ class GenerateViewModel(
     }
 
     private fun handleGenerate() {
-        val input = state.value.inputText.trim()
+        val current = state.value
 
-        if (input.isBlank()) return
-
-        if (input.length > MAX_QR_INPUT_LENGTH) {
-            state.update {
-                it.copy(error = UiText.Res(Res.string.generate_error_too_long))
+        if (!current.canGenerate) {
+            if (current.isInputTooLong) {
+                state.update { it.copy(error = tooLongText) }
             }
             return
         }
 
+        val input = current.inputText.trim()
         viewModelScope.launch {
             state.update { it.copy(isGenerating = true, error = null) }
             val result =
@@ -94,7 +106,7 @@ class GenerateViewModel(
                     state.update {
                         it.copy(
                             isGenerating = false,
-                            error = UiText.Raw(error.reason),
+                            error = error.toGenerateErrorText(),
                         )
                     }
                 },
