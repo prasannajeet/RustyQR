@@ -97,9 +97,17 @@ tasks.named("lintKotlin") {
     dependsOn(
         ":composeApp:verifyFontFiles",
         gradle.includedBuild("build-logic").task(":ktlintCheck"),
-        // Lazy by name: only the lintKotlin tasks are realised, not every task of every subproject.
-        subprojects.map { sub -> sub.tasks.named { name -> name == "lintKotlin" } },
     )
+}
+
+// Each module that applies the convention plugin adds its own lintKotlin, by path. A path string is resolved only
+// when the task graph is built, so nothing is realised while configuring (collecting the tasks themselves, even
+// lazily, realised tasks that the Kotlin Gradle plugin configures, which logs a Gradle deprecation).
+subprojects {
+    pluginManager.withPlugin("rustyqr.kotlin-lint") {
+        val moduleLintTask = "$path:lintKotlin"
+        rootProject.tasks.named("lintKotlin") { dependsOn(moduleLintTask) }
+    }
 }
 
 tasks.register("lintAll") {
