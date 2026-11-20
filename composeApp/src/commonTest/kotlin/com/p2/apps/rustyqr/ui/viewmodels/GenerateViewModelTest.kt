@@ -18,6 +18,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -27,6 +28,7 @@ import rustyqr.composeapp.generated.resources.generate_error_failed
 import rustyqr.composeapp.generated.resources.generate_error_save_failed
 import rustyqr.composeapp.generated.resources.generate_error_share_failed
 import rustyqr.composeapp.generated.resources.generate_error_too_long
+import rustyqr.composeapp.generated.resources.generate_message_saved
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -83,11 +85,29 @@ class GenerateViewModelTest {
     private val store = ViewModelStore()
     private val logged = mutableListOf<String>()
 
+    /** The calls one image lambda received, each as the bytes and the suggested name. */
+    private class ImageCalls {
+        val calls = mutableListOf<Pair<List<Byte>, String>>()
+
+        fun record(
+            bytes: ByteArray,
+            name: String,
+            result: Either<String, Unit>,
+        ): Either<String, Unit> {
+            calls += bytes.toList() to name
+            return result
+        }
+    }
+
+    private val savedImages = ImageCalls()
+    private val sharedImages = ImageCalls()
+    private var saveResult: Either<String, Unit> = Unit.right()
+    private var shareResult: Either<String, Unit> = Unit.right()
+
     private fun viewModel(
         encoder: QrEncoder,
         handle: SavedStateHandle = SavedStateHandle(),
         ioDispatcher: CoroutineDispatcher = dispatcher,
-        imageResult: Either<String, Unit> = Unit.right(),
     ): GenerateViewModel {
         val factory =
             viewModelFactory {
@@ -97,8 +117,8 @@ class GenerateViewModelTest {
                         ioDispatcher,
                         encoder,
                         log = { logged += it },
-                        saveImage = { _, _ -> imageResult },
-                        shareImage = { _, _ -> imageResult },
+                        saveImage = { bytes, name -> savedImages.record(bytes, name, saveResult) },
+                        shareImage = { bytes, name -> sharedImages.record(bytes, name, shareResult) },
                     )
                 }
             }
@@ -343,14 +363,47 @@ class GenerateViewModelTest {
             assertEquals(text, handle.get<String>(KEY_INPUT_TEXT))
         }
 
+    private fun TestScope.generatedViewModel(): GenerateViewModel {
+        val viewModel = viewModel(FakeQrEncoder())
+        viewModel.type("abc")
+        advanceUntilIdle()
+        viewModel.onIntent(GenerateQRCodeScreenIntent.Generate)
+        advanceUntilIdle()
+        return viewModel
+    }
+
+    @Test
+    fun saveCallsOnlyTheSaveLambdaWithThePngAndTheSuggestedName() =
+        runTest(dispatcher) {
+            val viewModel = generatedViewModel()
+
+            viewModel.onIntent(GenerateQRCodeScreenIntent.SaveQr)
+            advanceUntilIdle()
+
+            assertEquals(listOf(listOf<Byte>(1) to "rusty-qr-abc"), savedImages.calls)
+            assertTrue(sharedImages.calls.isEmpty())
+            assertEquals(UiText.Res(Res.string.generate_message_saved), viewModel.state.value.message)
+            assertNull(viewModel.state.value.error)
+        }
+
+    @Test
+    fun shareCallsOnlyTheShareLambdaWithThePngAndTheSuggestedName() =
+        runTest(dispatcher) {
+            val viewModel = generatedViewModel()
+
+            viewModel.onIntent(GenerateQRCodeScreenIntent.ShareQr)
+            advanceUntilIdle()
+
+            assertEquals(listOf(listOf<Byte>(1) to "rusty-qr-abc"), sharedImages.calls)
+            assertTrue(savedImages.calls.isEmpty())
+            assertNull(viewModel.state.value.error)
+        }
+
     @Test
     fun saveFailureShowsLocalisedTextAndLogsThePlatformReason() =
         runTest(dispatcher) {
-            val viewModel = viewModel(FakeQrEncoder(), imageResult = "disk full".left())
-            viewModel.type("abc")
-            advanceUntilIdle()
-            viewModel.onIntent(GenerateQRCodeScreenIntent.Generate)
-            advanceUntilIdle()
+            saveResult = "disk full".left()
+            val viewModel = generatedViewModel()
 
             viewModel.onIntent(GenerateQRCodeScreenIntent.SaveQr)
             advanceUntilIdle()
@@ -362,11 +415,8 @@ class GenerateViewModelTest {
     @Test
     fun shareFailureShowsLocalisedTextAndLogsThePlatformReason() =
         runTest(dispatcher) {
-            val viewModel = viewModel(FakeQrEncoder(), imageResult = "no share target".left())
-            viewModel.type("abc")
-            advanceUntilIdle()
-            viewModel.onIntent(GenerateQRCodeScreenIntent.Generate)
-            advanceUntilIdle()
+            shareResult = "no share target".left()
+            val viewModel = generatedViewModel()
 
             viewModel.onIntent(GenerateQRCodeScreenIntent.ShareQr)
             advanceUntilIdle()
