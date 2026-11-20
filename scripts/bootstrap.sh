@@ -86,6 +86,10 @@ echo
 # $1 = human name, $2 = install command (string)
 # Call it right after the matching `fail`: a successful install takes that entry back out of MISSING. Callers append
 # `|| true`, which switches `set -e` off in here, so the install command's exit status is checked explicitly.
+# The command runs in `bash -c` WITHOUT pipefail, so a pipeline reports only its last stage's status (a failed
+# `curl | sh` runs sh on an empty script and "succeeds"). Commands that download a script must save it to a temp file
+# first and run it afterwards, as the rustup install does. pipefail is deliberately not enabled here: a command such
+# as `claude plugin marketplace list | grep -q` would then fail on SIGPIPE when grep exits early.
 run_install() {
     local name="$1"
     local cmd="$2"
@@ -153,7 +157,7 @@ elif ! command -v rustup &>/dev/null; then
     else
         fail "rustup / cargo not installed"
         maybe_install "rustup" \
-            "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" \
+            'script="$(mktemp)" && curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs -o "$script" && sh "$script" -y; status=$?; rm -f "$script"; exit $status' \
             || true
         # What ~/.cargo/env does, without sourcing a file outside the repository.
         export PATH="$HOME/.cargo/bin:$PATH"
