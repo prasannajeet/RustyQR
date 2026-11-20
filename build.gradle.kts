@@ -97,7 +97,8 @@ tasks.named("lintKotlin") {
     dependsOn(
         ":composeApp:verifyFontFiles",
         gradle.includedBuild("build-logic").task(":ktlintCheck"),
-        provider { subprojects.flatMap { it.tasks.matching { task -> task.name == "lintKotlin" } } },
+        // Lazy by name: only the lintKotlin tasks are realised, not every task of every subproject.
+        subprojects.map { sub -> sub.tasks.named { name -> name == "lintKotlin" } },
     )
 }
 
