@@ -23,6 +23,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import rustyqr.composeapp.generated.resources.Res
+import rustyqr.composeapp.generated.resources.generate_error_failed
 import rustyqr.composeapp.generated.resources.generate_error_too_long
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -36,6 +37,7 @@ import kotlin.test.assertTrue
 
 private const val NUMERIC_CAPACITY_LEVEL_M = 5596
 private val tooLongError = UiText.Res(Res.string.generate_error_too_long)
+private val failedError = UiText.Res(Res.string.generate_error_failed)
 
 /** A [QrEncoder] whose answers come from the test and which records every call. */
 private class FakeQrEncoder(
@@ -75,13 +77,17 @@ class GenerateViewModelTest {
     }
 
     private val store = ViewModelStore()
+    private val logged = mutableListOf<String>()
 
     private fun viewModel(
         encoder: QrEncoder,
         handle: SavedStateHandle = SavedStateHandle(),
         ioDispatcher: CoroutineDispatcher = dispatcher,
     ): GenerateViewModel {
-        val factory = viewModelFactory { initializer { GenerateViewModel(handle, ioDispatcher, encoder) } }
+        val factory =
+            viewModelFactory {
+                initializer { GenerateViewModel(handle, ioDispatcher, encoder, log = { logged += it }) }
+            }
         return ViewModelProvider.create(store, factory)[GenerateViewModel::class]
     }
 
@@ -102,7 +108,7 @@ class GenerateViewModelTest {
 
             assertEquals(listOf(text), encoder.checked)
             assertEquals(listOf(text), encoder.generated)
-            assertNotNull(viewModel.state.value.qrImageBytes)
+            assertNotNull(viewModel.state.value.qrPng)
         }
 
     @Test
@@ -226,7 +232,8 @@ class GenerateViewModelTest {
             advanceUntilIdle()
 
             assertEquals(listOf("abc"), encoder.generated)
-            assertContentEquals(byteArrayOf(1), viewModel.state.value.qrImageBytes)
+            val png = viewModel.state.value.qrPng
+            assertContentEquals(byteArrayOf(1), png?.bytes)
         }
 
     @Test
@@ -259,7 +266,7 @@ class GenerateViewModelTest {
             advanceUntilIdle()
 
             assertEquals(tooLongError, viewModel.state.value.error)
-            assertNull(viewModel.state.value.qrImageBytes)
+            assertNull(viewModel.state.value.qrPng)
             assertFalse(viewModel.state.value.isGenerating)
         }
 
@@ -272,7 +279,53 @@ class GenerateViewModelTest {
     }
 
     @Test
-    fun otherErrorsKeepRustReason() {
-        assertEquals(UiText.Raw("boom"), QrError.EncodingFailed("boom").toGenerateErrorText())
+    fun otherErrorsMapToTheLocalisedFailureText() {
+        val errors =
+            listOf(
+                QrError.InvalidInput("boom"),
+                QrError.EncodingFailed("boom"),
+                QrError.DecodingFailed("boom"),
+                QrError.ImageError("boom"),
+            )
+        errors.forEach { assertEquals(failedError, it.toGenerateErrorText()) }
     }
+
+    @Test
+    fun generationFailureShowsLocalisedTextAndLogsTheRustReason() =
+        runTest(dispatcher) {
+            val viewModel = viewModel(FakeQrEncoder(png = QrError.EncodingFailed("rust says boom").left()))
+
+            viewModel.type("abc")
+            advanceUntilIdle()
+            viewModel.onIntent(GenerateQRCodeScreenIntent.Generate)
+            advanceUntilIdle()
+
+            assertEquals(failedError, viewModel.state.value.error)
+            assertEquals(listOf("Generate failed: rust says boom"), logged)
+        }
+
+    @Test
+    fun hugeInputIsKeptInStateButOnlyACappedCopyIsSaved() =
+        runTest(dispatcher) {
+            val handle = SavedStateHandle()
+            val viewModel = viewModel(FakeQrEncoder(), handle)
+            val huge = "x".repeat(MAX_SAVED_INPUT_CHARS + 100)
+
+            viewModel.type(huge)
+
+            assertEquals(huge, viewModel.state.value.inputText)
+            assertEquals(MAX_SAVED_INPUT_CHARS, handle.get<String>(KEY_INPUT_TEXT)?.length)
+        }
+
+    @Test
+    fun inputWithinTheCapIsSavedUnchanged() =
+        runTest(dispatcher) {
+            val handle = SavedStateHandle()
+            val viewModel = viewModel(FakeQrEncoder(), handle)
+            val text = "7".repeat(NUMERIC_CAPACITY_LEVEL_M)
+
+            viewModel.type(text)
+
+            assertEquals(text, handle.get<String>(KEY_INPUT_TEXT))
+        }
 }

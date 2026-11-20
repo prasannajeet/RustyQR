@@ -8,7 +8,6 @@ import com.p2.apps.rustyqr.rust.contentFits as ffiContentFits
 import com.p2.apps.rustyqr.rust.decodeQr as ffiDecodeQr
 import com.p2.apps.rustyqr.rust.decodeQrFromRaw as ffiDecodeQrFromRaw
 import com.p2.apps.rustyqr.rust.generatePng as ffiGeneratePng
-import com.p2.apps.rustyqr.rust.getLibraryVersion as ffiGetLibraryVersion
 
 /**
  * Bridge to the Rust QR library, shared by Android and iOS.
@@ -21,7 +20,6 @@ import com.p2.apps.rustyqr.rust.getLibraryVersion as ffiGetLibraryVersion
  *
  * Error contract: [generateQrPng], [contentFits], [decodeQr] and [decodeQrFromRaw] return [Either.Left] with a
  * [QrError] on failure, so callers use [Either.fold] or [Either.onRight] and need no try/catch.
- * [getLibraryVersion] is the exception: it returns a plain [String] and can throw.
  */
 object QrBridge : QrEncoder {
     /**
@@ -37,7 +35,7 @@ object QrBridge : QrEncoder {
     ): Either<QrError, ByteArray> =
         Either
             .catch { ffiGeneratePng(content, size.toUInt()) }
-            .mapLeft { ffiErrorToQrError(it) }
+            .mapLeft { ffiErrorToQrError(it, fallback = QrError::EncodingFailed) }
 
     /**
      * Reports whether [content] fits in a QR code, as decided by the same Rust encoder that generates it.
@@ -49,7 +47,7 @@ object QrBridge : QrEncoder {
     override fun contentFits(content: String): Either<QrError, Boolean> =
         Either
             .catch { ffiContentFits(content) }
-            .mapLeft { ffiErrorToQrError(it) }
+            .mapLeft { ffiErrorToQrError(it, fallback = QrError::EncodingFailed) }
 
     /**
      * Decodes a QR code from PNG or JPEG image bytes.
@@ -60,7 +58,7 @@ object QrBridge : QrEncoder {
     fun decodeQr(imageData: ByteArray): Either<QrError, ScanResult> =
         Either
             .catch { ScanResult(content = ffiDecodeQr(imageData).content) }
-            .mapLeft { ffiErrorToQrError(it) }
+            .mapLeft { ffiErrorToQrError(it, fallback = QrError::DecodingFailed) }
 
     /**
      * Decodes a QR code from a raw grayscale (Y-plane) pixel buffer.
@@ -81,21 +79,18 @@ object QrBridge : QrEncoder {
     ): Either<QrError, ScanResult> =
         Either
             .catch { ScanResult(content = ffiDecodeQrFromRaw(pixels, width.toUInt(), height.toUInt()).content) }
-            .mapLeft { ffiErrorToQrError(it) }
-
-    /**
-     * Returns the Rust library version string (from the `rusty_qr_core` Cargo.toml).
-     *
-     * Unlike the other functions this returns a plain [String], not an [Either], and can throw.
-     */
-    fun getLibraryVersion(): String = ffiGetLibraryVersion()
+            .mapLeft { ffiErrorToQrError(it, fallback = QrError::DecodingFailed) }
 }
 
 /**
- * Maps [FfiQrException] variants to the corresponding [QrError] subtype.
- * Falls back to [QrError.from] for any other throwable.
+ * Maps [FfiQrException] variants to the corresponding [QrError] subtype. Any other throwable becomes the error
+ * [fallback] builds from its message, so a failure on the encode path is an [QrError.EncodingFailed] and one on the
+ * decode path a [QrError.DecodingFailed].
  */
-private fun ffiErrorToQrError(throwable: Throwable): QrError =
+internal fun ffiErrorToQrError(
+    throwable: Throwable,
+    fallback: (String) -> QrError,
+): QrError =
     when (throwable) {
         is FfiQrException ->
             when (throwable) {
@@ -106,5 +101,5 @@ private fun ffiErrorToQrError(throwable: Throwable): QrError =
                 is FfiQrException.ImageException -> QrError.ImageError(throwable.message ?: "Image error")
             }
 
-        else -> QrError.from(throwable)
+        else -> fallback(throwable.message ?: "Unknown error")
     }

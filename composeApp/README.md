@@ -102,7 +102,7 @@ composeApp/src/
 │       │   ├── navigation/                 # Tab sealed hierarchy
 │       │   └── theme/                      # RustyQrTheme, Color, Type, Shape, Motion
 │       └── bridge/                         # platform contracts: expect declarations, plus the QrBridge object
-│           ├── QrBridge.kt                 # object (not an expect), implements QrEncoder: generateQrPng, contentFits, decodeQr, decodeQrFromRaw, getLibraryVersion
+│           ├── QrBridge.kt                 # object (not an expect), implements QrEncoder: generateQrPng, contentFits, decodeQr, decodeQrFromRaw
 │           ├── QrEncoder.kt                # plain interface (not an expect): generateQrPng + contentFits, the seam GenerateViewModel tests fake
 │           ├── CameraPreview.kt            # @Composable — platform draws the live preview + decodes frames
 │           ├── CameraPermission.kt         # expect funs — status check, request, permanent-denied, openAppSettings
@@ -198,8 +198,8 @@ commonMain/bridge/QrBridge.kt     object QrBridge : QrEncoder { fun generateQrPn
 `QrBridge` is **one `commonMain` object over the generated bindings**, not an `expect`. The bindings
 module already contains the per-platform actuals, so `composeApp` needs none. `QrBridge` calls the
 generated functions, wraps `generateQrPng`, `contentFits`, `decodeQr` and `decodeQrFromRaw` in
-`Either.catch`, and maps `FfiQrException` to the app's `QrError`. `getLibraryVersion()` is not wrapped:
-it returns a plain `String` and can throw. `QrBridge` implements the plain `QrEncoder` interface
+`Either.catch`, and maps `FfiQrException` to the app's `QrError`. Any other throwable becomes
+`EncodingFailed` on the encode paths and `DecodingFailed` on the decode paths. `QrBridge` implements the plain `QrEncoder` interface
 (`generateQrPng`, `contentFits`), which `GenerateViewModel` takes as its last constructor parameter so
 tests can fake it.
 

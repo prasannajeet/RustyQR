@@ -4,10 +4,15 @@
 
     <string name="tab_scan">Escanear</string>
     <string name="tab_generate">Generar</string>
+    <string name="tab_state_selected_format">Seleccionada, %1$d de %2$d</string>
+    <string name="tab_state_not_selected_format">No seleccionada, %1$d de %2$d</string>
 
     <string name="generate_input_hint">Añade el contenido de texto para el que necesitas generar un código QR</string>
     <string name="generate_input_placeholder">Introduce texto o URL</string>
     <string name="generate_error_too_long">Contenido demasiado largo para un código QR</string>
+    <string name="generate_error_failed">No se pudo crear el código QR</string>
+    <string name="generate_error_save_failed">No se pudo guardar el código QR</string>
+    <string name="generate_error_share_failed">No se pudo compartir el código QR</string>
     <string name="generate_button">Generar código QR</string>
     <string name="generate_loading">Generando…</string>
     <string name="generate_preview_format">Código QR creado para - %1$s</string>
@@ -25,7 +30,6 @@
     <string name="scan_permission_body">Para escanear códigos QR, permite el acceso a la cámara para Rusty QR</string>
     <string name="scan_open_settings">Abrir ajustes</string>
     <string name="scan_grant_permission">Conceder permiso</string>
-    <string name="scan_camera_denied_cd">Acceso a la cámara denegado</string>
     <string name="scan_viewfinder_cd">Visor de escaneo QR</string>
     <string name="scan_again">Escanear de nuevo</string>
     <string name="scan_clip_label">Contenido del código QR</string>
@@ -35,6 +39,8 @@
     <string name="scan_camera_no_camera_body">Este dispositivo no tiene una cámara que Rusty QR pueda usar.</string>
     <string name="scan_camera_failed_title">Problema con la cámara</string>
     <string name="scan_camera_failed_body">Algo salió mal con la cámara. Inténtalo de nuevo.</string>
+    <string name="scan_camera_blocked_title">Cámara no disponible</string>
+    <string name="scan_camera_blocked_body">Tu dispositivo está bloqueando la cámara, por ejemplo mediante una política del dispositivo o el modo No molestar. Cambia esa configuración y vuelve.</string>
     <string name="scan_try_again">Reintentar</string>
 
     <string name="content_type_url">URL</string>
