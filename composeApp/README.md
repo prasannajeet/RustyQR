@@ -2,11 +2,11 @@
 
 # composeApp — Kotlin Multiplatform Module
 
-### Shared Compose UI. One ViewModel per screen. Thin platform actuals call Rust through UniFFI.
+### Shared Compose UI. One ViewModel per screen. Common `QrBridge` code calls Rust through the generated UniFFI bindings.
 
 <p>
-  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.3.20-7F52FF?logo=kotlin&logoColor=white" />
-  <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.11.0-4285F4?logo=jetpackcompose&logoColor=white" />
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.4.0-7F52FF?logo=kotlin&logoColor=white" />
+  <img alt="Compose Multiplatform" src="https://img.shields.io/badge/Compose%20Multiplatform-1.12.2-4285F4?logo=jetpackcompose&logoColor=white" />
   <img alt="KMP" src="https://img.shields.io/badge/KMP-commonMain%20%7C%20androidMain%20%7C%20iosMain-7F52FF?logo=kotlin&logoColor=white" />
   <img alt="MVI" src="https://img.shields.io/badge/Architecture-MVI-1976D2" />
   <img alt="ArrowKT" src="https://img.shields.io/badge/ArrowKT-Either-7B3FE4" />
@@ -28,7 +28,7 @@ and SKIA on iOS.</sub>
 > MVI conventions, the `bridge/` expect/actual pattern, shared Gradle tasks.
 >
 > - Android pipeline, CameraX wiring, `.so` packaging, JNA loader → [`src/androidMain/README.md`](src/androidMain/README.md)
-> - iOS pipeline, XCFramework, cinterop wiring, AVFoundation → [`../iosApp/README.md`](../iosApp/README.md)
+> - iOS pipeline, cinterop linking, AVFoundation → [`../iosApp/README.md`](../iosApp/README.md)
 > - Rust engine (QR encode/decode, UniFFI wrapper crate) → [`../rustySDK/README.md`](../rustySDK/README.md)
 > - End-to-end architecture with sequence diagrams → [`../docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
 > - Top-level project pitch → [`../README.md`](../README.md)
@@ -74,8 +74,11 @@ These apply to the whole module — they work the same way whether you're buildi
 | `:composeApp:swiftlint`                 | SwiftLint on `iosApp/` Swift sources                                    |
 | `:composeApp:installGitHooks`           | Install pre-commit (`lintAll` + `cargo fmt --check`) and commit-msg hooks |
 
-Platform-specific build tasks (`buildRustAndroid`, `buildRustIos`, `cleanBuildIos`,
-`generateXcodeProject`) are documented in their respective platform READMEs.
+The Xcode project tasks (`generateXcodeProject`, `cleanXcodeProject`) are documented in the iOS
+README. Rust builds and binding generation have no tasks of their own here: the `:rustyqr-bindings`
+module runs them whenever an app build needs them (`./gradlew :rustyqr-bindings:buildBindings` installs the
+bindgen, builds the host library and generates the Kotlin bindings, without cross-compiling the
+Android or iOS libraries).
 
 ---
 
@@ -98,8 +101,8 @@ composeApp/src/
 │       │   ├── viewmodels/                 # ScanViewModel, GenerateViewModel
 │       │   ├── navigation/                 # Tab sealed hierarchy
 │       │   └── theme/                      # RustyQrTheme, Color, Type, Shape, Motion
-│       └── bridge/                         # expect declarations for everything platform-specific
-│           ├── QrBridge.kt                 # generatePng, decodeQr, decodeQrFromRaw, getLibraryVersion
+│       └── bridge/                         # platform contracts: expect declarations, plus the QrBridge object
+│           ├── QrBridge.kt                 # object (not an expect): generateQrPng, decodeQr, decodeQrFromRaw, getLibraryVersion
 │           ├── CameraPreview.kt            # @Composable — platform draws the live preview + decodes frames
 │           ├── CameraPermission.kt         # expect funs — status check, request, permanent-denied, openAppSettings
 │           ├── HapticFeedback.kt           # expect fun — triggerImpactHaptic
@@ -110,15 +113,15 @@ composeApp/src/
 │
 ├── commonTest/                             # Shared ViewModel tests
 │
-├── androidMain/                            # Android actuals — CameraX, JNA, ActivityResultLauncher
+├── androidMain/                            # Android actuals — CameraX, ActivityResultLauncher
 │                                           # → src/androidMain/README.md for details
 │
-├── iosMain/                                # iOS Kotlin/Native actuals — AVFoundation, cinterop to UniFFI C header
-│                                           # → ../iosApp/README.md for details
-│
-└── nativeInterop/cinterop/                 # Kotlin/Native cinterop .def — iOS only
-    └── RustyQrFFI.def                      # Points at iosApp/generated/headers/RustyQrFFIFFI.h
+└── iosMain/                                # iOS Kotlin/Native actuals — AVFoundation, UIKit, Photos
+                                            # → ../iosApp/README.md for details
 ```
+
+The Rust bindings are not in this module. They are generated into the `:rustyqr-bindings` module
+(`rustyqr-bindings/build/uniffi/bindings/`), which `composeApp` depends on.
 
 **Key rule — all expect/actual declarations live in `bridge/`.** Even camera and haptics, which
 arguably belong in a `hardware/` package, live there so that every platform-specific touchpoint is
@@ -181,14 +184,21 @@ Kotlin, so the tests don't touch a Dispatcher, a Dispatcher Provider, or a Conte
 <br/>
 
 Every time shared code needs platform hardware or a platform API, it goes through an
-`expect / actual` declaration in the `bridge/` package:
+`expect / actual` declaration in the `bridge/` package. The one exception is Rust:
 
 ```
-commonMain/bridge/QrBridge.kt          expect object QrBridge { fun generatePng(...): Either<...> }
+commonMain/bridge/QrBridge.kt     object QrBridge { fun generateQrPng(...): Either<QrError, ByteArray> }
         │
-        ├─► androidMain/bridge/QrBridge.android.kt   actual object QrBridge → UniFFI-generated Kotlin → JNA → .so
-        └─► iosMain/bridge/QrBridge.ios.kt           actual object QrBridge → cinterop → UniFFI C header → .a
+        └─► :rustyqr-bindings generated Kotlin (commonMain API, one actual per platform)
+              ├─ Android: JNA → librusty_qr_ffi.so
+              └─ iOS:     Kotlin/Native cinterop → librusty_qr_ffi.a (linked into the framework)
 ```
+
+`QrBridge` is **one `commonMain` object over the generated bindings**, not an `expect`. The bindings
+module already contains the per-platform actuals, so `composeApp` needs none. `QrBridge` calls the
+generated functions, wraps `generateQrPng`, `decodeQr` and `decodeQrFromRaw` in `Either.catch`, and
+maps `FfiQrException` to the app's `QrError`. `getLibraryVersion()` is not wrapped: it returns a
+plain `String` and can throw.
 
 ### Conventions
 
@@ -199,7 +209,7 @@ commonMain/bridge/QrBridge.kt          expect object QrBridge { fun generatePng(
   that must stay off the main thread.
 - **Filename convention is `Name.kt` (expect) + `Name.android.kt` / `Name.ios.kt` (actuals).**
   Detekt's `MatchingDeclarationName` is enabled and accepts the `.android.kt` / `.ios.kt` suffixes,
-  so the class inside `Name.android.kt` can still be called `QrBridge`.
+  so the declaration inside `Name.android.kt` can still carry the name of the `expect`.
 - **Every platform actual lives under `bridge/`.** No scattering permission / camera / haptics /
   share actuals into feature folders. If it crosses the platform boundary, it's a bridge.
 
@@ -207,7 +217,6 @@ commonMain/bridge/QrBridge.kt          expect object QrBridge { fun generatePng(
 
 | Expect                | Android actual                             | iOS actual                                 |
 |-----------------------|--------------------------------------------|--------------------------------------------|
-| `QrBridge`            | UniFFI-generated Kotlin → JNA → `.so`      | Kotlin/Native cinterop → UniFFI C → `.a`   |
 | `CameraPreview`       | `AndroidView` wrapping `PreviewView`       | `UIKitView` wrapping `AVCaptureVideoPreviewLayer` |
 | `CameraPermission`    | `ActivityResultLauncher` (activity scope)  | `AVCaptureDevice.requestAccess(for: .video)` |
 | `HapticFeedback`      | `View.performHapticFeedback`               | `UIImpactFeedbackGenerator`                |

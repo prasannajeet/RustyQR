@@ -1,4 +1,4 @@
-.PHONY: test android ios clean all
+.PHONY: test clean all
 .DEFAULT_GOAL := all
 
 test:
@@ -6,19 +6,9 @@ test:
 	cargo clippy --workspace --all-targets -- -D warnings
 	cargo fmt --check
 
-android:
-	./scripts/build_android.sh
-
-ios:
-	./scripts/build_ios.sh
-
 clean:
 	cargo clean
-	rm -rf ../composeApp/src/androidMain/jniLibs
-	rm -rf ../composeApp/src/androidMain/kotlin/generated
-	rm -rf ../iosApp/Frameworks/
-	rm -rf ../iosApp/generated/
-	@echo "Cleaned Rust build artifacts and generated bindings"
-	@echo "Note: Xcode project artifacts (.xcodeproj, Info.plist) are cleaned by the Gradle 'cleanXcodeProject' task"
+	@echo "Cleaned Rust build artifacts"
+	@echo "Note: generated bindings and the Xcode project are cleaned by the Gradle 'clean' tasks"
 
-all: test android ios
+all: test

@@ -46,6 +46,14 @@ kotlin {
 
 cargo {
     packageDirectory = rootProject.layout.projectDirectory.dir("rustySDK/crates/ffi")
+    // Optional NDK pin (CI sets ORG_GRADLE_PROJECT_ndkVersion). The plugin uses <sdk>/ndk/<ndkVersion> only if that
+    // folder exists, otherwise it silently falls back to the newest installed NDK; CI guards that. Unset or blank
+    // means no pin (a blank value would resolve to <sdk>/ndk itself).
+    providers
+        .gradleProperty("ndkVersion")
+        .orNull
+        ?.takeIf { it.isNotBlank() }
+        ?.let { ndkVersion = it }
 }
 
 uniffi {

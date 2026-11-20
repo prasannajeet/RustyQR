@@ -19,22 +19,24 @@ Sibling docs:
 ## Table of Contents
 
 1. [The Big Picture](#the-big-picture)
-2. [Why Not an AAR or a `.framework`?](#why-not-an-aar-or-a-framework)
+2. [Why Not a Separate AAR or `.framework`?](#why-not-a-separate-aar-or-framework)
 3. [The Shared Foundation — Rust + UniFFI](#the-shared-foundation--rust--uniffi)
-4. [Android Branch — `.rs` to installable APK](#android-branch--rs-to-installable-apk)
-5. [iOS Branch — `.rs` to Xcode-ready XCFramework](#ios-branch--rs-to-xcode-ready-xcframework)
-6. [UniFFI Metadata — How Bindings Stay in Sync](#uniffi-metadata--how-bindings-stay-in-sync)
-7. [Runtime — What Happens When the App Calls Rust](#runtime--what-happens-when-the-app-calls-rust)
-8. [Type Mapping Across the FFI Boundary](#type-mapping-across-the-ffi-boundary)
-9. [Glossary — Files and Formats](#glossary--files-and-formats)
+4. [The `:rustyqr-bindings` Module — Gradle Runs Cargo](#the-rustyqr-bindings-module--gradle-runs-cargo)
+5. [Android Branch — `.rs` to installable APK](#android-branch--rs-to-installable-apk)
+6. [iOS Branch — `.rs` to a linked Kotlin framework](#ios-branch--rs-to-a-linked-kotlin-framework)
+7. [UniFFI Metadata — How Bindings Stay in Sync](#uniffi-metadata--how-bindings-stay-in-sync)
+8. [Runtime — What Happens When the App Calls Rust](#runtime--what-happens-when-the-app-calls-rust)
+9. [Type Mapping Across the FFI Boundary](#type-mapping-across-the-ffi-boundary)
+10. [Glossary — Files and Formats](#glossary--files-and-formats)
 
 ---
 
 ## The Big Picture
 
-One Rust workspace produces native binaries for two platforms. The Kotlin and Swift bindings that
-call those binaries are **auto-generated** from the Rust source — no hand-written JNI, no C
-bridging headers.
+One Rust workspace produces native libraries for two platforms. The Kotlin bindings that call those
+libraries are **auto-generated** from the Rust source into `commonMain` — no hand-written JNI, no C
+bridging headers, and no Swift binding layer. A Gradle module, `:rustyqr-bindings`, drives the whole
+chain: it runs Cargo, runs the UniFFI generator and hands the results to `composeApp`.
 
 ```mermaid
 graph TB
@@ -44,79 +46,65 @@ graph TB
         CORE --> FFI
     end
 
-    subgraph "Android build (cargo-ndk + uniffi-bindgen)"
-        SO["3 × librusty_qr_ffi.so<br/>arm64-v8a · armeabi-v7a · x86_64"]
-        KT["rusty_qr_ffi.kt<br/>generated Kotlin binding"]
-    end
-
-    subgraph "iOS build (cargo + uniffi-bindgen + xcodebuild)"
-        A["2 × librusty_qr_ffi.a<br/>device · simulator"]
-        XCF["RustyQR.xcframework<br/>wraps both .a files"]
-        SW["RustyQrFFI.swift<br/>generated Swift binding"]
+    subgraph ":rustyqr-bindings (Gradle module, UniFFI plugin)"
+        CARGO["Cargo builds<br/>3 × Android .so · iOS .a per target · host library"]
+        GEN["UniFFI Kotlin generator<br/>build/uniffi/bindings/"]
+        CI["generated cinterop<br/>(iOS targets)"]
     end
 
     subgraph "Android app (composeApp)"
-        JNI["jniLibs/[abi]/"]
-        APK["app-debug.apk"]
+        JNA["JNA loads the .so<br/>(plugin-packaged jniLibs)"]
+        APK["composeApp-debug.apk"]
     end
 
     subgraph "iOS app (iosApp)"
-        FW["Linked into app binary"]
+        FW["Static ComposeApp framework<br/>links librusty_qr_ffi.a"]
         IPA["iosApp.app"]
     end
 
-    FFI -->|"cargo-ndk build"| SO
-    FFI -->|"uniffi-bindgen"| KT
-    SO --> JNI
-    JNI --> APK
-    KT --> APK
+    FFI -->|"cargo build, run by Gradle"| CARGO
+    CARGO -->|"library metadata"| GEN
+    CARGO --> CI
+    GEN -->|"commonMain + per-platform actuals"| APK
+    CARGO -->|".so per ABI"| JNA
+    JNA --> APK
 
-    FFI -->|"cargo build (×2 targets)"| A
-    FFI -->|"uniffi-bindgen"| SW
-    A --> XCF
-    XCF --> FW
-    SW --> FW
+    GEN --> FW
+    CI -->|"static library"| FW
     FW --> IPA
 ```
 
-The key insight: **both platforms consume the same Rust source**. Only the packaging differs.
+The key insight: **both platforms consume the same Rust source and the same generated Kotlin API**.
+Only the way the native library is loaded differs.
 
 ---
 
-## Why Not an AAR or a `.framework`?
+## Why Not a Separate AAR or `.framework`?
 
-If you've shipped Android libraries before, you'd expect an **AAR** (Android Archive — a zip
-containing compiled classes, resources, and native `.so` files). If you've shipped iOS libraries,
-you'd expect a **`.framework`** or an XCFramework.
+The Rust library is built, packaged and consumed inside this repository, so nothing needs to be
+published or hand-assembled.
 
-### Android: no AAR, just raw `.so` files
+### Android: the `.so` files travel inside the bindings module
 
-This repo does **not** produce an AAR because the Rust library lives *inside* the same Gradle
-module as the app code (`composeApp`). There's nothing to package and redistribute — the `.so`
-files get dropped directly into `composeApp/src/androidMain/jniLibs/`, and the Android Gradle
-Plugin (AGP) picks them up automatically when it builds the APK.
+`:rustyqr-bindings` is an Android library module (it applies the Android KMP library plugin). The
+UniFFI Gradle plugin builds one `librusty_qr_ffi.so` per ABI and packages them as that module's
+`jniLibs`. The Android Gradle Plugin merges them into the APK of `composeApp`. There is no
+`composeApp/src/androidMain/jniLibs/` directory and nothing to copy by hand.
 
-You'd only need an AAR if:
+You would only need to publish an AAR if you wanted to share the Rust library through Maven with
+other apps. This is a single-app project, so that does not apply.
 
-- You wanted to publish the Rust library to Maven for other apps to consume, or
-- You wanted to isolate Rust into its own Gradle module with a clean dependency boundary.
+### iOS: no packaged Rust artifact, the static library is linked into the Kotlin framework
 
-Neither applies here — this is a single-app project.
-
-### iOS: yes, an XCFramework (sort of)
-
-iOS does produce an `RustyQR.xcframework` because Xcode's linker needs a packaged artifact
-containing both device and simulator slices. The XCFramework is just a directory with a specific
-layout — think of it as the minimum ceremony Xcode demands, not a redistributable library.
+iOS does not need a packaged Rust artifact. The plugin builds `librusty_qr_ffi.a` for the target Xcode is building
+(device or simulator) and generates a Kotlin/Native cinterop definition that points at it. The Kotlin
+linker pulls the static library into the `ComposeApp` framework, so the one static framework that
+Xcode embeds already contains the Rust code.
 
 ```
-Android flow:  cargo-ndk builds 3 × .so  →  jniLibs/  →  AGP packages into APK
-iOS flow:      cargo builds 2 × .a       →  xcodebuild -create-xcframework  →  Xcode links into app
+Android flow:  Gradle runs cargo for 3 ABIs  →  3 × .so (plugin jniLibs)  →  AGP packages into the APK
+iOS flow:      Gradle runs cargo for the active target  →  .a  →  cinterop links it into the ComposeApp framework
 ```
-
-On Android, `jniLibs/` is a magic directory name — AGP auto-discovers any `.so` inside it. On iOS,
-Xcode needs the XCFramework wrapper because `.a` files on their own don't carry the platform
-metadata Xcode uses to pick "device vs simulator" at build time.
 
 ---
 
@@ -128,18 +116,19 @@ annotates every public function with a UniFFI macro.
 ```rust
 // rustySDK/crates/ffi/src/lib.rs
 #[uniffi::export]
-fn generate_png(content: String, size: u32) -> Result<Vec<u8>, FfiQrError> {
-    rusty_qr_core::encoder::generate_png(&content, size).map_err(FfiQrError::from)
+fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, FfiQrError> {
+    rusty_qr_core::encoder::generate_png(content, size).map_err(FfiQrError::from)
 }
 ```
 
 The `#[uniffi::export]` macro does two things at compile time:
 
-1. Makes the function callable from C (the common substrate underneath both Kotlin/JNA and Swift).
+1. Makes the function callable from C (the common substrate underneath both Kotlin/JNA and
+   Kotlin/Native cinterop).
 2. Embeds a **metadata record** into the compiled binary describing the function's signature.
 
-That metadata is how `uniffi-bindgen` later emits matching Kotlin and Swift code without you
-writing bridging boilerplate. More on that in
+That metadata is how the UniFFI generator later emits matching Kotlin code without you writing
+bridging boilerplate. More on that in
 [UniFFI Metadata](#uniffi-metadata--how-bindings-stay-in-sync).
 
 ### Crate layout
@@ -149,9 +138,11 @@ rustySDK/
 ├── Cargo.toml                 # workspace definition
 └── crates/
     ├── core/                  # pure Rust — no FFI, no UniFFI
-    ├── ffi/                   # UniFFI exports + type wrappers (cdylib + staticlib)
-    └── uniffi-bindgen/        # CLI tool that reads .so/.a metadata → emits .kt/.swift
+    └── ffi/                   # UniFFI exports + type wrappers (cdylib + staticlib)
 ```
+
+There is no binding-generator crate in the workspace. The generator is built and run by the Gradle
+plugin.
 
 The `ffi` crate declares **two** library types:
 
@@ -160,170 +151,199 @@ The `ffi` crate declares **two** library types:
 crate-type = ["cdylib", "staticlib"]
 ```
 
-| Output      | Format                | Used by                                                    |
-|-------------|-----------------------|------------------------------------------------------------|
-| `cdylib`    | `.so` (Linux/Android) | Android — loaded at runtime via JNA                        |
-| `staticlib` | `.a` (static archive) | iOS — linked into the app binary at compile time by Xcode  |
+| Output      | Format                | Used by                                                          |
+|-------------|-----------------------|------------------------------------------------------------------|
+| `cdylib`    | `.so` (Android) / `.dylib` (host) | Android — loaded at runtime via JNA; the host library backs the JVM tests |
+| `staticlib` | `.a` (static archive) | iOS — linked into the Kotlin framework at link time              |
 
 One source, two output formats. The Android build asks for `cdylib`; the iOS build asks for
 `staticlib`.
 
 ---
 
+## The `:rustyqr-bindings` Module — Gradle Runs Cargo
+
+`rustyqr-bindings/build.gradle.kts` applies the Ubique UniFFI Gradle plugin
+(`ch.ubique.uniffi.plugin`, version in `gradle/libs.versions.toml`) and points it at the FFI crate:
+
+```kotlin
+cargo {
+    packageDirectory = rootProject.layout.projectDirectory.dir("rustySDK/crates/ffi")
+}
+
+uniffi {
+    generateFromLibrary {
+        packageName = "com.p2.apps.rustyqr.rust"
+    }
+}
+```
+
+`composeApp` depends on this module (`implementation(project(":rustyqr-bindings"))`), so building
+either app builds Rust first. The plugin registers these tasks, among others (`./gradlew tasks --all`
+lists them):
+
+| Task                                        | What it does                                                          |
+|---------------------------------------------|-----------------------------------------------------------------------|
+| `:rustyqr-bindings:cargoBuild…Debug`        | One task per target triple: runs Cargo on `rustySDK/crates/ffi`        |
+| `:rustyqr-bindings:buildLibraryForBindings` | Selects the built host library whose metadata the generator reads     |
+| `:rustyqr-bindings:buildBindings`           | Runs the generator; writes `rustyqr-bindings/build/uniffi/bindings/`   |
+| `:rustyqr-bindings:mergeUniffiAndroidJniLibs` | Collects the `.so` files per ABI for the Android library            |
+| `:rustyqr-bindings:cinteropUniffi-cinterop…`  | iOS only: cinterop over the generated C header and the `.a`         |
+
+### Build profiles
+
+- **Debug** builds use Cargo's `dev` profile. `rustySDK/Cargo.toml` optimises the dependencies
+  (`image`, `rqrr`, `qrcode`, and `rusty-qr-core` itself), so debug builds still scan at a realistic
+  speed. Debug builds cover all three Android ABIs, listed in `androidAbis` in `gradle.properties`.
+- **Release** builds need `-PreleaseBuild=true`. Xcode adds the flag for every configuration except
+  Debug. `composeApp` has a `verifyReleaseRustProfile` task that fails release packaging without it,
+  so a shipped artifact can never embed the debug Rust library.
+- **NDK:** the plugin uses the newest NDK under the Android SDK. Pin one with
+  `-PndkVersion=<version>`.
+
+### What the generated bindings look like
+
+The generator writes Kotlin into `rustyqr-bindings/build/uniffi/bindings/` (gitignored, regenerated
+on demand):
+
+```
+rustyqr-bindings/build/uniffi/bindings/
+├── commonMain/      # expect declarations, data classes, FfiQrException, enums
+├── androidMain/     # actuals that call the .so through JNA
+├── nativeMain/      # actuals for iOS that call the C functions through cinterop
+├── jvmMain/         # actuals for host JVM tests
+└── nativeInterop/   # C headers consumed by the generated cinterop definition
+```
+
+The generated API is a single `commonMain` surface (`generatePng`, `decodeQr`, `decodeQrFromRaw`,
+`generateWithConfig`, `getLibraryVersion`, `maxContentBytes`, `FfiQrConfig`, `FfiScanResult`,
+`FfiQrException`, `FfiQrErrorCorrection`) with one `actual` per platform.
+`composeApp/src/commonMain/.../bridge/QrBridge.kt` is a plain `object` over that API: it calls the
+generated functions and maps `FfiQrException` to the app's `Either<QrError, T>`. It is not an
+`expect`, and it has no platform actuals.
+
+> **Stale checkouts.** An older checkout may still have `composeApp/src/androidMain/jniLibs/` and
+> `composeApp/src/androidMain/kotlin/generated/` on disk from the previous build pipeline. Gradle
+> would package or compile them next to the new output, so delete both directories.
+
+---
+
 ## Android Branch — `.rs` to installable APK
 
-The full Android pipeline is driven by one Gradle task: `./gradlew :composeApp:buildRustAndroid`.
-It shells out to `make android` in `rustySDK/`, which runs `scripts/build_android.sh`.
+The Android pipeline is driven by one Gradle command: `./gradlew :composeApp:assembleDebug`.
 
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant G as ./gradlew buildRustAndroid
-    participant M as make android
-    participant S as build_android.sh
-    participant CNDK as cargo-ndk
-    participant UB as uniffi-bindgen
-    participant AGP as ./gradlew assembleDebug<br/>(Android Gradle Plugin)
+    participant G as ./gradlew assembleDebug
+    participant B as :rustyqr-bindings<br/>(UniFFI plugin)
+    participant C as cargo
+    participant UG as UniFFI Kotlin generator
+    participant AGP as Android Gradle Plugin
 
-    Dev->>G: buildRustAndroid
-    G->>M: exec make android
-    M->>S: bash build_android.sh
+    Dev->>G: assembleDebug
+    G->>B: composeApp depends on :rustyqr-bindings
 
-    Note over S: Step 1 — dependency check<br/>(cargo-ndk, NDK, rustup targets)
+    Note over B: Cargo — one build per ABI
+    B->>C: build rusty-qr-ffi for<br/>aarch64-linux-android<br/>armv7-linux-androideabi<br/>x86_64-linux-android
+    C-->>B: 3 × librusty_qr_ffi.so<br/>(UniFFI metadata embedded)
 
-    Note over S: Step 2 — cross-compile 3 × .so
-    S->>CNDK: cargo ndk -t arm64-v8a<br/>-t armeabi-v7a -t x86_64 build --release
-    CNDK->>CNDK: aarch64-linux-android<br/>armv7-linux-androideabi<br/>x86_64-linux-android
-    CNDK-->>S: 3 × librusty_qr_ffi.so<br/>(with UniFFI metadata embedded)
-    S->>S: copy into<br/>composeApp/src/androidMain/jniLibs/[abi]/
+    Note over B: Bindings — generated into commonMain
+    B->>C: build the host library
+    B->>UG: generate from the library metadata
+    UG-->>B: build/uniffi/bindings/<br/>commonMain + androidMain Kotlin
 
-    Note over S: Step 3 — generate Kotlin binding
-    S->>UB: uniffi-bindgen generate<br/>--library librusty_qr_ffi.so<br/>--language kotlin
-    UB->>UB: read metadata from .so
-    UB-->>S: rusty_qr_ffi.kt
-    S->>S: copy into<br/>composeApp/src/androidMain/kotlin/generated/
+    B->>B: mergeUniffiAndroidJniLibs<br/>.so per ABI as jniLibs
 
-    S-->>Dev: Rust build complete
-
-    Dev->>AGP: assembleDebug
-    Note over AGP: AGP auto-discovers:<br/>• .so files in jniLibs/<br/>• .kt files in kotlin/generated/
-    AGP->>AGP: compile Kotlin + package .so
-    AGP-->>Dev: app-debug.apk<br/>(contains 3 × .so + generated Kotlin)
+    G->>AGP: compile Kotlin, merge native libs
+    AGP-->>Dev: composeApp-debug.apk<br/>(3 × .so + generated Kotlin)
 ```
 
-### Why three `.so` files but one `.kt` file?
+### Why three `.so` files but one generated Kotlin API?
 
 - **Three `.so` files** — each Android CPU architecture (arm64, arm32, x86_64) needs its own
   machine code. At install time the device only keeps the `.so` matching its CPU.
-- **One `.kt` file** — the Kotlin binding calls Rust functions *by name* through JNA at runtime.
+- **One Kotlin API** — the generated Kotlin calls Rust functions *by name* through JNA at runtime.
   The name resolution happens against whichever `.so` was loaded, so the Kotlin code is
-  architecture-independent. The UniFFI metadata is identical in all three `.so` files, so any one
-  of them can be used as the source for binding generation.
+  architecture-independent. The UniFFI metadata is identical in every `.so`, so one library is
+  enough as the generator's input.
 
-### What's inside `jniLibs/`
+### Where the `.so` files end up
 
 ```
-composeApp/src/androidMain/jniLibs/
+rustyqr-bindings/build/generated/jniLibs/mergeUniffiAndroidJniLibs/
 ├── arm64-v8a/librusty_qr_ffi.so       # most modern phones
 ├── armeabi-v7a/librusty_qr_ffi.so     # legacy 32-bit ARM
 └── x86_64/librusty_qr_ffi.so          # Mac-hosted emulators
 ```
 
-All three are built with 16KB ELF page alignment (Android's November 2025 requirement). NDK 28+
-handles that automatically — no extra linker flags needed.
+`composeApp` sets `abiFilters` to the same three ABIs, so another ABI that a dependency ships
+cannot install and then crash for lack of a Rust library. The two 64-bit ABIs (`arm64-v8a`, `x86_64`) are linked with 16KB ELF page
+alignment (LOAD `align 0x4000`), which is what Android's November 2025 requirement covers; NDK 28+
+does that automatically. `armeabi-v7a` stays at 4KB (`0x1000`), because the NDK aligns only 64-bit ABIs.
 
 ### How JNA loads the `.so` at runtime
 
 The UniFFI-generated Kotlin code calls Rust functions through **JNA** (Java Native Access), not
-`System.loadLibrary`. JNA is a runtime library that discovers and calls C functions by name:
+`System.loadLibrary`. JNA is a runtime library that discovers and calls C functions by name. The
+plugin's runtime artifact brings it in, so `composeApp` declares nothing extra:
 
 ```mermaid
 graph LR
-    A["Kotlin call:<br/>UniffiLib.generate_png(...)"]
-    B["JNA (net.java.dev.jna)<br/>lookup 'generate_png' in loaded .so"]
+    A["Kotlin call:<br/>generatePng(...)"]
+    B["JNA (net.java.dev.jna)<br/>lookup 'uniffi_rusty_qr_ffi_fn_func_generate_png' in loaded .so"]
     C["librusty_qr_ffi.so<br/>(ABI-correct slice only)"]
     D["Rust function executes"]
 
     A --> B --> C --> D
 ```
 
-JNA is declared in `composeApp/build.gradle.kts` via the `androidMainImplementation`
-configuration. Without JNA, the generated Kotlin would compile but crash on the first call.
-
 ---
 
-## iOS Branch — `.rs` to Xcode-ready XCFramework
+## iOS Branch — `.rs` to a linked Kotlin framework
 
-The iOS pipeline is driven by one Gradle task: `./gradlew :composeApp:buildRustIos`. Responsibility
-is split — Make produces Rust/bindings/XCFramework, Gradle regenerates `iosApp.xcodeproj` from
-`project.yml`. `buildRustIos` shells out to `make ios` (via `rustySDK/scripts/build_ios.sh`) and is
-finalized by the `generateXcodeProject` Gradle task, so a single invocation delivers a buildable
-iOS tree.
+Xcode runs the iOS pipeline. The generated Xcode project (`iosApp.xcodeproj`, made by XcodeGen from
+`iosApp/project.yml`) has a pre-build script that calls Gradle:
+
+```
+./gradlew :composeApp:embedAndSignAppleFrameworkForXcode            # Debug
+./gradlew :composeApp:embedAndSignAppleFrameworkForXcode -PreleaseBuild=true   # every other configuration
+```
 
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant G as ./gradlew buildRustIos
-    participant S as build_ios.sh
-    participant Cargo as cargo
-    participant UB as uniffi-bindgen
-    participant XCB as xcodebuild
-    participant XCG as generateXcodeProject<br/>(Gradle task → xcodegen)
+    participant XG as generateXcodeProject<br/>(Gradle task → xcodegen)
     participant Xcode as Xcode build
+    participant G as Gradle<br/>embedAndSignAppleFrameworkForXcode
+    participant B as :rustyqr-bindings<br/>(UniFFI plugin)
+    participant C as cargo
+    participant K as Kotlin/Native
 
-    Dev->>G: buildRustIos
-    G->>S: make ios → bash build_ios.sh
+    Dev->>XG: ./gradlew :composeApp:generateXcodeProject
+    XG-->>Dev: iosApp.xcodeproj
 
-    Note over S: Step 1 — dependency check<br/>(cargo, xcodebuild, rustup targets)
+    Dev->>Xcode: Run (or xcodebuild build)
+    Xcode->>G: pre-build script
 
-    Note over S: Step 2 — cross-compile 2 × .a
-    S->>Cargo: build --target aarch64-apple-ios
-    Cargo-->>S: librusty_qr_ffi.a (device)
-    S->>Cargo: build --target aarch64-apple-ios-sim
-    Cargo-->>S: librusty_qr_ffi.a (simulator)
+    Note over B: Cargo — one build per iOS target
+    G->>B: composeApp depends on :rustyqr-bindings
+    B->>C: build rusty-qr-ffi for the active target<br/>aarch64-apple-ios (device) or<br/>aarch64-apple-ios-sim (simulator)
+    C-->>B: librusty_qr_ffi.a
 
-    Note over S: Step 3 — generate Swift binding
-    S->>UB: uniffi-bindgen generate<br/>--library librusty_qr_ffi.a<br/>--language swift
-    UB->>UB: read metadata from .a
-    UB-->>S: RustyQrFFI.swift<br/>RustyQrFFIFFI.h<br/>RustyQrFFIFFI.modulemap
-    S->>S: copy into<br/>iosApp/generated/
+    Note over B: Bindings and cinterop
+    B->>B: generate Kotlin + C headers<br/>write the cinterop .def
+    B->>K: cinterop over rusty_qr_ffi.h
 
-    Note over S: Step 4 — create XCFramework
-    S->>XCB: xcodebuild -create-xcframework<br/>-library device.a -headers headers/<br/>-library simulator.a -headers headers/
-    XCB-->>S: Frameworks/RustyQR.xcframework/<br/>├── ios-arm64/<br/>└── ios-arm64-simulator/
-
-    S-->>G: make ios complete
-
-    Note over G: finalizedBy generateXcodeProject
-    G->>XCG: xcodegen generate
-    XCG-->>G: iosApp.xcodeproj + Info.plist<br/>(links XCFramework, adds generated/ to sources)
-
-    G-->>Dev: iOS tree ready
-
-    Dev->>Xcode: open iosApp.xcodeproj → Build
-    Note over Xcode: Xcode:<br/>• links correct slice from XCFramework<br/>• compiles Swift (including generated)<br/>• resolves 'import RustyQrFFIFFI' via SWIFT_IMPORT_PATHS
+    Note over K: Link
+    K->>K: compile Kotlin, link the .a<br/>into the static ComposeApp framework
+    K-->>Xcode: ComposeApp.framework
+    Xcode->>Xcode: compile the Swift shell, embed and sign
     Xcode-->>Dev: iosApp.app
 ```
 
-### What's inside the XCFramework
-
-```
-iosApp/Frameworks/RustyQR.xcframework/
-├── Info.plist                          # tells Xcode which slice is which
-├── ios-arm64/                          # device slice
-│   ├── librusty_qr_ffi.a
-│   └── Headers/
-│       ├── RustyQrFFIFFI.h
-│       └── RustyQrFFIFFI.modulemap
-└── ios-arm64-simulator/                # simulator slice
-    ├── librusty_qr_ffi.a
-    └── Headers/
-        ├── RustyQrFFIFFI.h
-        └── RustyQrFFIFFI.modulemap
-```
-
-When Xcode compiles the app, it reads `Info.plist`, looks at the current build destination
-(simulator or device), and links the matching `.a`. You never have to switch manually.
+There is no packaged Rust artifact, no Swift binding file and no module map. The Swift shell in `iosApp/iosApp/`
+only hosts `mainViewController()` from the Kotlin framework; all calls into Rust happen in Kotlin.
 
 ### Why XcodeGen?
 
@@ -334,58 +354,57 @@ save. It's unreviewable in PRs and produces constant merge conflicts.
 human-readable YAML file (`iosApp/project.yml`) and run `xcodegen generate` to rebuild the project
 file. The `.xcodeproj` is gitignored; `project.yml` is the source of truth.
 
-### How Xcode picks up the generated Swift
+### How Xcode picks up the Rust code
 
-Three `project.yml` settings wire everything together:
+Two `project.yml` details wire everything together:
 
-1. **Dependencies list** — `Frameworks/RustyQR.xcframework` is declared as a linked framework.
-2. **Sources list** — `iosApp/generated/` is listed as a source group, so XcodeGen adds
-   `RustyQrFFI.swift` to the compile sources.
-3. **`SWIFT_IMPORT_PATHS`** — this build setting points at `iosApp/generated/` so the Swift
-   compiler can find `RustyQrFFIFFI.modulemap`. That's what lets `RustyQrFFI.swift` say
-   `import RustyQrFFIFFI` without a manual bridging header.
+1. **The pre-build script** runs `embedAndSignAppleFrameworkForXcode`, which builds the Rust
+   library, the bindings and the `ComposeApp` framework for the active destination (device or
+   simulator).
+2. **The release flag** — the script passes `-PreleaseBuild=true` for every configuration except
+   Debug, so shipped builds embed the optimised Rust library.
 
 ---
 
 ## UniFFI Metadata — How Bindings Stay in Sync
 
 Both branches depend on a crucial magic trick: UniFFI embeds a description of every exported
-function *into* the compiled binary. `uniffi-bindgen` reads that description back out to generate
-the Kotlin and Swift code.
+function *into* the compiled binary. The generator reads that description back out to produce the
+Kotlin code.
 
 ```mermaid
 graph LR
-    A["Rust source:<br/>#[uniffi::export]<br/>fn generate_png(content: String, size: u32)<br/>-> Result[Vec u8, FfiQrError]"]
+    A["Rust source:<br/>#[uniffi::export]<br/>fn generate_png(content: &str, size: u32)<br/>-> Result[Vec u8, FfiQrError]"]
     B["uniffi proc-macro<br/>(runs at Rust compile time)"]
-    C["Compiled binary (.so or .a)<br/>with metadata section"]
-    D["uniffi-bindgen<br/>(runs after Rust build)"]
-    E["Kotlin:<br/>fun generatePng(content: String, size: UInt): List[UByte]"]
-    F["Swift:<br/>func generatePng(content: String, size: UInt32) throws → Data"]
+    C["Compiled library (.so or .a)<br/>with metadata section"]
+    D["UniFFI Kotlin generator<br/>(run by the Gradle plugin)"]
+    E["Kotlin (commonMain):<br/>fun generatePng(content: String, size: UInt): ByteArray"]
 
     A --> B --> C
     C --> D
     D --> E
-    D --> F
 ```
 
 ### What this buys you
 
-1. **No drift.** Change a Rust function signature, rebuild, and the Kotlin + Swift regenerate to
-   match. If the bindings are out of sync with Rust, you'll get a *compile* error in the mobile app,
-   not a runtime crash.
+1. **No drift.** Change a Rust function signature, rebuild, and the Kotlin regenerates to match. If
+   the bindings are out of sync with Rust, you'll get a *compile* error in the app, not a runtime
+   crash.
 2. **No hand-written JNI or C headers.** The whole "how do I call Rust from Kotlin?" problem is
    solved by code generation.
-3. **Idiomatic output.** UniFFI emits `data class`es for Kotlin, `struct`s for Swift, sealed
-   exceptions with typed variants, etc. Feels native on both sides.
+3. **Idiomatic output.** UniFFI emits `data class`es, enum classes and sealed exceptions with typed
+   variants. It feels native in Kotlin.
 
 ### Where bindings land
 
-| Platform | Generated file(s)                                                   | Lives in                                                    |
-|----------|---------------------------------------------------------------------|-------------------------------------------------------------|
-| Android  | `rusty_qr_ffi.kt`                                                   | `composeApp/src/androidMain/kotlin/generated/com/p2/apps/rustyqr/rust/` |
-| iOS      | `RustyQrFFI.swift` + `RustyQrFFIFFI.h` + `RustyQrFFIFFI.modulemap`  | `iosApp/generated/`                                         |
+| Source set   | Generated file(s)                                                              | Lives in                                                      |
+|--------------|--------------------------------------------------------------------------------|---------------------------------------------------------------|
+| commonMain   | `rusty_qr_ffi.common.kt`                                                       | `rustyqr-bindings/build/uniffi/bindings/commonMain/kotlin/com/p2/apps/rustyqr/rust/` |
+| androidMain  | `rusty_qr_ffi.android.kt`                                                      | `rustyqr-bindings/build/uniffi/bindings/androidMain/kotlin/…` |
+| nativeMain   | `rusty_qr_ffi.native.kt` + C headers for cinterop                              | `rustyqr-bindings/build/uniffi/bindings/nativeMain/` and `nativeInterop/` |
 
-Both directories are **gitignored**. They're regenerated on every Rust build.
+All of it sits under `rustyqr-bindings/build/`, which is **gitignored**. `./gradlew
+:rustyqr-bindings:buildBindings` regenerates it, and every build that needs it runs that task.
 
 ---
 
@@ -400,78 +419,85 @@ for a single QR generation call, on both platforms:
 sequenceDiagram
     participant UI as GenerateScreen<br/>(Compose)
     participant VM as GenerateViewModel<br/>(commonMain)
-    participant Bridge as QrBridge.android.kt<br/>(expect/actual actual)
-    participant Gen as rusty_qr_ffi.kt<br/>(UniFFI-generated)
+    participant Bridge as QrBridge<br/>(commonMain object)
+    participant Gen as rusty_qr_ffi.android.kt<br/>(UniFFI-generated)
     participant JNA as JNA runtime
     participant SO as librusty_qr_ffi.so<br/>(loaded into process)
     participant Rust as Rust core
 
-    UI->>VM: onIntent(GenerateQr("hello", 256))
-    VM->>Bridge: qrBridge.generatePng("hello", 256)
-    Bridge->>Gen: RustyQrFFIKt.generatePng("hello", 256u)
-    Gen->>JNA: UniffiLib.INSTANCE.uniffi_rusty_qr_ffi_fn_func_generate_png(...)
+    UI->>VM: onIntent(Generate)
+    VM->>Bridge: QrBridge.generateQrPng(text, 512)<br/>on the injected IO dispatcher
+    Bridge->>Gen: generatePng(content, 512u)
+    Gen->>JNA: native call uniffi_rusty_qr_ffi_fn_func_generate_png
     JNA->>SO: dlsym lookup + call
     SO->>Rust: generate_png(content, size)
     Rust-->>SO: Result[Vec u8, FfiQrError]
     SO-->>JNA: raw bytes + status code
     JNA-->>Gen: marshaled return value
-    Gen-->>Bridge: List[UByte] (PNG bytes)
-    Bridge-->>VM: ByteArray
-    VM-->>UI: state.qrImage = ImageBitmap(...)
+    Gen-->>Bridge: ByteArray (PNG bytes)
+    Bridge-->>VM: Either[QrError, ByteArray]
+    VM-->>UI: state.qrImageBytes = PNG bytes
 ```
 
 ### iOS
 
 ```mermaid
 sequenceDiagram
-    participant UI as GenerateScreen<br/>(Compose, iosMain)
+    participant UI as GenerateScreen<br/>(Compose, commonMain)
     participant VM as GenerateViewModel<br/>(commonMain)
-    participant Bridge as QrBridge.ios.kt<br/>(expect/actual actual)
-    participant CI as Kotlin/Native cinterop<br/>(RustyQrFFIFFI.h)
-    participant A as librusty_qr_ffi.a<br/>(linked into app binary)
+    participant Bridge as QrBridge<br/>(commonMain object)
+    participant Gen as rusty_qr_ffi.native.kt<br/>(UniFFI-generated)
+    participant CI as Kotlin/Native cinterop<br/>(rusty_qr_ffi.h)
+    participant A as librusty_qr_ffi.a<br/>(linked into the framework)
     participant Rust as Rust core
 
-    UI->>VM: onIntent(GenerateQr("hello", 256))
-    VM->>Bridge: qrBridge.generatePng("hello", 256)
-    Bridge->>CI: uniffi_rusty_qr_ffi_fn_func_generate_png(rb, size, status)
+    UI->>VM: onIntent(Generate)
+    VM->>Bridge: QrBridge.generateQrPng(text, 512)<br/>on the injected IO dispatcher
+    Bridge->>Gen: generatePng(content, 512u)
+    Gen->>CI: uniffi_rusty_qr_ffi_fn_func_generate_png(...)
     CI->>A: C ABI call (statically linked symbol)
     A->>Rust: generate_png(content, size)
     Rust-->>A: Result[Vec u8, FfiQrError]
     A-->>CI: RustBuffer + status code
-    CI-->>Bridge: CValue<RustBuffer> — lift length-prefixed bytes
-    Bridge-->>VM: Either<QrError, ByteArray>
-    VM-->>UI: state.qrImage = ImageBitmap(...)
+    CI-->>Gen: lifted into ByteArray
+    Gen-->>Bridge: ByteArray (PNG bytes)
+    Bridge-->>VM: Either[QrError, ByteArray]
+    VM-->>UI: state.qrImageBytes = PNG bytes
 ```
 
 The key difference: on Android JNA does a **runtime** symbol lookup into a dynamically loaded
 `.so`; on iOS the symbol is resolved at **link time** because the `.a` was statically linked into
-the app binary. Kotlin/Native cinterop consumes the UniFFI-generated C header directly — no Swift
-round-trip. Everything above that boundary is identical — same Compose UI, same ViewModel, same
-`QrBridge` expect declaration.
+the framework. Kotlin/Native cinterop consumes the UniFFI-generated C header directly — no Swift
+round-trip. Everything above the generated bindings is identical — same Compose UI, same
+ViewModel, same `QrBridge` object.
 
 ---
 
 ## Type Mapping Across the FFI Boundary
 
-UniFFI converts between Rust types and platform types automatically. The FFI wrapper types (`Ffi*`)
+UniFFI converts between Rust types and Kotlin types automatically. The FFI wrapper types (`Ffi*`)
 exist because the core crate deliberately has no UniFFI dependency — the wrapper crate adds the
-annotations and does the conversion.
+annotations and does the conversion. The Kotlin column lists the types in
+`rustyqr-bindings/build/uniffi/bindings/commonMain`.
 
-| Rust (core)         | Rust (ffi wrapper)     | Kotlin (generated)                  | Swift (generated)             |
-|---------------------|------------------------|-------------------------------------|-------------------------------|
-| `QrErrorCorrection` | `FfiQrErrorCorrection` | `FfiQrErrorCorrection` (enum class) | `FfiQrErrorCorrection` (enum) |
-| `QrConfig`          | `FfiQrConfig`          | `FfiQrConfig` (data class)          | `FfiQrConfig` (struct)        |
-| `ScanResult`        | `FfiScanResult`        | `FfiScanResult` (data class)        | `FfiScanResult` (struct)      |
-| `QrError`           | `FfiQrError`           | `FfiQrException` (sealed class)     | `FfiQrError` (enum)           |
-| `Vec<u8>`           | `Vec<u8>`              | `List<UByte>`                       | `Data`                        |
-| `String`            | `String`               | `String`                            | `String`                      |
-| `u32`               | `u32`                  | `UInt`                              | `UInt32`                      |
+| Rust (core)         | Rust (ffi wrapper)     | Kotlin (generated)                  |
+|---------------------|------------------------|-------------------------------------|
+| `QrErrorCorrection` | `FfiQrErrorCorrection` | `FfiQrErrorCorrection` (enum class) |
+| `QrConfig`          | `FfiQrConfig`          | `FfiQrConfig` (data class)          |
+| `ScanResult`        | `FfiScanResult`        | `FfiScanResult` (data class)        |
+| `QrError`           | `FfiQrError`           | `FfiQrException` (sealed class)     |
+| `Vec<u8>` / `&[u8]` | `Vec<u8>` / `&[u8]`    | `ByteArray`                         |
+| `String` / `&str`   | `String` / `&str`      | `String`                            |
+| `u32`               | `u32`                  | `UInt`                              |
 
 Conversion flow:
 
 - **Inputs** (app → Rust): `FfiQrConfig` → `QrConfig` via `From` impls in the `ffi` crate.
 - **Outputs** (Rust → app): `ScanResult` → `FfiScanResult` via `From` impls in the `ffi` crate.
-- **Errors**: `QrError` → `FfiQrError` → platform-native exception type.
+- **Errors**: `QrError` → `FfiQrError` → `FfiQrException`. `QrBridge` maps the exception to the
+  app's `QrError` inside an `Either`. The variants include `ContentTooLong`, which Rust raises for
+  generate input over the encoder's capacity (2331 UTF-8 bytes at error-correction level M); the
+  `max_content_bytes` export (`maxContentBytes()` in Kotlin) returns that limit.
 
 ---
 
@@ -484,17 +510,15 @@ Conversion flow:
 | `.a`              | Static archive — a bundle of object files linked directly into another binary at compile time        |
 | `cdylib`          | Cargo crate type that produces a `.so` / `.dylib` (C-compatible dynamic library)                      |
 | `staticlib`       | Cargo crate type that produces a `.a` (C-compatible static archive)                                   |
-| `jniLibs/`        | Magic Android Gradle Plugin directory — any `.so` inside is auto-packaged into the APK               |
-| AAR               | Android Archive — zipped library artifact (classes + resources + `.so`). **Not used in this repo.**  |
-| XCFramework       | Apple's multi-platform packaging format; a directory containing `.a` or `.framework` slices per target |
-| `.xcframework`    | Suffix of an XCFramework directory — `iosApp/Frameworks/RustyQR.xcframework/`                         |
+| `jniLibs`         | Android Gradle Plugin convention — any `.so` in a `jniLibs/<abi>/` tree is auto-packaged into the APK. The UniFFI plugin fills it for `:rustyqr-bindings` |
+| AAR               | Android Archive — zipped library artifact (classes + resources + `.so`). **Not published from this repo.** |
+| cinterop          | Kotlin/Native tool that turns a C header (and a static library) into a Kotlin API. The UniFFI plugin generates the definition |
 | `.xcodeproj`      | Xcode project bundle (directory). Gitignored here — regenerated from `project.yml` by XcodeGen        |
 | `project.yml`     | XcodeGen's human-readable project spec — the source of truth for `.xcodeproj`                         |
 | `project.pbxproj` | Opaque XML file inside `.xcodeproj` — auto-generated, never edited by hand                            |
-| `.modulemap`      | Swift's mechanism for importing a C library as a module (`import RustyQrFFIFFI`)                      |
-| UniFFI            | Mozilla's tool that auto-generates Kotlin/Swift bindings from annotated Rust code                     |
+| UniFFI            | Mozilla's tool that auto-generates foreign-language bindings from annotated Rust code                 |
+| Ubique UniFFI plugin | Gradle plugin (`ch.ubique.uniffi.plugin`) that runs Cargo, runs the generator and wires the output into a KMP module |
 | JNA               | Java Native Access — runtime library that lets Kotlin/Java call C functions in a `.so` by name        |
-| cargo-ndk         | Cargo wrapper that makes cross-compiling Rust for Android's NDK toolchain one command                 |
 | NDK               | Android's Native Development Kit — the C/C++ toolchain bundled with Android Studio                    |
 
 ---
@@ -534,29 +558,21 @@ follow only the threads you care about.
 
 - **[Android NDK docs — ABI management](https://developer.android.com/ndk/guides/abis)** — the
   definitive guide to `arm64-v8a`, `armeabi-v7a`, `x86_64`, and why you need multiple slices.
-- **[cargo-ndk README](https://github.com/bbqsrc/cargo-ndk)** — short, but explains *exactly*
-  what the wrapper does behind the scenes when it invokes `rustc` with the NDK toolchain.
 - **[Android's 16KB page size requirement](https://developer.android.com/guide/practices/page-sizes)**
-  — why the Makefile specifies `-Z` flags and why NDK 28+ matters. Mandatory reading before
+  — why NDK 28+ matters. Mandatory reading before
   shipping to the Play Store in late 2025.
 - **[JNA vs. JNI — when and why](https://github.com/java-native-access/jna/blob/master/www/Frequently%20Asked%20Questions.md)**
   — the JNA FAQ. Explains the tradeoff we take by going through JNA instead of writing hand-rolled
   JNI glue. UniFFI's generated Kotlin assumes JNA; this is the "why".
 
-### iOS: XCFrameworks, static libs, and Swift module maps
+### Kotlin/Native interop and the UniFFI Gradle plugin
 
-- **[Apple — Distributing Binary Frameworks as Swift Packages](https://developer.apple.com/documentation/xcode/distributing-binary-frameworks-as-swift-packages)**
-  — Apple's own guide on XCFrameworks. Read the "Creating an XCFramework" section; the rest is
-  SPM-specific and not relevant here.
-- **[WWDC 2019 — Binary Frameworks in Swift (session 416)](https://developer.apple.com/videos/play/wwdc2019/416/)**
-  — the introduction-of-XCFrameworks session. Still the clearest explanation of why the format
-  exists and what problem it solves (vs. fat `.framework` binaries).
-- **[Building a Rust library for iOS (mozilla.github.io)](https://mozilla.github.io/uniffi-rs/tutorial/foreign_language_bindings.html)**
-  — UniFFI's tutorial specifically for Swift. Walks through `-create-xcframework` and the
-  module-map generation step.
-- **[Swift module maps explained (Modulabs blog)](https://clang.llvm.org/docs/Modules.html#module-maps)**
-  — Clang's docs on module maps (Swift reuses this). Bookmark for when the `.modulemap` file
-  confuses you.
+- **[Kotlin/Native — interoperability with C](https://kotlinlang.org/docs/native-c-interop.html)**
+  — how a C header and a static library become a Kotlin API. The plugin generates the `.def` file
+  that this page describes.
+- **[Ubique — uniffi-kotlin-multiplatform-bindings](https://github.com/UbiqueInnovation/uniffi-kotlin-multiplatform-bindings)**
+  — the Gradle plugin this repo uses (`ch.ubique.uniffi.plugin`): its README documents the `cargo { }`
+  and `uniffi { }` blocks and the generated source layout.
 
 ### XcodeGen and `.xcodeproj` generation
 
@@ -595,11 +611,9 @@ follow only the threads you care about.
 - **[Jon Gjengset — Crust of Rust: FFI](https://www.youtube.com/watch?v=pePqWoTnSmQ)** — one of
   the clearest video walkthroughs of Rust FFI fundamentals. Two hours; worth every minute if
   you're new to the topic.
-- **[RustConf 2022 — Shipping Rust in your app with Cargo Swift](https://www.youtube.com/watch?v=Xl5OhxLKBjo)**
-  — short talk on the Swift side of the pipeline, pitched at a newcomer level.
 
 > **Tip.** If this is your first time through the pipeline, read in this order: Rust crate types
-> → UniFFI tutorial → Android NDK ABI guide → XCFramework WWDC session. That mirrors the order
+> → UniFFI tutorial → Android NDK ABI guide → Kotlin/Native C interop. That mirrors the order
 > of the build pipeline itself, so each new piece lands on top of context you already have.
 
 ---

@@ -89,9 +89,9 @@ pub fn decode_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<ScanRes
 /// each pixel into `rqrr`'s own buffer. `rqrr`'s optional `img` feature
 /// (`GrayImage::from_raw` + `PreparedImage::prepare`) would avoid that copy at
 /// the cost of taking ownership of a `Vec<u8>`; it is not adopted pending the
-/// benchmark in spec 2.2. For a 640×480 camera frame (~307 K pixels) the
-/// overhead is expected to be sub-millisecond on modern hardware, well within
-/// the PRD's 20 ms target for the camera decode path.
+/// benchmark in spec 2.2. The cost for a 640×480 camera frame (~307 K pixels)
+/// is not yet measured; the only raw-frame (camera path) figure so far is
+/// for a 256×256 synthetic frame (see `BENCHMARKS.md`).
 fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult, QrError> {
     let (w, h) = (width as usize, height as usize);
     let expected = w.checked_mul(h).ok_or_else(|| QrError::InvalidInput {
