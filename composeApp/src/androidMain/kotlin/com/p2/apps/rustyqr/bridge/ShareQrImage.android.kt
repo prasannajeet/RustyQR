@@ -4,9 +4,6 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import arrow.core.Either
 import com.p2.apps.rustyqr.AppContextHolder
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import java.io.File
 
 private const val FILE_PROVIDER_AUTHORITY = "com.p2.apps.rustyqr.fileprovider"
@@ -17,8 +14,8 @@ actual suspend fun shareQrImage(
     suggestedName: String,
 ): Either<String, Unit> {
     val context = AppContextHolder.context
-    return withContext(Dispatchers.IO) {
-        try {
+    return Either
+        .catch {
             val dir = File(context.cacheDir, SHARE_CACHE_DIR).apply { mkdirs() }
             val file = File(dir, "$suggestedName.png")
             file.writeBytes(bytes)
@@ -34,11 +31,5 @@ actual suspend fun shareQrImage(
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
             context.startActivity(chooser)
-            Either.Right(Unit)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (t: Throwable) {
-            Either.Left(t.message ?: "Unable to share QR code")
-        }
-    }
+        }.mapLeft { it.message ?: "Unable to share QR code" }
 }

@@ -10,6 +10,8 @@ import com.p2.apps.rustyqr.ui.UiText
 import com.p2.apps.rustyqr.ui.mvi.AnimationPhase
 import com.p2.apps.rustyqr.ui.mvi.GenerateQRCodeScreenIntent
 import com.p2.apps.rustyqr.ui.mvi.GenerateScreenState
+import com.p2.apps.rustyqr.ui.mvi.MAX_QR_INPUT_LENGTH
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,18 +23,20 @@ import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.generate_error_too_long
 import rustyqr.composeapp.generated.resources.generate_message_saved
 
-private const val MAX_QR_INPUT_LENGTH = 4296
 private const val QR_IMAGE_SIZE_PX = 512
 private const val SHARE_FILE_PREFIX = "rusty-qr"
+private const val SHARE_FILE_NAME_MAX_INPUT_CHARS = 24
 private const val KEY_INPUT_TEXT = "generate.inputText"
 
 /**
  * Processes [GenerateQRCodeScreenIntent]s and updates [GenerateScreenState].
  *
- * Input text survives process death via [SavedStateHandle].
+ * Input text survives process death via [SavedStateHandle]. Blocking bridge work (FFI, gallery and share
+ * I/O) runs on [ioDispatcher].
  */
 class GenerateViewModel(
     private val savedStateHandle: SavedStateHandle = SavedStateHandle(),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
     val state: StateFlow<GenerateScreenState>
         field =
@@ -82,7 +86,7 @@ class GenerateViewModel(
         viewModelScope.launch {
             state.update { it.copy(isGenerating = true, error = null) }
             val result =
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     QrBridge.generateQrPng(input, QR_IMAGE_SIZE_PX)
                 }
             result.fold(
@@ -111,8 +115,9 @@ class GenerateViewModel(
 
     private fun handleShare() {
         val bytes = state.value.qrImageBytes ?: return
+        val fileName = suggestedName()
         viewModelScope.launch {
-            shareQrImage(bytes, suggestedName()).fold(
+            withContext(ioDispatcher) { shareQrImage(bytes, fileName) }.fold(
                 ifLeft = { reason -> state.update { it.copy(error = UiText.Raw(reason)) } },
                 ifRight = { /* system share sheet now owns UI */ },
             )
@@ -121,10 +126,11 @@ class GenerateViewModel(
 
     private fun handleSave() {
         val bytes = state.value.qrImageBytes ?: return
+        val fileName = suggestedName()
         viewModelScope.launch {
-            saveQrImage(bytes, suggestedName()).fold(
+            withContext(ioDispatcher) { saveQrImage(bytes, fileName) }.fold(
                 ifLeft = { reason -> state.update { it.copy(error = UiText.Raw(reason)) } },
-                ifRight = { state.update { it.copy(message = UiText.Res(Res.string.generate_message_saved)) } },
+                ifRight = { state.update { s -> s.copy(message = UiText.Res(Res.string.generate_message_saved)) } },
             )
         }
     }
@@ -132,7 +138,7 @@ class GenerateViewModel(
     private fun suggestedName(): String {
         val safe =
             state.value.inputText
-                .take(24)
+                .take(SHARE_FILE_NAME_MAX_INPUT_CHARS)
                 .replace(Regex("[^A-Za-z0-9_-]"), "_")
         return if (safe.isBlank()) SHARE_FILE_PREFIX else "$SHARE_FILE_PREFIX-$safe"
     }

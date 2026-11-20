@@ -5,9 +5,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import arrow.core.Either
 import com.p2.apps.rustyqr.AppContextHolder
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 private const val PICTURES_SUBDIR = "RustyQR"
 
@@ -16,8 +13,8 @@ actual suspend fun saveQrImage(
     suggestedName: String,
 ): Either<String, Unit> {
     val resolver = AppContextHolder.context.contentResolver
-    return withContext(Dispatchers.IO) {
-        try {
+    return Either
+        .catch {
             val pending =
                 ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, "$suggestedName.png")
@@ -35,11 +32,6 @@ actual suspend fun saveQrImage(
                 ?: error("Could not open gallery output stream")
             val finalize = ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }
             resolver.update(uri, finalize, null, null)
-            Either.Right(Unit)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (t: Throwable) {
-            Either.Left(t.message ?: "Unable to save QR code")
-        }
-    }
+            Unit
+        }.mapLeft { it.message ?: "Unable to save QR code" }
 }

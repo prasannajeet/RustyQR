@@ -151,15 +151,40 @@ dependencies {
 detekt {
     buildUponDefaultConfig = true
     config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
-    baseline = file("detekt-baseline.xml")
+    // The plain `detekt` task defaults to src/main/kotlin, which does not exist in a KMP layout. Point it at every
+    // KMP Kotlin source set (commonMain, androidMain, iosMain, commonTest, ...) and skip the UniFFI-generated bindings.
+    source.setFrom(
+        fileTree("src") {
+            include("*Main/kotlin/**/*.kt", "*Test/kotlin/**/*.kt")
+            exclude("androidMain/kotlin/generated/**")
+        },
+    )
 }
 
 tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
-    exclude { it.file.absolutePath.contains("/build/") }
+    // Match on the project-relative path so a checkout that lives under a /build/ directory is not skipped.
+    val moduleRoot = project.projectDir
+    exclude {
+        val path = it.file.relativeTo(moduleRoot).invariantSeparatorsPath
+        path.startsWith("build/") || path.contains("/build/") || path.startsWith("src/androidMain/kotlin/generated/")
+    }
 }
 
-tasks.withType<io.gitlab.arturbosch.detekt.DetektCreateBaselineTask>().configureEach {
-    exclude { it.file.absolutePath.contains("/build/") }
+// Type resolution: detekt-gradle-plugin 1.23.x only wires a compile classpath for the JVM/Android targets, and
+// detekt 1.x cannot resolve Kotlin/Native types. So detektAndroidDebug is the type-resolved task; commonMain is
+// added to it so shared code is type-checked against the Android classpath. iosMain only gets the untyped
+// source-set scan configured above, as does commonTest.
+// The plugin registers its per-compilation tasks and sets their sources late, so add commonMain afterwards.
+afterEvaluate {
+    tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektAndroidDebug") {
+        source(file("src/commonMain/kotlin"))
+    }
+}
+
+// `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved task, which
+// compiles the Android target (needs the gitignored androidMain/kotlin/generated bindings: buildRustAndroid).
+tasks.named("detekt") {
+    dependsOn("detektAndroidDebug")
 }
 
 ktlint {

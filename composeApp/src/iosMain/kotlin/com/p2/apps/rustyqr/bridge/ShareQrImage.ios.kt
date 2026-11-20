@@ -3,11 +3,11 @@
 package com.p2.apps.rustyqr.bridge
 
 import arrow.core.Either
+import arrow.core.flatten
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSData
@@ -24,10 +24,19 @@ actual suspend fun shareQrImage(
     suggestedName: String,
 ): Either<String, Unit> =
     withContext(Dispatchers.Main) {
-        try {
-            val data = bytes.toNSData()
-            val image = UIImage.imageWithData(data) ?: return@withContext Either.Left("Invalid image data")
-            val presenter = topViewController() ?: return@withContext Either.Left("No view controller to present share sheet")
+        Either
+            .catch { presentShareSheet(bytes) }
+            .mapLeft { it.message ?: "Unable to share QR code" }
+            .flatten()
+    }
+
+private fun presentShareSheet(bytes: ByteArray): Either<String, Unit> {
+    val image = UIImage.imageWithData(bytes.toNSData())
+    val presenter = topViewController()
+    return when {
+        image == null -> Either.Left("Invalid image data")
+        presenter == null -> Either.Left("No view controller to present share sheet")
+        else -> {
             val activityVC =
                 UIActivityViewController(
                     activityItems = listOf(image),
@@ -35,12 +44,9 @@ actual suspend fun shareQrImage(
                 )
             presenter.presentViewController(activityVC, animated = true, completion = null)
             Either.Right(Unit)
-        } catch (ce: CancellationException) {
-            throw ce
-        } catch (t: Throwable) {
-            Either.Left(t.message ?: "Unable to share QR code")
         }
     }
+}
 
 internal fun ByteArray.toNSData(): NSData =
     if (isEmpty()) {
@@ -51,15 +57,12 @@ internal fun ByteArray.toNSData(): NSData =
         }
     }
 
-@Suppress("DEPRECATION")
 internal fun topViewController(): UIViewController? {
-    val app = UIApplication.sharedApplication
-    val window: UIWindow? =
-        app.connectedScenes
+    val windows =
+        UIApplication.sharedApplication.connectedScenes
             .filterIsInstance<UIWindowScene>()
             .flatMap { scene -> scene.windows.filterIsInstance<UIWindow>() }
-            .firstOrNull { it.keyWindow }
-            ?: app.keyWindow
+    val window: UIWindow? = windows.firstOrNull { it.keyWindow }
     var vc = window?.rootViewController
     while (vc?.presentedViewController != null) {
         vc = vc.presentedViewController

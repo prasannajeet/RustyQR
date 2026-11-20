@@ -4,7 +4,6 @@ package com.p2.apps.rustyqr.bridge
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.AVFoundation.AVAuthorizationStatus
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusDenied
 import platform.AVFoundation.AVCaptureDevice
@@ -51,4 +50,4 @@ actual fun openAppSettings() {
     }
 }
 
-private fun cameraAuthorizationStatus(): AVAuthorizationStatus = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)
+private fun cameraAuthorizationStatus() = AVCaptureDevice.authorizationStatusForMediaType(AVMediaTypeVideo)

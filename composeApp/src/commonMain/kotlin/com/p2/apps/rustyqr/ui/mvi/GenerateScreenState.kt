@@ -2,6 +2,9 @@ package com.p2.apps.rustyqr.ui.mvi
 
 import com.p2.apps.rustyqr.ui.UiText
 
+/** Maximum number of characters a QR code can encode in this app. */
+const val MAX_QR_INPUT_LENGTH = 4296
+
 /**
  * Animation phase for the Generate screen.
  */
@@ -27,18 +30,15 @@ data class GenerateScreenState(
     val error: UiText? = null,
     val message: UiText? = null,
 ) {
-    @Suppress("ReturnCount")
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (other == null || other !is GenerateScreenState) return false
-        if (inputText != other.inputText) return false
-        if (!qrImageBytes.contentEquals(other.qrImageBytes)) return false
-        if (isGenerating != other.isGenerating) return false
-        if (animationPhase != other.animationPhase) return false
-        if (error != other.error) return false
-        if (message != other.message) return false
-        return true
-    }
+    override fun equals(other: Any?): Boolean = this === other || (other is GenerateScreenState && sameContentAs(other))
+
+    private fun sameContentAs(other: GenerateScreenState): Boolean =
+        inputText == other.inputText &&
+            qrImageBytes.contentEquals(other.qrImageBytes) &&
+            isGenerating == other.isGenerating &&
+            animationPhase == other.animationPhase &&
+            error == other.error &&
+            message == other.message
 
     override fun hashCode(): Int {
         var result = inputText.hashCode()

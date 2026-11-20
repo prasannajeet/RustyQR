@@ -3,7 +3,9 @@ package com.p2.apps.rustyqr.ui.screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -68,9 +70,10 @@ fun ScanScreen(viewModel: ScanViewModel = viewModel { ScanViewModel() }) {
     )
 
     // Show result sheet when QR decoded
-    if (state.isSheetVisible && state.sheetContent != null) {
+    val sheetContent = state.sheetContent
+    if (state.isSheetVisible && sheetContent != null) {
         ScanResultSheet(
-            result = state.sheetContent!!,
+            result = sheetContent,
             onDismiss = { viewModel.onIntent(ScanQRCodeScreenIntent.DismissSheet) },
             onScanAgain = { viewModel.onIntent(ScanQRCodeScreenIntent.ResumeScanning) },
         )
@@ -82,11 +85,12 @@ private fun ScanContent(
     state: ScanScreenState,
     onIntent: (ScanQRCodeScreenIntent) -> Unit,
 ) {
+    val contentModifier =
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+        modifier = contentModifier,
     ) {
         when {
             state.permissionRequested && !state.hasPermission -> {
@@ -97,63 +101,7 @@ private fun ScanContent(
                 )
             }
             state.isCameraActive && state.hasPermission -> {
-                // Camera preview fills screen edge-to-edge (no inset padding on this layer)
-                CameraPreview(
-                    isScanning = state.isScanning,
-                    onQrDecoded = { result -> onIntent(ScanQRCodeScreenIntent.FrameDecoded(result)) },
-                    onCameraReady = { onIntent(ScanQRCodeScreenIntent.CameraReady) },
-                )
-
-                // Warm-up loader overlay — covers the black-while-warming-up frame so the user
-                // sees a deliberate loading state instead of a dead preview. Cleared on the first
-                // camera frame via ScanQRCodeScreenIntent.CameraReady.
-                if (state.isCameraWarmingUp) {
-                    CameraWarmingUpOverlay()
-                }
-
-                // UI overlay layer — respects safe drawing insets so overlaid content avoids cutouts
-                Box(
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .windowInsetsPadding(WindowInsets.safeDrawing),
-                ) {
-                    // Scrim overlay when sheet is showing
-                    if (state.isSheetVisible) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxSize()
-                                    .background(Color.Black.copy(alpha = 0.6f)),
-                        )
-                    }
-
-                    // Scanner overlay (corner brackets)
-                    ScannerOverlay()
-
-                    // Hint text — wrapped in scrim pill for WCAG contrast on camera feed
-                    if (!state.isSheetVisible) {
-                        Surface(
-                            modifier =
-                                Modifier
-                                    .align(Alignment.Center)
-                                    .padding(top = 180.dp),
-                            color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f),
-                            shape = MaterialTheme.shapes.large,
-                        ) {
-                            Text(
-                                text = stringResource(Res.string.scan_hint),
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                style =
-                                    MaterialTheme.typography.bodyMedium.copy(
-                                        color = MaterialTheme.colorScheme.onBackground,
-                                        fontSize = 14.sp,
-                                    ),
-                                textAlign = TextAlign.Center,
-                            )
-                        }
-                    }
-                }
+                CameraScanLayer(state = state, onIntent = onIntent)
             }
             else -> {
                 IdleContent(
@@ -165,12 +113,86 @@ private fun ScanContent(
 }
 
 @Composable
-private fun CameraWarmingUpOverlay() {
+private fun CameraScanLayer(
+    state: ScanScreenState,
+    onIntent: (ScanQRCodeScreenIntent) -> Unit,
+) {
+    // Camera preview fills screen edge-to-edge (no inset padding on this layer)
+    CameraPreview(
+        isScanning = state.isScanning,
+        onQrDecoded = { result -> onIntent(ScanQRCodeScreenIntent.FrameDecoded(result)) },
+        onCameraReady = { onIntent(ScanQRCodeScreenIntent.CameraReady) },
+    )
+
+    // Warm-up loader overlay — covers the black-while-warming-up frame so the user
+    // sees a deliberate loading state instead of a dead preview. Cleared on the first
+    // camera frame via ScanQRCodeScreenIntent.CameraReady.
+    if (state.isCameraWarmingUp) {
+        CameraWarmingUpOverlay()
+    }
+
+    // UI overlay layer — respects safe drawing insets so overlaid content avoids cutouts
+    val overlayModifier =
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+        modifier = overlayModifier,
+    ) {
+        // Scrim overlay when sheet is showing
+        if (state.isSheetVisible) {
+            val scrimModifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.6f))
+            Box(
+                modifier = scrimModifier,
+            )
+        }
+
+        // Scanner overlay (corner brackets)
+        ScannerOverlay()
+
+        // Hint text — wrapped in scrim pill for WCAG contrast on camera feed
+        if (!state.isSheetVisible) {
+            ScanHintPill()
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.ScanHintPill() {
+    val pillModifier =
+        Modifier
+            .align(Alignment.Center)
+            .padding(top = 180.dp)
+    Surface(
+        modifier = pillModifier,
+        color = MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        val hintStyle =
+            MaterialTheme.typography.bodyMedium.copy(
+                color = MaterialTheme.colorScheme.onBackground,
+                fontSize = 14.sp,
+            )
+        Text(
+            text = stringResource(Res.string.scan_hint),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            style = hintStyle,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun CameraWarmingUpOverlay() {
+    val warmUpModifier =
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    Box(
+        modifier = warmUpModifier,
         contentAlignment = Alignment.Center,
     ) {
         Column(
@@ -182,13 +204,14 @@ private fun CameraWarmingUpOverlay() {
                 strokeWidth = 3.dp,
             )
             Spacer(modifier = Modifier.height(16.dp))
+            val warmUpTextStyle =
+                MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontSize = 14.sp,
+                )
             Text(
                 text = stringResource(Res.string.scan_camera_starting),
-                style =
-                    MaterialTheme.typography.bodyMedium.copy(
-                        color = MaterialTheme.colorScheme.onBackground,
-                        fontSize = 14.sp,
-                    ),
+                style = warmUpTextStyle,
                 textAlign = TextAlign.Center,
             )
         }
@@ -197,12 +220,13 @@ private fun CameraWarmingUpOverlay() {
 
 @Composable
 private fun IdleContent(onStartScanning: () -> Unit) {
+    val idleModifier =
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(32.dp)
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(32.dp),
+        modifier = idleModifier,
     ) {
         AmberButton(
             text = stringResource(Res.string.scan_start_scanning),
@@ -218,64 +242,21 @@ private fun PermissionDeniedContent(
     onGrantPermission: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val columnModifier =
+        Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(32.dp)
     Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(32.dp),
+        modifier = columnModifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        // Camera icon with strike-through
-        Box(contentAlignment = Alignment.Center) {
-            Surface(
-                modifier = Modifier.size(80.dp),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Outlined.CameraAlt,
-                        contentDescription = stringResource(Res.string.scan_camera_denied_cd),
-                        modifier = Modifier.size(36.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-            // Strike-through line
-            Box(
-                modifier =
-                    Modifier
-                        .size(width = 80.dp, height = 2.dp)
-                        .background(MaterialTheme.colorScheme.error),
-            )
-        }
+        CameraDeniedIcon()
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Text(
-            text = stringResource(Res.string.scan_permission_title),
-            style =
-                MaterialTheme.typography.bodyLarge.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontSize = 15.sp,
-                ),
-            textAlign = TextAlign.Center,
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = stringResource(Res.string.scan_permission_body),
-            style =
-                MaterialTheme.typography.bodySmall.copy(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
-                ),
-            textAlign = TextAlign.Center,
-        )
+        PermissionMessage()
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -293,4 +274,61 @@ private fun PermissionDeniedContent(
             )
         }
     }
+}
+
+/** Camera icon with a strike-through line. */
+@Composable
+private fun CameraDeniedIcon() {
+    Box(contentAlignment = Alignment.Center) {
+        Surface(
+            modifier = Modifier.size(80.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Outlined.CameraAlt,
+                    contentDescription = stringResource(Res.string.scan_camera_denied_cd),
+                    modifier = Modifier.size(36.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        // Strike-through line
+        val strikeModifier =
+            Modifier
+                .size(width = 80.dp, height = 2.dp)
+                .background(MaterialTheme.colorScheme.error)
+        Box(
+            modifier = strikeModifier,
+        )
+    }
+}
+
+@Composable
+private fun ColumnScope.PermissionMessage() {
+    val titleStyle =
+        MaterialTheme.typography.bodyLarge.copy(
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground,
+            fontSize = 15.sp,
+        )
+    Text(
+        text = stringResource(Res.string.scan_permission_title),
+        style = titleStyle,
+        textAlign = TextAlign.Center,
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    val bodyStyle =
+        MaterialTheme.typography.bodySmall.copy(
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+        )
+    Text(
+        text = stringResource(Res.string.scan_permission_body),
+        style = bodyStyle,
+        textAlign = TextAlign.Center,
+    )
 }

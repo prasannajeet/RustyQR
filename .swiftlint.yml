@@ -4,10 +4,7 @@ included:
 excluded:
   - iosApp/iosApp.xcodeproj
   - iosApp/Pods
-
-disabled_rules:
-  - trailing_whitespace
-  - line_length
+  - iosApp/generated
 
 opt_in_rules:
   - empty_count

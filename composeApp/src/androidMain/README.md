@@ -352,8 +352,9 @@ After cleaning, rebuild Android with `./gradlew :composeApp:buildRustAndroid`.
 and the `.so` is only built for arm64. Run `./gradlew :composeApp:buildRustAndroid` — it always
 builds all three architectures.
 
-**`detekt` complains about `MatchingDeclarationName`.** The `*.android.kt` convention intentionally
-breaks that rule. It's disabled globally in `config/detekt/detekt.yml`.
+**`detekt` complains about `MatchingDeclarationName`.** The rule is enabled and accepts the
+`*.android.kt` / `*.ios.kt` suffixes; an actual-only helper class that differs from the file name
+should be `private`. Do not suppress it.
 
 **Scan works but no haptic on dismissal.** Check the Android system haptics setting. The
 `HapticFeedback.android.kt` actual uses `View.performHapticFeedback` which respects system

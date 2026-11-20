@@ -6,6 +6,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -39,12 +40,13 @@ fun AnimatedGenerateContent(
     resultContent: @Composable () -> Unit,
 ) {
     // Text offset: 0dp when Input, slides down when ShowingResult
+    val textOffsetTarget =
+        when (animationPhase) {
+            AnimationPhase.Input -> 0f
+            AnimationPhase.Animating, AnimationPhase.ShowingResult -> 1f
+        }
     val textOffsetFraction by animateFloatAsState(
-        targetValue =
-            when (animationPhase) {
-                AnimationPhase.Input -> 0f
-                AnimationPhase.Animating, AnimationPhase.ShowingResult -> 1f
-            },
+        targetValue = textOffsetTarget,
         animationSpec = tween(durationMillis = 300, easing = EmphasizedAccelerate),
         label = "textOffset",
     )
@@ -56,56 +58,81 @@ fun AnimatedGenerateContent(
     )
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // QR Result card — fades in with scale from 0.8 using EmphasizedDecelerate (enter)
-        AnimatedVisibility(
-            visible = animationPhase != AnimationPhase.Input,
-            enter =
-                scaleIn(
-                    initialScale = 0.8f,
-                    animationSpec =
-                        tween(
-                            durationMillis = 200,
-                            delayMillis = 100,
-                            easing = EmphasizedDecelerate,
-                        ),
-                ) +
-                    fadeIn(
-                        animationSpec =
-                            tween(
-                                durationMillis = 200,
-                                delayMillis = 100,
-                                easing = EmphasizedDecelerate,
-                            ),
-                    ),
-            modifier = Modifier.align(Alignment.Center),
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-            ) {
-                resultContent()
-            }
-        }
+        ResultCardReveal(
+            animationPhase = animationPhase,
+            resultContent = resultContent,
+        )
 
-        // Input text — scales down and moves toward bottom
+        InputTextLayer(
+            animationPhase = animationPhase,
+            textOffsetFraction = { textOffsetFraction },
+            textAlpha = textAlpha,
+            inputContent = inputContent,
+        )
+    }
+}
+
+/** QR result card — fades in with scale from 0.8 using EmphasizedDecelerate (enter). */
+@Composable
+private fun BoxScope.ResultCardReveal(
+    animationPhase: AnimationPhase,
+    resultContent: @Composable () -> Unit,
+) {
+    val revealSpec =
+        tween<Float>(
+            durationMillis = 200,
+            delayMillis = 100,
+            easing = EmphasizedDecelerate,
+        )
+    val revealEnter =
+        scaleIn(
+            initialScale = 0.8f,
+            animationSpec = revealSpec,
+        ) +
+            fadeIn(
+                animationSpec = revealSpec,
+            )
+    AnimatedVisibility(
+        visible = animationPhase != AnimationPhase.Input,
+        enter = revealEnter,
+        modifier = Modifier.align(Alignment.Center),
+    ) {
+        val cardModifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
         Box(
-            modifier =
-                Modifier
-                    .align(Alignment.Center)
-                    .offset {
-                        IntOffset(
-                            x = 0,
-                            y = (textOffsetFraction * 300).dp.roundToPx(),
-                        )
-                    }.alpha(textAlpha)
-                    .scale(scale = if (animationPhase == AnimationPhase.Input) 1f else 0.85f)
-                    .padding(horizontal = 24.dp),
+            modifier = cardModifier,
         ) {
-            if (animationPhase == AnimationPhase.Input) {
-                inputContent()
-            }
+            resultContent()
+        }
+    }
+}
+
+/** Input text — scales down and moves toward bottom. */
+@Composable
+private fun BoxScope.InputTextLayer(
+    animationPhase: AnimationPhase,
+    textOffsetFraction: () -> Float,
+    textAlpha: Float,
+    inputContent: @Composable () -> Unit,
+) {
+    val inputModifier =
+        Modifier
+            .align(Alignment.Center)
+            .offset {
+                IntOffset(
+                    x = 0,
+                    y = (textOffsetFraction() * 300).dp.roundToPx(),
+                )
+            }.alpha(textAlpha)
+            .scale(scale = if (animationPhase == AnimationPhase.Input) 1f else 0.85f)
+            .padding(horizontal = 24.dp)
+    Box(
+        modifier = inputModifier,
+    ) {
+        if (animationPhase == AnimationPhase.Input) {
+            inputContent()
         }
     }
 }
