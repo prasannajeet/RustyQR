@@ -3,7 +3,12 @@
 # Only the subject is validated: the first line that is neither empty nor a comment. A later body line that happens
 # to look like a valid header (or to start with "Merge branch") must not let a bad subject through.
 commit_msg_file=$1
-commit_msg=$(grep -v -e '^[[:space:]]*$' -e '^#' "$commit_msg_file" | head -n 1)
+# core.commentChar is "#" unless configured; "auto" lets git pick a character per message, so "#" is the best guess.
+comment_char=$(git config core.commentChar || true)
+case "$comment_char" in
+  "" | auto) comment_char='#' ;;
+esac
+commit_msg=$(awk -v c="$comment_char" 'NF && substr($0, 1, length(c)) != c { print; exit }' "$commit_msg_file")
 
 # Define the expected format using regex
 # Format: type(scope): message

@@ -4,10 +4,11 @@ echo "Running pre-commit quality checks..."
 
 # Check which file types are staged. Added, copied, modified and renamed files all count: a moved and edited file is
 # status R. core.quotePath=false keeps non-ASCII names unquoted, so the extension patterns below still match.
-STAGED_KT_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR | grep '\.kts\?$' || true)
-STAGED_SWIFT_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR | grep '\.swift$' || true)
-STAGED_RS_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR | grep '\.rs$' || true)
-STAGED_FONT_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR | grep 'composeResources/font/' || true)
+STAGED_ALL=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR)
+STAGED_KT_FILES=$(printf '%s\n' "$STAGED_ALL" | grep '\.kts\?$' || true)
+STAGED_SWIFT_FILES=$(printf '%s\n' "$STAGED_ALL" | grep '\.swift$' || true)
+STAGED_RS_FILES=$(printf '%s\n' "$STAGED_ALL" | grep '\.rs$' || true)
+STAGED_FONT_FILES=$(printf '%s\n' "$STAGED_ALL" | grep 'composeResources/font/' || true)
 
 if [ -z "$STAGED_KT_FILES" ] && [ -z "$STAGED_SWIFT_FILES" ] && [ -z "$STAGED_RS_FILES" ] && [ -z "$STAGED_FONT_FILES" ]; then
     echo "No staged Kotlin, Swift, Rust, or font files, skipping lint checks."
