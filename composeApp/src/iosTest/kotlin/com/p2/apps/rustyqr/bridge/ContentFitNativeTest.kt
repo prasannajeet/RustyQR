@@ -31,7 +31,9 @@ private const val UTF8_CAPACITY = 2330
 // Whole pixels per module: version 40 needs at least 185 px, so smaller sizes are refused at render time.
 private const val QR_SIZE_PX = 256
 private const val MIXED_UNIT = "id=0123456789012345678901234567890123456789;"
-private val MIXED_CONTENT_LENGTHS = listOf(BYTE_CAPACITY, 3000, 3500, 4000, 4500)
+private const val MIXED_FITTING_LENGTH = 3500
+private const val MIXED_OVERFLOWING_LENGTH = 4500
+private val MIXED_FITTING_LENGTHS = listOf(BYTE_CAPACITY, MIXED_FITTING_LENGTH)
 
 /**
  * Checks `contentFits` against the real Rust library through [QrBridge], on the iOS simulator.
@@ -66,17 +68,22 @@ class ContentFitNativeTest {
     }
 
     @Test
-    fun contentFitsAgreesWithGeneration() {
-        for (length in MIXED_CONTENT_LENGTHS) {
-            val content = MIXED_UNIT.repeat(length).take(length)
-            val generated = QrBridge.generateQrPng(content, QR_SIZE_PX)
-            if (QrBridge.contentFits(content).getOrNull() == true) {
-                assertTrue(generated.isRight(), "length $length")
-            } else {
-                assertIs<QrError.ContentTooLong>(generated.leftOrNull(), "length $length")
-            }
+    fun mixedContentFitsUpToTheBindingsVerdictAndGenerationMatches() {
+        for (length in MIXED_FITTING_LENGTHS) {
+            val content = mixedContent(length)
+            assertEquals(true, QrBridge.contentFits(content).getOrNull(), "length $length")
+            assertTrue(QrBridge.generateQrPng(content, QR_SIZE_PX).isRight(), "length $length")
         }
     }
+
+    @Test
+    fun overflowingMixedContentIsRefusedAsTooLong() {
+        val content = mixedContent(MIXED_OVERFLOWING_LENGTH)
+        assertEquals(false, QrBridge.contentFits(content).getOrNull())
+        assertIs<QrError.ContentTooLong>(QrBridge.generateQrPng(content, QR_SIZE_PX).leftOrNull())
+    }
+
+    private fun mixedContent(length: Int) = MIXED_UNIT.repeat(length).take(length)
 
     @Test
     fun emptyInputIsInvalid() {
