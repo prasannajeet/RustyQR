@@ -162,7 +162,7 @@ sequenceDiagram
         else Either.Right (QR decoded)
             JNI-->>ANA: ScanResult(content)
             ANA->>VM: FrameDispatcher.deliver → mainExecutor.execute { latest onQrDecoded }
-            VM->>VM: scanGate — first-write-wins, main thread only
+            VM->>VM: ignore if the sheet is already open (first decode wins, main thread only)
             VM->>VM: triggerHaptic()
             VM->>VM: isScanning=false, sheetContent=result, isSheetVisible=true
             VM-->>UI: StateFlow emits
@@ -174,15 +174,14 @@ sequenceDiagram
 
 Key design decisions on Android:
 
-- **Two flags, two jobs.** The analyzer never closes over `isScanning` or the callbacks.
+- **Two guards, two jobs.** The analyzer never closes over `isScanning` or the callbacks.
   `CameraPreview.android.kt` calls `rememberFrameDispatcher` (`commonMain/.../camera/RememberFrameDispatcher.kt`),
-  which reads them through `rememberUpdatedState` and hands providers to
-  `FrameDispatcher` (`commonMain/.../camera/FrameDispatcher.kt`), which calls them when needed, so
-  the latest value always wins (the screen's `ScanScreenState.isScanning` is read on the analysis
-  executor's thread, as snapshot state). Separately, `ScanViewModel.scanGate` is a plain `Boolean` that
-  is read and written only on the main thread. It is the first-write-wins guard that keeps a
-  second `FrameDecoded`, already posted to the main thread before the state change reaches the
-  analyzer, from reopening the sheet.
+  which reads them through `rememberUpdatedState` and passes wrapper lambdas to
+  `FrameDispatcher` (`commonMain/.../camera/FrameDispatcher.kt`), so the latest value always wins
+  (the screen's `ScanScreenState.isScanning` is read on the analysis executor's thread, as snapshot
+  state). Separately, `ScanViewModel` ignores a `FrameDecoded` while the result sheet is open. That
+  check runs only on the main thread and keeps a second decode, already posted before the state
+  change reaches the analyzer, from replacing the first result.
 - **Camera session binds only while the user is actively scanning** — `CameraPreview` is gated on
   `isCameraActive`. On decode the analyzer stops decoding frames once `isScanning` turns false
   (the camera remains bound while the result sheet is open); on dismiss the screen returns to idle

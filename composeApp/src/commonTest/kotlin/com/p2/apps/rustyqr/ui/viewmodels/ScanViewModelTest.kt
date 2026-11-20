@@ -42,7 +42,6 @@ class ScanViewModelTest {
 
     private fun assertDismissed() {
         val state = viewModel.state.value
-        assertFalse(viewModel.scanGate)
         assertFalse(state.isSheetVisible)
         assertNull(state.sheetContent)
         assertFalse(state.isCameraActive)
@@ -126,16 +125,15 @@ class ScanViewModelTest {
         val state = viewModel.state.value
         assertEquals(ScanResult("first"), state.sheetContent)
         assertTrue(state.isSheetVisible)
-        assertTrue(viewModel.scanGate)
     }
 
     @Test
-    fun decodeLocksTheGateAndStopsScanning() {
+    fun decodeOpensTheSheetAndStopsScanning() {
         startCamera()
 
         viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("a")))
 
-        assertTrue(viewModel.scanGate)
+        assertTrue(viewModel.state.value.isSheetVisible)
         assertFalse(viewModel.state.value.isScanning)
     }
 
@@ -171,7 +169,6 @@ class ScanViewModelTest {
         val state = viewModel.state.value
         assertEquals(ScanResult("second"), state.sheetContent)
         assertTrue(state.isSheetVisible)
-        assertTrue(viewModel.scanGate)
     }
 
     @Test
@@ -246,15 +243,29 @@ class ScanViewModelTest {
     }
 
     @Test
-    fun failureWhileTheSheetShowsKeepsTheGateLockedUntilTheSheetIsDismissed() {
+    fun failureWhileTheSheetShowsKeepsTheSheetUntilItIsDismissed() {
         startCamera()
         viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("a")))
 
         viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.CouldNotStart))
-        assertTrue(viewModel.scanGate)
+        viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("b")))
+        assertEquals(ScanResult("a"), viewModel.state.value.sheetContent)
 
         viewModel.onIntent(ScanQRCodeScreenIntent.DismissSheet)
-        assertFalse(viewModel.scanGate)
+        assertFalse(viewModel.state.value.isSheetVisible)
+    }
+
+    @Test
+    fun failureWithNoSheetThenRetryStillOpensTheSheetOnTheNextDecode() {
+        startCamera()
+        viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.CouldNotStart))
+        viewModel.onIntent(ScanQRCodeScreenIntent.RetryCamera)
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("a")))
+
+        val state = viewModel.state.value
+        assertTrue(state.isSheetVisible)
+        assertEquals(ScanResult("a"), state.sheetContent)
     }
 
     @Test
@@ -280,6 +291,7 @@ class ScanViewModelTest {
         viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.CouldNotStart))
 
         viewModel.onIntent(ScanQRCodeScreenIntent.RetryCamera)
+        viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("second")))
 
         assertFalse(viewModel.state.value.isScanning)
         assertEquals(ScanResult("first"), viewModel.state.value.sheetContent)

@@ -16,28 +16,18 @@ import kotlinx.coroutines.flow.update
  *
  * All permission queries and requests go through [permissions]; tests substitute it.
  *
- * The [scanGate] Boolean is read and written only on the main thread.
  * State mutations always happen on the main thread via [kotlinx.coroutines.Dispatchers.Main].
  *
- * Gate lifecycle:
- *   - Starts unlocked (false) — camera is analyzing
- *   - Locks (true) on first [ScanQRCodeScreenIntent.FrameDecoded] (first-write-wins)
- *   - Unlocks on [ScanQRCodeScreenIntent.DismissSheet] / [ScanQRCodeScreenIntent.ResumeScanning]
- *   - Stays locked across [ScanQRCodeScreenIntent.CameraFailed] while the sheet shows: the gate is locked exactly
- *     while the sheet is visible, and a restarted camera does not scan under an open sheet
+ * First decode wins: while the result sheet is visible, further [ScanQRCodeScreenIntent.FrameDecoded] intents are
+ * ignored. The sheet opens on the first decode and closes on [ScanQRCodeScreenIntent.DismissSheet] /
+ * [ScanQRCodeScreenIntent.ResumeScanning]. A camera failure leaves the sheet alone, and a restarted camera does not
+ * scan under an open sheet.
  */
 class ScanViewModel(
     private val permissions: CameraPermissions = PlatformCameraPermissions,
 ) : ViewModel() {
     val state: StateFlow<ScanScreenState>
         field = MutableStateFlow(ScanScreenState())
-
-    /**
-     * First-write-wins gate. Read and written only on the main thread.
-     * true = gate locked (sheet showing), false = gate open (analyzing frames).
-     */
-    var scanGate: Boolean = false
-        private set
 
     fun onIntent(intent: ScanQRCodeScreenIntent) {
         when (intent) {
@@ -114,9 +104,8 @@ class ScanViewModel(
     }
 
     private fun handleFrameDecoded(intent: ScanQRCodeScreenIntent.FrameDecoded) {
-        // First-write-wins: only the first FrameDecoded processed (gate starts false)
-        if (scanGate) return
-        scanGate = true
+        // First decode wins: the open sheet is the gate.
+        if (state.value.isSheetVisible) return
 
         triggerHaptic()
         state.update {
@@ -129,7 +118,6 @@ class ScanViewModel(
     }
 
     private fun handleDismissSheet() {
-        scanGate = false
         state.update {
             it.copy(
                 isScanning = false,
