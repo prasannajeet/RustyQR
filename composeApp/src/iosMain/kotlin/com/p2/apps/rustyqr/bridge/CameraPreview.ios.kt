@@ -200,7 +200,7 @@ private class CameraPreviewUIView(
  * The scan gate, the ready-once rule and all main-thread callback delivery are owned by [dispatcher]. This class
  * holds no callbacks and no view or session reference, so it cannot form a retain cycle.
  */
-private class FrameDelegate(
+internal class FrameDelegate(
     private val dispatcher: FrameDispatcher,
 ) : NSObject(),
     AVCaptureVideoDataOutputSampleBufferDelegateProtocol {
@@ -291,7 +291,7 @@ private val frameRecorder = FrameRecorder(platform = "ios")
  * explicitly, like the Android actual's back camera, so a front-only device reports NoCamera instead of previewing
  * the wrong camera.
  */
-private fun backVideoDevice(): AVCaptureDevice? =
+internal fun backVideoDevice(): AVCaptureDevice? =
     AVCaptureDevice.defaultDeviceWithDeviceType(
         deviceType = AVCaptureDeviceTypeBuiltInWideAngleCamera,
         mediaType = AVMediaTypeVideo,
@@ -304,7 +304,7 @@ private fun createDeviceInput(device: AVCaptureDevice): AVCaptureDeviceInput? =
     Either.catch { AVCaptureDeviceInput(device = device, error = null) }.getOrNull()
 
 /** Left says why the session cannot run; on Left nothing was added to [session]. */
-private fun configureSession(
+internal fun configureSession(
     session: AVCaptureSession,
     delegate: FrameDelegate,
 ): Either<CameraFailure, Unit> =
