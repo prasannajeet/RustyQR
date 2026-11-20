@@ -9,7 +9,10 @@ import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.usePinned
 import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSString
+import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.NSUserDomainMask
+import platform.Foundation.stringWithContentsOfFile
 import platform.posix.fclose
 import platform.posix.fopen
 import platform.posix.fwrite
@@ -37,6 +40,18 @@ private class IosFrameFiles(
         } else {
             Either.Right(emptyList())
         }
+
+    override fun readLines(name: String): Either<String, List<String>> {
+        val path = "$directory/$name"
+        return if (NSFileManager.defaultManager.fileExistsAtPath(path)) {
+            val text = NSString.stringWithContentsOfFile(path, NSUTF8StringEncoding, null)
+            // Like Android's readLines, a trailing newline does not add an empty last line.
+            text?.lines()?.let { Either.Right(if (it.lastOrNull() == "") it.dropLast(1) else it) }
+                ?: Either.Left("cannot read $path")
+        } else {
+            Either.Right(emptyList())
+        }
+    }
 
     private fun ensureDirectory(): Either<String, Unit> =
         if (NSFileManager.defaultManager.createDirectoryAtPath(directory, true, null, null)) {

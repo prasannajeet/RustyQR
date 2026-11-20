@@ -15,7 +15,7 @@ private const val MAX_FRAMES = 40
  * Open only so tests can observe whether it was consulted.
  */
 @OptIn(ExperimentalAtomicApi::class)
-open class CapturePolicy(
+class CapturePolicy(
     private val sampleInterval: Int = SAMPLE_INTERVAL,
     private val maxFrames: Int = MAX_FRAMES,
 ) {
@@ -23,13 +23,13 @@ open class CapturePolicy(
     private val acceptedFrames = AtomicInt(0)
 
     /** Registers one analysed frame and returns true when it should be saved. */
-    open fun accept(decoded: Boolean): Boolean {
+    fun accept(decoded: Boolean): Boolean {
         val analysed = analysedFrames.incrementAndFetch()
         return (decoded || analysed % sampleInterval == 0) && reserveSlot()
     }
 
     /** True while fewer than [maxFrames] frames have been accepted. */
-    open fun hasBudget(): Boolean = acceptedFrames.load() < maxFrames
+    fun hasBudget(): Boolean = acceptedFrames.load() < maxFrames
 
     private fun reserveSlot(): Boolean {
         while (true) {

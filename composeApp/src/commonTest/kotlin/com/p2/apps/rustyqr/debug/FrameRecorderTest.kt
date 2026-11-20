@@ -14,9 +14,10 @@ class FrameRecorderTest {
         private val failList: Boolean = false,
         private val failNames: Set<String> = emptySet(),
         private val extraNames: List<String> = emptyList(),
+        manifestLines: List<String> = emptyList(),
     ) : FrameFiles {
         val written = mutableMapOf<String, ByteArray>()
-        val manifest = mutableListOf<String>()
+        val manifest = manifestLines.toMutableList()
 
         override fun writeBytes(
             name: String,
@@ -39,17 +40,8 @@ class FrameRecorderTest {
 
         override fun listNames(): Either<String, List<String>> =
             if (failList) Either.Left("unreadable") else Either.Right(written.keys.toList() + extraNames)
-    }
 
-    private class CountingPolicy(
-        sampleInterval: Int = 1,
-    ) : CapturePolicy(sampleInterval) {
-        var calls = 0
-
-        override fun accept(decoded: Boolean): Boolean {
-            calls++
-            return super.accept(decoded)
-        }
+        override fun readLines(name: String): Either<String, List<String>> = Either.Right(manifest.toList())
     }
 
     private fun recorder(
@@ -61,7 +53,8 @@ class FrameRecorderTest {
     @Test
     fun disabledRecorderNeverTouchesFilesOrPolicy() {
         var created = false
-        val policy = CountingPolicy()
+        // Every decoded frame takes a slot, so a consulted policy would run out of budget within 100 frames.
+        val policy = CapturePolicy(sampleInterval = 1)
         val recorder =
             FrameRecorder(
                 platform = "android",
@@ -71,7 +64,7 @@ class FrameRecorderTest {
             )
         repeat(100) { recorder.record(ByteArray(4), 2, 2, 2, "x") }
         assertFalse(created)
-        assertEquals(0, policy.calls)
+        assertTrue(policy.hasBudget())
     }
 
     @Test
@@ -126,10 +119,10 @@ class FrameRecorderTest {
 
     @Test
     fun unavailableCacheDirectorySkipsTheFrame() {
-        val policy = CountingPolicy()
+        val policy = CapturePolicy(sampleInterval = 1, maxFrames = 1)
         val recorder = FrameRecorder("ios", lazy { Either.Left("no caches") }, isEnabled = true, policy = policy)
         recorder.record(ByteArray(1), 1, 1, 1, "x")
-        assertEquals(1, policy.calls)
+        assertFalse(policy.hasBudget())
         assertTrue(recorder.isEnabled)
     }
 
@@ -160,5 +153,32 @@ class FrameRecorderTest {
         val files = FakeFiles(extraNames = extraNames)
         recorder(files).record(ByteArray(1), 1, 1, 1, "x")
         assertEquals(setOf("android-1x1-s1-5.y"), files.written.keys)
+    }
+
+    @Test
+    fun survivingManifestKeepsNumberingAfterTheFramesAreDeleted() {
+        val stale =
+            "{\"file\":\"android-1x1-s1-7.y\",\"platform\":\"android\",\"width\":1,\"height\":1," +
+                "\"row_stride\":1,\"timestamp_ms\":1,\"decoded\":true,\"content\":\"old\"}"
+        val files = FakeFiles(manifestLines = listOf(stale))
+
+        recorder(files).record(byteArrayOf(1), 1, 1, 1, "new")
+
+        assertEquals(setOf("android-1x1-s1-8.y"), files.written.keys)
+        assertEquals(2, files.manifest.size)
+        assertEquals(1, files.manifest.count { "android-1x1-s1-8.y" in it })
+    }
+
+    @Test
+    fun manifestContentThatMentionsAFileIsNotMistakenForOne() {
+        val line =
+            "{\"file\":\"android-1x1-s1-2.y\",\"platform\":\"android\",\"width\":1,\"height\":1," +
+                "\"row_stride\":1,\"timestamp_ms\":1,\"decoded\":true," +
+                "\"content\":\"{\\\"file\\\":\\\"x-99.y\\\"}\"}"
+        val files = FakeFiles(manifestLines = listOf(line))
+
+        recorder(files).record(byteArrayOf(1), 1, 1, 1, "new")
+
+        assertEquals(setOf("android-1x1-s1-3.y"), files.written.keys)
     }
 }
