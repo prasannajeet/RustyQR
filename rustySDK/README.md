@@ -864,7 +864,7 @@ cargo fmt --check
 cargo fmt
 
 # Run Clippy (Rust's linter) — all warnings treated as errors
-cargo clippy --workspace -- -D warnings
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
 ### Benchmark
@@ -912,10 +912,12 @@ cargo deny check
 
 ```bash
 cargo fmt --check && \
-cargo clippy --workspace -- -D warnings && \
+cargo clippy --workspace --all-targets -- -D warnings && \
 cargo test --workspace && \
 cargo deny check
 ```
+
+`cargo deny check` currently fails with exactly three advisories: RUSTSEC-2025-0141, RUSTSEC-2024-0436 and RUSTSEC-2026-0374 (see `deny.toml`). Anything else is a real failure.
 
 </details>
 

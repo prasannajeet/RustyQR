@@ -6,17 +6,18 @@
 use rusty_qr_core::{decoder, encoder};
 
 #[test]
-fn decode_jpeg_encoded_qr() {
+fn decode_jpeg_encoded_qr() -> Result<(), Box<dyn std::error::Error>> {
     // Generate a QR PNG at a large size so the QR code survives JPEG compression.
-    let png = encoder::generate_png("jpeg test", 1024).unwrap();
+    let png = encoder::generate_png("jpeg test", 1024)?;
 
     // Load the PNG and re-encode as JPEG.
-    let img = image::load_from_memory(&png).unwrap();
+    let img = image::load_from_memory(&png)?;
     let mut jpeg_buf: Vec<u8> = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut jpeg_buf);
-    img.write_to(&mut cursor, image::ImageFormat::Jpeg).unwrap();
+    img.write_to(&mut cursor, image::ImageFormat::Jpeg)?;
 
     // Decode the JPEG bytes through the public API.
-    let result = decoder::decode(&jpeg_buf).unwrap();
+    let result = decoder::decode(&jpeg_buf)?;
     assert_eq!(result.content, "jpeg test", "JPEG decode must preserve QR content");
+    Ok(())
 }

@@ -122,72 +122,72 @@ mod tests {
     use super::*;
 
     #[test]
-    fn process_generate_png() {
+    fn process_generate_png() -> Result<(), Box<dyn std::error::Error>> {
         let cmd = QrCommand::GeneratePng {
             content: "hi".into(),
             size: 128,
         };
-        let resp = process(cmd).unwrap();
+        let resp = process(cmd)?;
         assert!(matches!(resp, QrResponse::PngGenerated { .. }));
         if let QrResponse::PngGenerated { data } = resp {
-            assert_eq!(&data[..8], b"\x89PNG\r\n\x1a\n");
+            assert_eq!(data.get(..8), Some(&b"\x89PNG\r\n\x1a\n"[..]));
         }
+        Ok(())
     }
 
     #[test]
-    fn process_get_version() {
-        let resp = process(QrCommand::GetVersion).unwrap();
+    fn process_get_version() -> Result<(), Box<dyn std::error::Error>> {
+        let resp = process(QrCommand::GetVersion)?;
         assert!(matches!(resp, QrResponse::Version { .. }));
         if let QrResponse::Version { version } = resp {
             assert_eq!(version, "0.1.0");
         }
+        Ok(())
     }
 
     #[test]
-    fn process_decode() {
+    fn process_decode() -> Result<(), Box<dyn std::error::Error>> {
         // Generate a QR PNG first, then decode it through the dispatcher.
         let gen_resp = process(QrCommand::GeneratePng {
             content: "dispatch-test".into(),
             size: 256,
-        })
-        .unwrap();
+        })?;
 
-        let png = if let QrResponse::PngGenerated { data } = gen_resp {
-            data
-        } else {
-            panic!("expected PngGenerated");
+        let QrResponse::PngGenerated { data: png } = gen_resp else {
+            return Err("expected PngGenerated".into());
         };
 
-        let dec_resp = process(QrCommand::Decode { image_data: png }).unwrap();
-        assert!(matches!(dec_resp, QrResponse::Decoded { .. }));
-        if let QrResponse::Decoded { result } = dec_resp {
-            assert_eq!(result.content, "dispatch-test");
-        }
+        let dec_resp = process(QrCommand::Decode { image_data: png })?;
+        let QrResponse::Decoded { result } = dec_resp else {
+            return Err(format!("expected Decoded, got {dec_resp:?}").into());
+        };
+        assert_eq!(result.content, "dispatch-test");
+        Ok(())
     }
 
     #[test]
-    fn process_decode_from_raw() {
+    fn process_decode_from_raw() -> Result<(), Box<dyn std::error::Error>> {
         use crate::encoder;
-        let png = encoder::generate_png("raw-dispatch", 256).unwrap();
-        let img = image::load_from_memory(&png).unwrap();
+        let png = encoder::generate_png("raw-dispatch", 256)?;
+        let img = image::load_from_memory(&png)?;
         let luma = img.to_luma8();
         let (w, h) = (luma.width(), luma.height());
 
         let resp = process(QrCommand::DecodeFromRaw {
-            pixels: luma.as_raw().to_vec(),
+            pixels: luma.into_raw(),
             width: w,
             height: h,
-        })
-        .unwrap();
+        })?;
 
-        assert!(matches!(resp, QrResponse::Decoded { .. }));
-        if let QrResponse::Decoded { result } = resp {
-            assert_eq!(result.content, "raw-dispatch");
-        }
+        let QrResponse::Decoded { result } = resp else {
+            return Err(format!("expected Decoded, got {resp:?}").into());
+        };
+        assert_eq!(result.content, "raw-dispatch");
+        Ok(())
     }
 
     #[test]
-    fn process_generate_with_config() {
+    fn process_generate_with_config() -> Result<(), Box<dyn std::error::Error>> {
         use crate::types::{QrConfig, QrErrorCorrection};
         let cmd = QrCommand::GenerateWithConfig {
             content: "configured".into(),
@@ -196,7 +196,8 @@ mod tests {
                 error_correction: QrErrorCorrection::High,
             },
         };
-        let resp = process(cmd).unwrap();
+        let resp = process(cmd)?;
         assert!(matches!(resp, QrResponse::PngGenerated { .. }));
+        Ok(())
     }
 }

@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 //! `rusty-qr-core` — pure-Rust QR code generation and decoding engine.
 //!
 //! This crate contains all business logic for encoding QR codes to PNG bytes
@@ -22,11 +23,12 @@
 //! use rusty_qr_core::{encoder, decoder};
 //!
 //! // Encode text into a QR code PNG
-//! let png_bytes = encoder::generate_png("https://example.com", 256).unwrap();
+//! let png_bytes = encoder::generate_png("https://example.com", 256)?;
 //!
 //! // Decode the PNG back to text
-//! let scan = decoder::decode(&png_bytes).unwrap();
+//! let scan = decoder::decode(&png_bytes)?;
 //! assert_eq!(scan.content, "https://example.com");
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
 pub mod command;

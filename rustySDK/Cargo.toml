@@ -1,3 +1,13 @@
 [workspace]
 members = ["crates/core", "crates/ffi", "crates/uniffi-bindgen"]
 resolver = "2"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+clone_on_ref_ptr = "deny"
+redundant_clone = "deny"
+allow_attributes = "deny"
+allow_attributes_without_reason = "deny"
