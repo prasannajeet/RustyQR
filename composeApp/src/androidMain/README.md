@@ -98,7 +98,7 @@ composeApp/src/androidMain/
 │   ├── AppContextInitializer.kt        # androidx.startup Initializer that seeds AppContextHolder (declared in the manifest)
 │   ├── Platform.android.kt             # Platform() actual
 │   └── bridge/
-│       ├── CameraPreview.android.kt    # actual — CameraX PreviewView + ImageAnalysis
+│       ├── CameraPreview.android.kt    # actual — CameraX PreviewView + ImageAnalysis; dispatches via commonMain camera/FrameDispatcher.kt
 │       ├── CameraPermission.android.kt # actual — ActivityResultLauncher
 │       ├── HapticFeedback.android.kt   # actual — HapticFeedbackType via View
 │       ├── OpenUrl.android.kt          # actual — Intent(ACTION_VIEW)
@@ -145,13 +145,13 @@ the KMP module. The only Android-specific Compose code is inside the `bridge/` a
 sequenceDiagram
     participant CAM as CameraX<br/>ImageAnalysis
     participant ANA as Frame Analyzer<br/>(analysis executor thread)
-    participant FLAG as scanningFlag<br/>(AtomicBoolean)
+    participant FLAG as FrameDispatcher.isScanning<br/>(rememberUpdatedState)
     participant JNI as QrBridge → generated Kotlin<br/>→ JNA → .so
     participant VM as ScanViewModel<br/>(main thread)
     participant UI as ScanScreen /<br/>CameraPreview
 
     CAM->>ANA: ImageProxy (Y-plane luma buffer)
-    ANA->>FLAG: get()
+    ANA->>FLAG: onFrame()
     alt false (result sheet visible)
         FLAG-->>ANA: skip frame, close proxy
     else true
@@ -161,12 +161,12 @@ sequenceDiagram
             JNI-->>ANA: discard silently
         else Either.Right (QR decoded)
             JNI-->>ANA: ScanResult(content)
-            ANA->>VM: mainExecutor.execute { onIntent(FrameDecoded) }
+            ANA->>VM: FrameDispatcher.deliver → mainExecutor.execute { latest onQrDecoded }
             VM->>VM: scanGate — first-write-wins, main thread only
             VM->>VM: triggerHaptic()
             VM->>VM: isScanning=false, sheetContent=result, isSheetVisible=true
             VM-->>UI: StateFlow emits
-            UI->>FLAG: SideEffect { set(isScanning) }
+            UI->>FLAG: recomposition updates rememberUpdatedState
             UI->>UI: scrim + ScanResultSheet
         end
     end
@@ -174,15 +174,16 @@ sequenceDiagram
 
 Key design decisions on Android:
 
-- **Two flags, two jobs.** The analyzer reads `scanningFlag`, an `AtomicBoolean` that
-  `CameraPreview.android.kt` writes in a `SideEffect` from its `isScanning` parameter (the screen's
-  `ScanScreenState.isScanning`). It is written on the main thread and read on the analysis
-  executor's thread, hence atomic. Separately, `ScanViewModel.scanGate` is a plain `Boolean` that
+- **Two flags, two jobs.** The analyzer never closes over `isScanning` or the callbacks.
+  `CameraPreview.android.kt` reads them through `rememberUpdatedState` and hands providers to
+  `FrameDispatcher` (`commonMain/.../camera/FrameDispatcher.kt`), which calls them when needed, so
+  the latest value always wins (the screen's `ScanScreenState.isScanning` is read on the analysis
+  executor's thread, as snapshot state). Separately, `ScanViewModel.scanGate` is a plain `Boolean` that
   is read and written only on the main thread. It is the first-write-wins guard that keeps a
   second `FrameDecoded`, already posted to the main thread before the state change reaches the
   analyzer, from reopening the sheet.
 - **Camera session binds only while the user is actively scanning** — `CameraPreview` is gated on
-  `isCameraActive`. On decode the analyzer stops decoding frames once `scanningFlag` turns false
+  `isCameraActive`. On decode the analyzer stops decoding frames once `isScanning` turns false
   (the camera remains bound while the result sheet is open); on dismiss the screen returns to idle
   and the camera unbinds. The Scan tab opens cold with no preview and no permission prompt until
   Start Scanning.
