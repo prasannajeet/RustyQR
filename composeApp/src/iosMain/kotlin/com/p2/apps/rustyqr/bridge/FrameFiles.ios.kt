@@ -83,14 +83,12 @@ private class IosFrameFiles(
     }
 }
 
-actual fun frameFiles(): Either<String, FrameFiles> {
-    val caches =
-        NSFileManager.defaultManager
-            .URLForDirectory(NSCachesDirectory, NSUserDomainMask, null, true, null)
-            ?.path
-    return if (caches != null) {
-        Either.Right(IosFrameFiles("$caches/frames"))
-    } else {
-        Either.Left("caches directory unavailable")
-    }
-}
+/** The `Caches/frames` directory the debug frames go to, or null when the caches directory is unavailable. */
+internal fun framesDirectory(): String? =
+    NSFileManager.defaultManager
+        .URLForDirectory(NSCachesDirectory, NSUserDomainMask, null, true, null)
+        ?.path
+        ?.let { "$it/frames" }
+
+actual fun frameFiles(): Either<String, FrameFiles> =
+    framesDirectory()?.let { Either.Right(IosFrameFiles(it)) } ?: Either.Left("caches directory unavailable")

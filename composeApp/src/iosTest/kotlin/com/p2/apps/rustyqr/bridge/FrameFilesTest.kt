@@ -4,9 +4,7 @@ package com.p2.apps.rustyqr.bridge
 
 import arrow.core.Either
 import kotlinx.cinterop.ExperimentalForeignApi
-import platform.Foundation.NSCachesDirectory
 import platform.Foundation.NSFileManager
-import platform.Foundation.NSUserDomainMask
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,12 +18,8 @@ private const val INVALID_BYTE: Byte = 0xFF.toByte()
 class FrameFilesTest {
     @AfterTest
     fun deleteTestFiles() {
-        val caches =
-            NSFileManager.defaultManager
-                .URLForDirectory(NSCachesDirectory, NSUserDomainMask, null, true, null)
-                ?.path
         listOf(LINES_FILE, TORN_FILE).forEach {
-            NSFileManager.defaultManager.removeItemAtPath("$caches/frames/$it", null)
+            NSFileManager.defaultManager.removeItemAtPath("${framesDirectory()}/$it", null)
         }
     }
 
