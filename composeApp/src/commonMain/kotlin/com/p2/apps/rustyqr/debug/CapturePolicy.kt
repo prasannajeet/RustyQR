@@ -12,7 +12,6 @@ private const val MAX_FRAMES = 40
  * successfully, up to [maxFrames] saved frames per instance (one instance lives for the whole app launch).
  *
  * Thread-safe: the camera analysis thread is recreated per screen entry, so an old and a new thread can overlap.
- * Open only so tests can observe whether it was consulted.
  */
 @OptIn(ExperimentalAtomicApi::class)
 class CapturePolicy(

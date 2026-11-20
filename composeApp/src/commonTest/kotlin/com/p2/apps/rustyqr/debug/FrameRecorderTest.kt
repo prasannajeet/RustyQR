@@ -155,12 +155,14 @@ class FrameRecorderTest {
         assertEquals(setOf("android-1x1-s1-5.y"), files.written.keys)
     }
 
+    private fun manifestLine(
+        file: String,
+        content: String?,
+    ) = FrameManifestEntry(file, "android", FrameLayout(1, 1, 1), timestampMs = 1L, content = content).toJsonLine()
+
     @Test
     fun survivingManifestKeepsNumberingAfterTheFramesAreDeleted() {
-        val stale =
-            "{\"file\":\"android-1x1-s1-7.y\",\"platform\":\"android\",\"width\":1,\"height\":1," +
-                "\"row_stride\":1,\"timestamp_ms\":1,\"decoded\":true,\"content\":\"old\"}"
-        val files = FakeFiles(manifestLines = listOf(stale))
+        val files = FakeFiles(manifestLines = listOf(manifestLine("android-1x1-s1-7.y", "old")))
 
         recorder(files).record(byteArrayOf(1), 1, 1, 1, "new")
 
@@ -171,10 +173,7 @@ class FrameRecorderTest {
 
     @Test
     fun manifestContentThatMentionsAFileIsNotMistakenForOne() {
-        val line =
-            "{\"file\":\"android-1x1-s1-2.y\",\"platform\":\"android\",\"width\":1,\"height\":1," +
-                "\"row_stride\":1,\"timestamp_ms\":1,\"decoded\":true," +
-                "\"content\":\"{\\\"file\\\":\\\"x-99.y\\\"}\"}"
+        val line = manifestLine("android-1x1-s1-2.y", content = "{\"file\":\"x-99.y\"}")
         val files = FakeFiles(manifestLines = listOf(line))
 
         recorder(files).record(byteArrayOf(1), 1, 1, 1, "new")
