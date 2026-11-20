@@ -7,21 +7,21 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.p2.apps.rustyqr.AppContextHolder
 import com.p2.apps.rustyqr.BridgeHostActivityHolder
 
 /**
- * Android actual — delegates to [BridgeHostActivityHolder] for context access.
+ * Android actual. The permission check needs only the application context; the request and the settings screen need
+ * the running Activity from [BridgeHostActivityHolder].
  *
  * [isCameraPermissionGranted] is safe to call from any thread.
  * [requestCameraPermission] must be called from the main thread.
  */
-actual fun isCameraPermissionGranted(): Boolean {
-    val context = BridgeHostActivityHolder.activity ?: return false
-    return ContextCompat.checkSelfPermission(
-        context,
+actual fun isCameraPermissionGranted(): Boolean =
+    ContextCompat.checkSelfPermission(
+        AppContextHolder.context,
         Manifest.permission.CAMERA,
     ) == PackageManager.PERMISSION_GRANTED
-}
 
 actual fun requestCameraPermission(onResult: (Boolean) -> Unit) {
     val activity =
