@@ -1,0 +1,45 @@
+name: Rust checks
+
+# Called by the Android and iOS workflows: formatting, clippy, tests and the supply-chain checks for rustySDK.
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
+  # toolchain and all of those targets on top of what the job installs. With it, the job uses only what the setup
+  # action installed and fails loudly on a mismatch. (The caller's env does not reach a called workflow.)
+  RUSTUP_AUTO_INSTALL: "0"
+
+jobs:
+  rust-checks:
+    name: Rust tests & lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: rustySDK
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: clippy, rustfmt
+          cache-prefix: check
+
+      - run: cargo fmt --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+      # Supply chain: advisories, licences, bans and sources. Installed on the runner, not run through the Docker
+      # action, whose rustup would download the whole pinned toolchain and every target on each run.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.19.0
+      - run: cargo deny --manifest-path Cargo.toml check

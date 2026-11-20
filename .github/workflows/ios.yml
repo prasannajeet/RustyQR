@@ -3,59 +3,32 @@ name: iOS Build
 on:
   workflow_dispatch:
 
+# Read-only token for every job. Checkouts do not persist it either, so third-party actions never see it.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
-  # toolchain and all of those targets on top of what each job installs. With it, a job uses only what the action
-  # installed (its own `targets:`) and fails loudly on a mismatch.
+  # toolchain and all of those targets on top of what each job installs. With it, a job uses only what the setup-rust
+  # action installed (its own `targets:`) and fails loudly on a mismatch.
   RUSTUP_AUTO_INSTALL: "0"
 
 jobs:
   rust-checks:
     name: Rust tests & lint
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: rustySDK
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - id: pin
-        name: Read the pinned Rust version
-        shell: bash
-        run: |
-          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
-          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
-          echo "version=$channel" >> "$GITHUB_OUTPUT"
-
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
-        id: toolchain
-        with:
-          toolchain: ${{ steps.pin.outputs.version }}
-          components: clippy, rustfmt
-
-      # Cache Rust build artifacts — keyed on Cargo.lock so it busts on dependency changes
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            rustySDK/target/
-          key: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
-          restore-keys: rust-check-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
-
-      - run: cargo fmt --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+    uses: ./.github/workflows/rust-checks.yml
 
   ios-build:
     name: iOS App
     runs-on: macos-26
     needs: rust-checks
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v5
         with:
@@ -70,32 +43,14 @@ jobs:
           xcode-version: '26.4'
 
       # --- Rust toolchain (the UniFFI Gradle plugin and Xcode run cargo; the host target is built too) ---
-      - id: pin
-        name: Read the pinned Rust version
-        shell: bash
-        run: |
-          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
-          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
-          echo "version=$channel" >> "$GITHUB_OUTPUT"
-
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master, 2026-10-16
-        id: toolchain
+      - id: rust
+        uses: ./.github/actions/setup-rust
         with:
-          toolchain: ${{ steps.pin.outputs.version }}
           targets: aarch64-apple-ios-sim
+          cache-prefix: ios
 
-      # --- Install XcodeGen and SwiftLint (the macos-26 image has neither; the swiftlint task calls /opt/homebrew/bin) ---
+      # --- Install XcodeGen and SwiftLint (the macos-26 image has neither) ---
       - run: brew install xcodegen swiftlint
-
-      # Cargo registry and Rust build artifacts.
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/
-            ~/.cargo/git/
-            rustySDK/target/
-          key: rust-ios-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
-          restore-keys: rust-ios-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
 
       # The Kotlin bindgen the plugin compiles with `cargo install` on its first run (several minutes). Keyed on the
       # plugin version alone, so a library bump does not discard the Rust build cache above.
@@ -108,7 +63,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: build/uniffi/bindgen/
-          key: uniffi-bindgen-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
+          key: uniffi-bindgen-${{ runner.os }}-${{ steps.rust.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
 
       # Kotlin/Native toolchain and dependencies (large download on a cold runner). Keyed on the Kotlin version only.
       - id: kotlin-version
