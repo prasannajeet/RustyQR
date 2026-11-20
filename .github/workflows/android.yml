@@ -45,6 +45,61 @@ jobs:
         with:
           manifest-path: rustySDK/Cargo.toml
 
+  wasm:
+    name: WebAssembly package
+    # Pinned image: its Chrome and ChromeDriver are what the headless tests use.
+    runs-on: ubuntu-24.04
+    env:
+      WASM_PACK_VERSION: "0.15.1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.94.1
+        id: toolchain
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/
+            ~/.cargo/git/
+            rustySDK/target/
+          key: rust-wasm-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+          restore-keys: rust-wasm-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-
+
+      # wasm-pack downloads the wasm-bindgen CLI and wasm-opt here; the CLI version follows Cargo.lock.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/.wasm-pack
+          key: wasm-pack-tools-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
+
+      # wasm-pack is compiled from source, so cache the binary per wasm-pack version and toolchain.
+      - id: wasm-pack-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/wasm-pack
+          key: wasm-pack-${{ runner.os }}-${{ steps.toolchain.outputs.cachekey }}-${{ env.WASM_PACK_VERSION }}
+
+      - if: steps.wasm-pack-cache.outputs.cache-hit != 'true'
+        run: cargo install wasm-pack --locked --version "$WASM_PACK_VERSION"
+
+      - run: cargo clippy -p rusty-qr-wasm --target wasm32-unknown-unknown --all-targets --manifest-path rustySDK/Cargo.toml -- -D warnings
+
+      # The runner image ships Google Chrome and a matching ChromeDriver; wasm-pack downloads a matching
+      # driver itself if it cannot find one.
+      - run: wasm-pack test --headless --chrome rustySDK/crates/wasm
+
+      - run: wasm-pack build rustySDK/crates/wasm --target web --release
+
+      - name: Report wasm size
+        run: |
+          wasm=rustySDK/crates/wasm/pkg/rusty_qr_wasm_bg.wasm
+          echo "raw: $(wc -c < "$wasm") bytes"
+          echo "gzip -9: $(gzip -9 -c "$wasm" | wc -c) bytes"
+
   android-build:
     name: Android APK
     runs-on: ubuntu-latest

@@ -1,0 +1,21 @@
+[package]
+name = "rusty-qr-wasm"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# cdylib is the wasm module; rlib lets tests/web.rs link this crate. An rlib among the outputs makes Cargo
+# drop `-C lto` without a warning, so a future release LTO profile would not apply here (measured ~1.8%
+# larger wasm before wasm-opt).
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rusty-qr-core = { path = "../core" }
+# Both wasm-bindgen crates move together: the CLI wasm-pack runs must match the lockfile version.
+wasm-bindgen = "=0.2.130"
+
+[dev-dependencies]
+wasm-bindgen-test = "=0.3.80"
+
+[lints]
+workspace = true
