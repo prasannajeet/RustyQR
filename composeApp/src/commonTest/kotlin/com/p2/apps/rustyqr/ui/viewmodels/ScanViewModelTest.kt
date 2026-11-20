@@ -138,7 +138,7 @@ class ScanViewModelTest {
     }
 
     @Test
-    fun dismissSheetUnlocksTheGateStopsTheCameraAndHidesTheSheet() {
+    fun dismissSheetStopsTheCameraAndHidesTheSheet() {
         startCamera()
         viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("a")))
 

@@ -81,8 +81,8 @@ class ScanViewModel(
     }
 
     private fun handleCameraFailed(failure: CameraFailure) {
-        // Dropping isCameraActive removes the preview from composition, which releases the camera. The gate is left
-        // alone: it is locked exactly while the result sheet shows, and dismissing the sheet unlocks it.
+        // Dropping isCameraActive removes the preview from composition, which releases the camera. The result sheet is
+        // left alone; dismissing it is what closes it.
         state.update {
             it.copy(
                 isScanning = false,
@@ -104,7 +104,7 @@ class ScanViewModel(
     }
 
     private fun handleFrameDecoded(intent: ScanQRCodeScreenIntent.FrameDecoded) {
-        // First decode wins: the open sheet is the gate.
+        // First decode wins: later decodes are ignored while the sheet is open.
         if (state.value.isSheetVisible) return
 
         triggerHaptic()
