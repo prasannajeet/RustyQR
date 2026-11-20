@@ -37,15 +37,28 @@ and SKIA on iOS.</sub>
 
 ## Quick Start
 
-Platform builds are documented in the platform READMEs — each has its own first-time setup:
+The Rust library is built automatically by the `:rustyqr-bindings` Gradle module, which also generates the
+UniFFI bindings. Platform builds are documented in the platform READMEs:
 
 ```bash
-./gradlew :composeApp:buildRustAndroid :composeApp:assembleDebug   # Android — see src/androidMain/README.md
-./gradlew :composeApp:buildRustIos                                 # iOS — see ../iosApp/README.md
+./gradlew :composeApp:assembleDebug   # Android — see src/androidMain/README.md
 ```
 
-If you're only editing shared Compose UI or ViewModels in `commonMain`, skip the `buildRust*`
-tasks and let Gradle reuse the existing `.so` / `.xcframework`.
+iOS builds go through Xcode — see `../iosApp/README.md`.
+
+### Release builds
+
+The Rust profile follows the `releaseBuild` Gradle property, not the build type. Release builds
+need `-PreleaseBuild=true`:
+
+```bash
+./gradlew :composeApp:assembleRelease -PreleaseBuild=true   # or bundleRelease
+```
+
+Android release packaging (`assembleRelease`, `bundleRelease`, `assemble`, `build`) and Kotlin/Native release
+framework links fail fast without the flag; `test` and `check` do not need it. Xcode passes the flag for every
+configuration except Debug. With `-PreleaseBuild=true`, `:rustyqr-bindings:jvmTest` does not exist, so use the
+`*Debug` tasks day to day.
 
 ---
 
@@ -244,7 +257,7 @@ Auto-fix Kotlin formatting with `./gradlew :composeApp:ktlintFormat`.
 
 **Prerequisite:** `detekt` (and therefore `lintAll` and the pre-commit hook) also runs the type-resolved
 `detektAndroidDebug` task, which compiles the Android target. On a fresh checkout the gitignored
-`composeApp/src/androidMain/kotlin/generated` UniFFI bindings do not exist yet, so run
-`./gradlew :composeApp:buildRustAndroid` once before linting.
+`rustyqr-bindings/build/uniffi/bindings` UniFFI bindings do not exist yet, so run
+`./gradlew :rustyqr-bindings:assemble` once before linting.
 
 </details>

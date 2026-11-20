@@ -1,4 +1,7 @@
+import ch.ubique.uniffi.plugin.model.RustHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
+import org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink
 import java.util.Properties
 
 // Read centralized version from version.properties — single source of truth for Android + iOS.
@@ -20,6 +23,9 @@ if (appBuildNumber <= 0) {
     throw GradleException("version.properties: build_number must be positive, got $appBuildNumber")
 }
 val appVersionName: String = rawVersionName.trim()
+
+// The ABIs that ship librusty_qr_ffi.so. Keep gradle.properties `androidAbis` in step with this list.
+val shippedAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -44,32 +50,18 @@ kotlin {
         }
     }
 
-    val rootDirPath = rootProject.projectDir.absolutePath
-
-    iosArm64().apply {
-        binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = true
-        }
-        compilations["main"].cinterops {
-            create("RustyQrFFI") {
-                defFile = file("src/nativeInterop/cinterop/RustyQrFFI.def")
-                includeDirs(file("$rootDirPath/iosApp/generated/headers"))
-                extraOpts("-libraryPath", "$rootDirPath/iosApp/Frameworks/RustyQR.xcframework/ios-arm64")
+    if (RustHost.Platform.MacOS.isCurrent) {
+        iosArm64().apply {
+            binaries.framework {
+                baseName = "ComposeApp"
+                isStatic = true
             }
         }
-    }
 
-    iosSimulatorArm64().apply {
-        binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = true
-        }
-        compilations["main"].cinterops {
-            create("RustyQrFFI") {
-                defFile = file("src/nativeInterop/cinterop/RustyQrFFI.def")
-                includeDirs(file("$rootDirPath/iosApp/generated/headers"))
-                extraOpts("-libraryPath", "$rootDirPath/iosApp/Frameworks/RustyQR.xcframework/ios-arm64-simulator")
+        iosSimulatorArm64().apply {
+            binaries.framework {
+                baseName = "ComposeApp"
+                isStatic = true
             }
         }
     }
@@ -94,6 +86,7 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.arrow.core)
+            implementation(project(":rustyqr-bindings"))
             implementation(libs.compose.material.icons.extended)
         }
         commonTest.dependencies {
@@ -121,6 +114,10 @@ android {
                 .toInt()
         versionCode = appBuildNumber
         versionName = appVersionName
+        ndk {
+            // Only the ABIs that ship librusty_qr_ffi.so. Other ABIs from CameraX or JNA would install and then crash.
+            abiFilters += shippedAbis
+        }
     }
     packaging {
         resources {
@@ -141,22 +138,16 @@ android {
 dependencies {
     debugImplementation(libs.compose.uiTooling)
     detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:${libs.versions.detekt.get()}")
-    // artifact { type = "aar" } requires the standard DependencyHandlerScope, which is available here.
-    // Do NOT move this into kotlin { sourceSets { androidMain.dependencies { } } } — the KMP
-    // sourceSets DSL uses KotlinDependencyHandler which lacks the artifact{} closure overload.
-    // Moving it there silently drops the @aar specifier and causes runtime class-not-found errors.
-    "androidMainImplementation"(libs.jna) { artifact { type = "aar" } }
 }
 
 detekt {
     buildUponDefaultConfig = true
     config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
     // The plain `detekt` task defaults to src/main/kotlin, which does not exist in a KMP layout. Point it at every
-    // KMP Kotlin source set (commonMain, androidMain, iosMain, commonTest, ...) and skip the UniFFI-generated bindings.
+    // KMP Kotlin source set (commonMain, androidMain, iosMain, commonTest, ...).
     source.setFrom(
         fileTree("src") {
             include("*Main/kotlin/**/*.kt", "*Test/kotlin/**/*.kt")
-            exclude("androidMain/kotlin/generated/**")
         },
     )
 }
@@ -166,7 +157,7 @@ tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
     val moduleRoot = project.projectDir
     exclude {
         val path = it.file.relativeTo(moduleRoot).invariantSeparatorsPath
-        path.startsWith("build/") || path.contains("/build/") || path.startsWith("src/androidMain/kotlin/generated/")
+        path.startsWith("build/") || path.contains("/build/")
     }
 }
 
@@ -182,7 +173,7 @@ afterEvaluate {
 }
 
 // `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved task, which
-// compiles the Android target (needs the gitignored androidMain/kotlin/generated bindings: buildRustAndroid).
+// compiles the Android target, which needs the UniFFI bindings from :rustyqr-bindings.
 tasks.named("detekt") {
     dependsOn("detektAndroidDebug")
 }
@@ -192,7 +183,6 @@ ktlint {
     verbose.set(true)
     filter {
         exclude { it.file.path.contains("/build/") }
-        exclude { it.file.path.contains("/generated/") }
     }
 }
 
@@ -219,23 +209,6 @@ tasks.register<Exec>("installGitHooks") {
     )
 }
 
-tasks.register<Exec>("buildRustAndroid") {
-    group = "rust"
-    description = "Cross-compiles Rust FFI for Android and generates Kotlin bindings (runs make android)"
-    workingDir = File(rootDir, "rustySDK")
-    commandLine("make", "android")
-}
-
-tasks.register<Exec>("buildRustIos") {
-    group = "rust"
-    description = "Cross-compiles Rust FFI for iOS, creates the XCFramework, and regenerates iosApp.xcodeproj"
-    workingDir = File(rootDir, "rustySDK")
-    commandLine("make", "ios")
-    // Make owns Rust + bindings + XCFramework. Gradle owns the Xcode project.
-    // Chain them so a single buildRustIos invocation still produces a fully buildable iOS tree.
-    finalizedBy("generateXcodeProject")
-}
-
 tasks.register<Delete>("cleanXcodeProject") {
     group = "xcode"
     description = "Deletes xcodegen-generated artifacts (iosApp.xcodeproj + Info.plist)"
@@ -243,18 +216,6 @@ tasks.register<Delete>("cleanXcodeProject") {
         File(rootDir, "iosApp/iosApp.xcodeproj"),
         File(rootDir, "iosApp/iosApp/Info.plist"),
     )
-}
-
-tasks.register<Exec>("cleanBuildIos") {
-    group = "rust"
-    description = "Cleans all Rust/iOS artifacts (including the Xcode project) and rebuilds from scratch"
-    workingDir = File(rootDir, "rustySDK")
-    commandLine("make", "clean")
-    dependsOn("cleanXcodeProject")
-    finalizedBy("buildRustIos")
-    doLast {
-        println("Make sure to run a gradle sync after")
-    }
 }
 
 tasks.register<Exec>("generateXcodeProject") {
@@ -265,7 +226,6 @@ tasks.register<Exec>("generateXcodeProject") {
     environment("VERSION_NAME", appVersionName)
     environment("BUILD_NUMBER", appBuildNumber.toString())
     commandLine("xcodegen", "generate")
-    mustRunAfter("buildRustIos", "cleanBuildIos")
     doLast {
         logger.lifecycle("\n⚠️  If the iOS run configuration is missing in Android Studio, run: File > Sync Project with Gradle Files")
     }
@@ -281,7 +241,46 @@ tasks.register<Exec>("swiftlint") {
 tasks.register("lintAll") {
     group = "verification"
     description = "Runs all linters: ktlint, detekt, and swiftlint"
-    dependsOn("ktlintCheck", "detekt", "swiftlint")
+    dependsOn("ktlintCheck", "detekt", "swiftlint", ":rustyqr-bindings:ktlintCheck", ":rustyqr-bindings:detekt")
+}
+
+// Anything that ships (non-debuggable Android variants, Kotlin/Native release frameworks) must carry the optimised
+// Rust library, which only -PreleaseBuild=true builds. This task has no outputs, so it always runs when it is in the
+// graph and can never be skipped or restored from the build cache.
+val verifyReleaseRustProfile =
+    tasks.register("verifyReleaseRustProfile") {
+        group = "verification"
+        description = "Fails unless -PreleaseBuild=true, so shipped artifacts never embed the debug Rust library."
+        val flag = providers.gradleProperty("releaseBuild")
+        val abis = shippedAbis.joinToString(", ")
+        doLast {
+            if (flag.orNull != "true") {
+                throw GradleException(
+                    "Release builds need -PreleaseBuild=true so the Rust library is built optimised for $abis.",
+                )
+            }
+        }
+    }
+
+// Guard only packaging: the native-library merge is shared by APK and AAB, while test, check and lint tasks never
+// reach it. Covers every non-debuggable variant, including future flavours and release-like build types.
+androidComponents {
+    onVariants { variant ->
+        if (!variant.debuggable) {
+            val mergeTaskName = "merge${variant.name.replaceFirstChar { it.uppercase() }}NativeLibs"
+            tasks
+                .matching { it.name == mergeTaskName }
+                .configureEach { dependsOn(verifyReleaseRustProfile) }
+        }
+    }
+}
+
+// Release frameworks reach Xcode through paths that skip the Xcode script (OVERRIDE_KOTLIN_BUILD_IDE_SUPPORTED,
+// direct Gradle runs). dependsOn on a no-output task, not doFirst: link tasks are cacheable and could be FROM-CACHE.
+tasks.withType<KotlinNativeLink>().configureEach {
+    if (binary.buildType == NativeBuildType.RELEASE) {
+        dependsOn(verifyReleaseRustProfile)
+    }
 }
 
 // Make both preBuild and project sync tasks depend on installGitHooks

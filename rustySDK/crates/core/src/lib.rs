@@ -3,7 +3,7 @@
 //!
 //! This crate contains all business logic for encoding QR codes to PNG bytes
 //! and decoding QR codes from image data or raw pixel buffers.
-//! It has **no UniFFI dependency** — UniFFI derives are added by the sibling
+//! It has **no `UniFFI` dependency** — `UniFFI` derives are added by the sibling
 //! `rusty-qr-ffi` crate so that this core remains a plain Rust library usable
 //! in any context (CLI tools, WASM, server-side, etc.).
 //!

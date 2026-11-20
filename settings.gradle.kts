@@ -30,7 +30,9 @@ run {
     val iosApp = rootDir.resolve("iosApp")
     val pbxproj = iosApp.resolve("iosApp.xcodeproj/project.pbxproj")
     val projectYml = iosApp.resolve("project.yml")
-    if (projectYml.exists() && !pbxproj.exists()) {
+    // xcodegen is macOS-only; settings scripts cannot see RustHost, so check the OS directly (Linux CI has no Xcode).
+    val isMacOs = System.getProperty("os.name").startsWith("Mac")
+    if (isMacOs && projectYml.exists() && !pbxproj.exists()) {
         println("Bootstrapping iosApp.xcodeproj via xcodegen (fresh clone)...")
         val execResult =
             providers
@@ -83,3 +85,4 @@ dependencyResolutionManagement {
 }
 
 include(":composeApp")
+include(":rustyqr-bindings")
