@@ -378,7 +378,8 @@ pointing to the install command.
 # 1. Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# 2. iOS cross-compilation targets
+# 2. iOS cross-compilation targets: rust-toolchain.toml makes rustup install them automatically on first
+#    build. Run this only as a fallback if a target is missing.
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim
 
 # 3. XcodeGen

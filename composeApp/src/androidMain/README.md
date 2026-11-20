@@ -348,7 +348,8 @@ manual bridging code to keep in sync.
 # 1. Rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 
-# 2. Android cross-compilation targets
+# 2. Android cross-compilation targets: rust-toolchain.toml makes rustup install them automatically on first
+#    build. Run this only as a fallback if a target is missing.
 rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 
 # 3. Android SDK location for Gradle (or sdk.dir in local.properties)

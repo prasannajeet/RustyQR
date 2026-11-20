@@ -1,0 +1,16 @@
+# Pins the Rust toolchain for every cargo and rustc invocation in this repo. It sits at the repo root, not in
+# rustySDK/, because rustup resolves the toolchain from the caller's working directory and the callers differ:
+# the UniFFI Gradle plugin and Xcode run cargo for rustySDK/crates/ffi, wasm-pack runs from the repo root on
+# rustySDK/crates/wasm, and CI and developers run cargo from rustySDK/. A root file covers all of them.
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+components = ["rustfmt", "clippy", "rust-analyzer", "rust-src"]
+targets = [
+    "aarch64-linux-android",
+    "armv7-linux-androideabi",
+    "x86_64-linux-android",
+    "aarch64-apple-ios",
+    "aarch64-apple-ios-sim",
+    "wasm32-unknown-unknown",
+]

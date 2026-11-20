@@ -5,6 +5,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
+  # toolchain and all of those targets on top of what each job installs. With it, a job uses only what the action
+  # installed (its own `targets:`) and fails loudly on a mismatch.
+  RUSTUP_AUTO_INSTALL: "0"
 
 jobs:
   rust-checks:
@@ -17,10 +21,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pinned: pedantic Clippy with -D warnings can break on a floating toolchain when a new lint ships.
-      - uses: dtolnay/rust-toolchain@1.94.1
+      - id: pin
+        name: Read the pinned Rust version
+        shell: bash
+        run: |
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
+          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
+          echo "version=$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
         id: toolchain
         with:
+          toolchain: ${{ steps.pin.outputs.version }}
           components: clippy, rustfmt
 
       # Cache Rust build artifacts — keyed on Cargo.lock so it busts on dependency changes
@@ -58,9 +70,18 @@ jobs:
           xcode-version: '26.4'
 
       # --- Rust toolchain (the UniFFI Gradle plugin and Xcode run cargo; the host target is built too) ---
-      - uses: dtolnay/rust-toolchain@1.94.1
+      - id: pin
+        name: Read the pinned Rust version
+        shell: bash
+        run: |
+          channel="$(awk -F'"' '/^channel[[:space:]]*=/ {print $2}' "$GITHUB_WORKSPACE/rust-toolchain.toml")"
+          test -n "$channel" || { echo "::error::rust-toolchain.toml has no channel"; exit 1; }
+          echo "version=$channel" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
         id: toolchain
         with:
+          toolchain: ${{ steps.pin.outputs.version }}
           targets: aarch64-apple-ios-sim
 
       # --- Install XcodeGen and SwiftLint (the macos-26 image has neither; :composeApp:swiftlint calls /opt/homebrew/bin) ---
