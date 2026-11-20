@@ -1,5 +1,6 @@
 package com.p2.apps.rustyqr.ui.mvi
 
+import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.model.ScanResult
 
 /**
@@ -19,6 +20,8 @@ data class ScanScreenState(
      * so the screen never goes visibly black while AVCaptureSession / CameraX warm up.
      */
     val isCameraWarmingUp: Boolean = false,
+    /** Why the camera could not start; null when it has not failed. Cleared by retrying. */
+    val cameraFailure: CameraFailure? = null,
     /** Decoded QR content to display in the bottom sheet. Null when sheet is hidden. */
     val sheetContent: ScanResult? = null,
     /** Whether the result bottom sheet is currently shown. */

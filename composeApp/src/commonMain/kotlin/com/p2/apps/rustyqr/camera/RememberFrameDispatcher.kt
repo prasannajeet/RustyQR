@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.model.ScanResult
 
 /**
@@ -17,6 +18,7 @@ import com.p2.apps.rustyqr.model.ScanResult
  * @param isScanning Latest scan gate, read on the analysis thread for every frame.
  * @param onQrDecoded Latest decode callback, invoked on the main thread.
  * @param onCameraReady Latest ready callback, invoked at most once on the main thread.
+ * @param onCameraError Latest failure callback, invoked at most once on the main thread.
  * @param postToMain Runs the given work on the main thread.
  */
 @Composable
@@ -24,17 +26,20 @@ internal fun rememberFrameDispatcher(
     isScanning: Boolean,
     onQrDecoded: (ScanResult) -> Unit,
     onCameraReady: () -> Unit,
+    onCameraError: (CameraFailure) -> Unit,
     postToMain: (() -> Unit) -> Unit,
 ): FrameDispatcher {
     val latestScanning by rememberUpdatedState(isScanning)
     val latestOnDecoded by rememberUpdatedState(onQrDecoded)
     val latestOnReady by rememberUpdatedState(onCameraReady)
+    val latestOnError by rememberUpdatedState(onCameraError)
     val dispatcher =
         remember {
             FrameDispatcher(
                 isScanning = { latestScanning },
                 currentOnQrDecoded = { latestOnDecoded },
                 currentOnCameraReady = { latestOnReady },
+                currentOnCameraError = { latestOnError },
                 postToMain = postToMain,
             )
         }

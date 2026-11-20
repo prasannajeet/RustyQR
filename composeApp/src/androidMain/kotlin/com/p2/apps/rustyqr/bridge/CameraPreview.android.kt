@@ -1,6 +1,7 @@
 package com.p2.apps.rustyqr.bridge
 
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.CameraState
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
@@ -14,13 +15,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import arrow.core.Either
+import arrow.core.getOrElse
+import arrow.core.left
+import arrow.core.right
 import com.p2.apps.rustyqr.camera.FrameDispatcher
 import com.p2.apps.rustyqr.camera.packLumaRows
 import com.p2.apps.rustyqr.camera.rememberFrameDispatcher
 import com.p2.apps.rustyqr.debug.FrameRecorder
 import com.p2.apps.rustyqr.debug.FrameTimings
 import com.p2.apps.rustyqr.debug.LOG_FRAME_TIMINGS
+import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.model.ScanResult
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -32,14 +40,17 @@ import java.util.concurrent.Executors
  * Frame analyzer: extracts Y-plane from [ImageProxy] → [QrBridge.decodeQrFromRaw].
  * [arrow.core.Either.Left] (no QR found) is silently discarded — expected for most frames.
  *
- * The camera outlives recompositions, so [rememberFrameDispatcher] reads [isScanning], [onQrDecoded] and
- * [onCameraReady] at the moment they are used (the latest value always wins) and closes itself on leaving composition.
+ * The camera outlives recompositions, so [rememberFrameDispatcher] reads [isScanning], [onQrDecoded],
+ * [onCameraReady] and [onCameraError] at the moment they are used (the latest value always wins) and closes
+ * itself on leaving composition.
  */
 @Composable
 actual fun CameraPreview(
     isScanning: Boolean,
     onQrDecoded: (ScanResult) -> Unit,
     onCameraReady: () -> Unit,
+    onCameraError: (CameraFailure) -> Unit,
+    modifier: Modifier,
 ) {
     // Assumed stable: it is the Activity (Scan has no NavHost), and the AndroidView factory below binds only once.
     // Keying the session on it would not rebind, because the factory does not rerun, so it is deliberately not keyed.
@@ -53,6 +64,7 @@ actual fun CameraPreview(
             isScanning = isScanning,
             onQrDecoded = onQrDecoded,
             onCameraReady = onCameraReady,
+            onCameraError = onCameraError,
             postToMain = { work -> mainExecutor.execute(work) },
         )
     val session = remember { CameraSession(dispatcher, mainExecutor) }
@@ -62,7 +74,7 @@ actual fun CameraPreview(
     }
 
     AndroidView(
-        modifier = Modifier,
+        modifier = modifier,
         factory = { ctx ->
             val previewView = PreviewView(ctx)
             session.bind(previewView, lifecycleOwner)
@@ -71,6 +83,8 @@ actual fun CameraPreview(
         update = { _ -> },
     )
 }
+
+private const val TAG = "CameraPreview"
 
 /** Process-scoped so the debug frame budget is per app launch, not per composition. */
 private val frameRecorder = FrameRecorder(platform = "android")
@@ -81,7 +95,7 @@ private val frameRecorder = FrameRecorder(platform = "android")
  * [rememberFrameDispatcher], not here.
  */
 private class CameraSession(
-    dispatcher: FrameDispatcher,
+    private val dispatcher: FrameDispatcher,
     private val mainExecutor: Executor,
 ) {
     private val executor = Executors.newSingleThreadExecutor()
@@ -90,6 +104,9 @@ private class CameraSession(
     private var provider: ProcessCameraProvider? = null
     private var preview: Preview? = null
     private var imageAnalysis: ImageAnalysis? = null
+    private var cameraState: LiveData<CameraState>? = null
+    private var staleCameraState: CameraState? = null
+    private val cameraStateObserver = Observer<CameraState> { state -> onCameraState(state) }
 
     fun bind(
         previewView: PreviewView,
@@ -98,15 +115,38 @@ private class CameraSession(
         val future = ProcessCameraProvider.getInstance(previewView.context)
         future.addListener({
             // The provider future can complete after the composable has left; binding then would leak a camera.
-            if (!released) bindUseCases(future.get(), previewView, lifecycleOwner)
+            if (!released) start(future::get, previewView, lifecycleOwner)
         }, mainExecutor)
+    }
+
+    /**
+     * Binds the use cases, or reports why not. CameraX throws when it cannot initialise (the future fails), when the
+     * device has no back camera (IllegalArgumentException) and in other documented cases (IllegalStateException), so
+     * every throw becomes [CameraFailure.CouldNotStart]; a missing back camera is detected up front as
+     * [CameraFailure.NoCamera]. On failure nothing stays bound.
+     */
+    private fun start(
+        providerResult: () -> ProcessCameraProvider,
+        previewView: PreviewView,
+        lifecycleOwner: LifecycleOwner,
+    ) {
+        Either
+            .catch { bindUseCases(providerResult(), previewView, lifecycleOwner) }
+            .getOrElse { error ->
+                logInfo(TAG, "Camera failed to start: $error")
+                CameraFailure.CouldNotStart.left()
+            }.onLeft { failure ->
+                unbindUseCases()
+                dispatcher.fail(failure)
+            }
     }
 
     private fun bindUseCases(
         cameraProvider: ProcessCameraProvider,
         previewView: PreviewView,
         lifecycleOwner: LifecycleOwner,
-    ) {
+    ): Either<CameraFailure, Unit> {
+        if (!cameraProvider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) return CameraFailure.NoCamera.left()
         unbindUseCases()
         val newPreview =
             Preview.Builder().build().also {
@@ -121,16 +161,45 @@ private class CameraSession(
         provider = cameraProvider
         preview = newPreview
         imageAnalysis = newAnalysis
-        cameraProvider.bindToLifecycle(
-            lifecycleOwner,
-            CameraSelector.DEFAULT_BACK_CAMERA,
-            newPreview,
-            newAnalysis,
-        )
+        val camera =
+            cameraProvider.bindToLifecycle(
+                lifecycleOwner,
+                CameraSelector.DEFAULT_BACK_CAMERA,
+                newPreview,
+                newAnalysis,
+            )
+        // CameraX keeps one LiveData per camera for the whole process, and observing while STARTED delivers its current
+        // value at once. After a retry that is still the previous session's CLOSED + CRITICAL error, so remember it and
+        // ignore exactly that object; CameraX publishes a new object for every real change. The field is assigned
+        // before observing so a synchronous callback can unbind and remove the observer.
+        val liveState = camera.cameraInfo.cameraState
+        staleCameraState = liveState.value
+        cameraState = liveState
+        liveState.observe(lifecycleOwner, cameraStateObserver)
+        return Unit.right()
     }
 
-    /** Unbinds only this session's use cases, never other users of the shared provider, and drops the surface. */
+    /**
+     * Reports critical camera-state errors that arrive after binding (the loader would otherwise spin forever).
+     * Recoverable ones are left alone because CameraX retries them. Observed on the main thread.
+     */
+    private fun onCameraState(state: CameraState) {
+        if (state === staleCameraState) return
+        state.error?.takeIf { it.type == CameraState.ErrorType.CRITICAL }?.let { error ->
+            logInfo(TAG, "Camera reported a critical error, code=${error.code}, cause=${error.cause}")
+            unbindUseCases()
+            dispatcher.fail(CameraFailure.CouldNotStart)
+        }
+    }
+
+    /**
+     * Unbinds only this session's use cases, never other users of the shared provider, and drops the surface and the
+     * camera-state observer.
+     */
     private fun unbindUseCases() {
+        cameraState?.removeObserver(cameraStateObserver)
+        cameraState = null
+        staleCameraState = null
         imageAnalysis?.let { useCase ->
             useCase.clearAnalyzer()
             provider?.unbind(useCase)

@@ -31,6 +31,11 @@
     <string name="scan_clip_label">Contenu du code QR</string>
     <string name="scan_start_scanning">Commencer la numérisation</string>
     <string name="scan_camera_starting">Démarrage de la caméra…</string>
+    <string name="scan_camera_no_camera_title">Aucune caméra trouvée</string>
+    <string name="scan_camera_no_camera_body">Cet appareil n\'a aucune caméra utilisable par Rusty QR.</string>
+    <string name="scan_camera_failed_title">Problème de caméra</string>
+    <string name="scan_camera_failed_body">Un problème est survenu avec la caméra. Réessayez.</string>
+    <string name="scan_try_again">Réessayer</string>
 
     <string name="content_type_url">URL</string>
     <string name="content_type_text">TEXTE</string>

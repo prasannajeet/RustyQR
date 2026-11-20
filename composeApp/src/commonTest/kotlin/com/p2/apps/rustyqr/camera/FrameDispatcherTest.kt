@@ -1,5 +1,6 @@
 package com.p2.apps.rustyqr.camera
 
+import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.model.ScanResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,12 +12,14 @@ class FrameDispatcherTest {
     private var scanning = true
     private var decodedSink: (ScanResult) -> Unit = {}
     private var readySink: () -> Unit = {}
+    private var errorSink: (CameraFailure) -> Unit = {}
 
     private val dispatcher =
         FrameDispatcher(
             isScanning = { scanning },
             currentOnQrDecoded = { decodedSink },
             currentOnCameraReady = { readySink },
+            currentOnCameraError = { errorSink },
             postToMain = { mainQueue.addLast(it) },
         )
 
@@ -87,5 +90,75 @@ class FrameDispatcherTest {
         dispatcher.close()
         assertFalse(dispatcher.onFrame())
         assertTrue(mainQueue.isEmpty())
+    }
+
+    @Test
+    fun failureIsDeliveredOnceToTheLatestCallback() {
+        val first = mutableListOf<CameraFailure>()
+        val second = mutableListOf<CameraFailure>()
+        errorSink = { first += it }
+        dispatcher.fail(CameraFailure.NoCamera)
+        errorSink = { second += it }
+        dispatcher.fail(CameraFailure.CouldNotStart)
+        runMain()
+        assertEquals(emptyList(), first)
+        assertEquals(listOf(CameraFailure.NoCamera), second)
+    }
+
+    @Test
+    fun failureAfterCloseOrPostedBeforeCloseIsDropped() {
+        var calls = 0
+        errorSink = { calls++ }
+        dispatcher.fail(CameraFailure.NoCamera)
+        dispatcher.close()
+        runMain()
+        dispatcher.fail(CameraFailure.CouldNotStart)
+        runMain()
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun afterFailureFramesAreNotDecodedAndNoReadyIsPosted() {
+        var ready = 0
+        readySink = { ready++ }
+        dispatcher.fail(CameraFailure.CouldNotStart)
+
+        assertFalse(dispatcher.onFrame())
+        runMain()
+
+        assertEquals(0, ready)
+    }
+
+    @Test
+    fun readyPostedBeforeFailureIsDropped() {
+        var ready = 0
+        readySink = { ready++ }
+        dispatcher.onFrame()
+        dispatcher.fail(CameraFailure.CouldNotStart)
+        runMain()
+        assertEquals(0, ready)
+    }
+
+    @Test
+    fun readyThenFailureBothFireInOrder() {
+        val events = mutableListOf<String>()
+        readySink = { events += "ready" }
+        errorSink = { events += "error" }
+        dispatcher.onFrame()
+        runMain()
+        dispatcher.fail(CameraFailure.CouldNotStart)
+        runMain()
+        assertEquals(listOf("ready", "error"), events)
+    }
+
+    @Test
+    fun deliverAfterFailureIsDropped() {
+        var decoded = 0
+        decodedSink = { decoded++ }
+        dispatcher.deliver(ScanResult("in flight"))
+        dispatcher.fail(CameraFailure.CouldNotStart)
+        dispatcher.deliver(ScanResult("late"))
+        runMain()
+        assertEquals(0, decoded)
     }
 }
