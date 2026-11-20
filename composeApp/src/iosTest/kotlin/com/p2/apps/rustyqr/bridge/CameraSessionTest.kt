@@ -12,13 +12,13 @@ class CameraSessionTest {
     /** Runs on the simulator, which has no camera. */
     @Test
     fun configureSessionWithoutCameraReportsNoCameraAndAddsNothing() {
-        if ((backVideoDevice() != null)) return
+        if (backVideoDevice() != null) return
         val dispatcher =
             FrameDispatcher(
                 isScanning = { false },
-                currentOnQrDecoded = { {} },
-                currentOnCameraReady = { {} },
-                currentOnCameraError = { {} },
+                onQrDecoded = {},
+                onCameraReady = {},
+                onCameraError = {},
                 postToMain = { it() },
             )
         val session = AVCaptureSession()

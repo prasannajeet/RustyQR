@@ -37,9 +37,9 @@ internal fun rememberFrameDispatcher(
         remember {
             FrameDispatcher(
                 isScanning = { latestScanning },
-                currentOnQrDecoded = { latestOnDecoded },
-                currentOnCameraReady = { latestOnReady },
-                currentOnCameraError = { latestOnError },
+                onQrDecoded = { latestOnDecoded(it) },
+                onCameraReady = { latestOnReady() },
+                onCameraError = { latestOnError(it) },
                 postToMain = postToMain,
             )
         }

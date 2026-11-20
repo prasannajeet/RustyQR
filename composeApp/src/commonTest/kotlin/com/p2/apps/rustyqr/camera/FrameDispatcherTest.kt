@@ -17,9 +17,9 @@ class FrameDispatcherTest {
     private val dispatcher =
         FrameDispatcher(
             isScanning = { scanning },
-            currentOnQrDecoded = { decodedSink },
-            currentOnCameraReady = { readySink },
-            currentOnCameraError = { errorSink },
+            onQrDecoded = { decodedSink(it) },
+            onCameraReady = { readySink() },
+            onCameraError = { errorSink(it) },
             postToMain = { mainQueue.addLast(it) },
         )
 
