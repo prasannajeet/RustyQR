@@ -9,10 +9,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
-  # toolchain and all of those targets on top of what the job installs. With it, the job uses only what the setup
-  # action installed and fails loudly on a mismatch. (The caller's env does not reach a called workflow.)
-  RUSTUP_AUTO_INSTALL: "0"
 
 jobs:
   rust-checks:
@@ -39,7 +35,7 @@ jobs:
 
       # Supply chain: advisories, licences, bans and sources. Installed on the runner, not run through the Docker
       # action, whose rustup would download the whole pinned toolchain and every target on each run.
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6 (v2), 2026-11-18
         with:
           tool: cargo-deny@0.19.0
       - run: cargo deny --manifest-path Cargo.toml check

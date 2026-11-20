@@ -9,10 +9,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
-  # toolchain and all of those targets on top of what each job installs. With it, a job uses only what the setup-rust
-  # action installed (its own `targets:`) and fails loudly on a mismatch.
-  RUSTUP_AUTO_INSTALL: "0"
 
 jobs:
   rust-checks:
@@ -52,18 +48,9 @@ jobs:
       # --- Install XcodeGen and SwiftLint (the macos-26 image has neither) ---
       - run: brew install xcodegen swiftlint
 
-      # The Kotlin bindgen the plugin compiles with `cargo install` on its first run (several minutes). Keyed on the
-      # plugin version alone, so a library bump does not discard the Rust build cache above.
-      - id: plugin-version
-        run: |
-          version="$(sed -nE 's/^uniffi-plugin *= *"([^"]+)".*/\1/p' gradle/libs.versions.toml)"
-          test -n "$version" || { echo "uniffi-plugin version not found in gradle/libs.versions.toml" >&2; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/cache-uniffi-bindgen
         with:
-          path: build/uniffi/bindgen/
-          key: uniffi-bindgen-${{ runner.os }}-${{ steps.rust.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
+          toolchain-key: ${{ steps.rust.outputs.cachekey }}
 
       # Kotlin/Native toolchain and dependencies (large download on a cold runner). Keyed on the Kotlin version only.
       - id: kotlin-version

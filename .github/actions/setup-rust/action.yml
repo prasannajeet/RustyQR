@@ -19,9 +19,6 @@ inputs:
     required: true
 
 outputs:
-  version:
-    description: The pinned toolchain version, from rust-toolchain.toml.
-    value: ${{ steps.pin.outputs.version }}
   cachekey:
     description: The toolchain's cache key (rustc version and host), for keying other caches on the toolchain.
     value: ${{ steps.toolchain.outputs.cachekey }}
@@ -29,6 +26,13 @@ outputs:
 runs:
   using: composite
   steps:
+    # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
+    # toolchain and all of those targets on top of what the job installs. With it, the job uses only what this action
+    # installed (its `targets:` and `components:`) and fails loudly on a mismatch. Set before anything runs rustup.
+    - name: Stop rustup installing toolchains on its own
+      shell: bash
+      run: echo "RUSTUP_AUTO_INSTALL=0" >> "$GITHUB_ENV"
+
     - id: pin
       name: Read the pinned Rust version
       shell: bash

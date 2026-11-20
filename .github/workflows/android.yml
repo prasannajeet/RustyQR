@@ -9,10 +9,6 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # rust-toolchain.toml pins the version and lists every target. Without this, cargo would download the pinned
-  # toolchain and all of those targets on top of what each job installs. With it, a job uses only what the setup-rust
-  # action installed (its own `targets:`) and fails loudly on a mismatch.
-  RUSTUP_AUTO_INSTALL: "0"
   NDK_VERSION: "30.0.14904198"
   # Gradle reads this as -PndkVersion for every invocation, so the configuration cache sees one configuration.
   ORG_GRADLE_PROJECT_ndkVersion: "30.0.14904198"
@@ -46,7 +42,7 @@ jobs:
           key: wasm-pack-tools-${{ runner.os }}-${{ hashFiles('rustySDK/Cargo.lock') }}
 
       # A prebuilt binary, so a Rust toolchain bump does not recompile wasm-pack.
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6 (v2), 2026-11-18
         with:
           tool: wasm-pack@0.15.1
 
@@ -89,18 +85,9 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
           cache-prefix: android
 
-      # The Kotlin bindgen the plugin compiles with `cargo install` on its first run (several minutes). Keyed on the
-      # plugin version alone, so a library bump does not discard the Rust build cache above.
-      - id: plugin-version
-        run: |
-          version="$(sed -nE 's/^uniffi-plugin *= *"([^"]+)".*/\1/p' gradle/libs.versions.toml)"
-          test -n "$version" || { echo "uniffi-plugin version not found in gradle/libs.versions.toml" >&2; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
+      - uses: ./.github/actions/cache-uniffi-bindgen
         with:
-          path: build/uniffi/bindgen/
-          key: uniffi-bindgen-${{ runner.os }}-${{ steps.rust.outputs.cachekey }}-${{ steps.plugin-version.outputs.version }}
+          toolchain-key: ${{ steps.rust.outputs.cachekey }}
 
       # --- Android SDK + NDK (the build pins it with ORG_GRADLE_PROJECT_ndkVersion) ---
       - uses: android-actions/setup-android@v4
