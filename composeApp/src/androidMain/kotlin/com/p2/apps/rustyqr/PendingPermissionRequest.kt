@@ -29,7 +29,16 @@ internal object PendingPermissionRequest {
         waiting.forEach { it(granted) }
     }
 
-    /** Drops every queued callback, for when the dialog's result can no longer arrive. */
+    /**
+     * Call when the host Activity is destroyed. The callbacks belong to ViewModels, which outlive a configuration
+     * change (a rotation) and are cleared otherwise, so the queue is kept for the first and dropped for the second:
+     * after that no result can reach anyone who still wants it.
+     */
+    fun hostDestroyed(changingConfigurations: Boolean) {
+        if (!changingConfigurations) cancel()
+    }
+
+    /** Drops every queued callback. */
     fun cancel() {
         callbacks.clear()
     }

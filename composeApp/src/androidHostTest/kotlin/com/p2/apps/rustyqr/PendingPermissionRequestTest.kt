@@ -29,17 +29,6 @@ class PendingPermissionRequestTest {
     }
 
     @Test
-    fun aResultReachesTheCallbackEvenIfItArrivesThroughAnotherActivity() {
-        // The Activity that asked is gone; only this process-scoped queue still knows who is waiting.
-        var granted: Boolean? = null
-        PendingPermissionRequest.add { granted = it }
-
-        PendingPermissionRequest.complete(granted = false)
-
-        assertEquals(false, granted)
-    }
-
-    @Test
     fun completingClearsTheQueueSoTheNextRequestShowsTheDialog() {
         var calls = 0
         PendingPermissionRequest.add { calls++ }
@@ -59,5 +48,27 @@ class PendingPermissionRequestTest {
         PendingPermissionRequest.complete(granted = true)
 
         assertEquals(0, calls)
+    }
+
+    @Test
+    fun destroyingTheHostForARotationKeepsTheWaitingCallbacks() {
+        var granted: Boolean? = null
+        PendingPermissionRequest.add { granted = it }
+
+        PendingPermissionRequest.hostDestroyed(changingConfigurations = true)
+        PendingPermissionRequest.complete(granted = true)
+
+        assertEquals(true, granted)
+    }
+
+    @Test
+    fun destroyingTheHostForGoodDropsTheWaitingCallbacksSoTheNextRequestShowsTheDialog() {
+        var calls = 0
+        PendingPermissionRequest.add { calls++ }
+
+        PendingPermissionRequest.hostDestroyed(changingConfigurations = false)
+
+        assertEquals(0, calls)
+        assertTrue(PendingPermissionRequest.add { })
     }
 }

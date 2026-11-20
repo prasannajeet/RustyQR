@@ -29,10 +29,8 @@ open class BridgeHostActivity : ComponentActivity() {
         if (BridgeHostActivityHolder.activity === this) {
             BridgeHostActivityHolder.activity = null
         }
-        // A rotation keeps the request alive for the next Activity; leaving for good means no result will arrive.
-        if (isFinishing) {
-            PendingPermissionRequest.cancel()
-        }
+        // ComponentActivity clears its ViewModelStore exactly when this is false, so the callbacks live as long as it.
+        PendingPermissionRequest.hostDestroyed(isChangingConfigurations)
     }
 
     /**
