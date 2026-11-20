@@ -83,16 +83,12 @@ actual fun CameraPreview(
 
 private const val TAG = "CameraPreview"
 
-/** Critical CameraX errors that no retry fixes: a device policy disabled the camera, or Do Not Disturb blocks it. */
-private val blockedByDeviceCodes =
-    setOf(CameraState.ERROR_CAMERA_DISABLED, CameraState.ERROR_DO_NOT_DISTURB_MODE_ENABLED)
-
 /**
  * The failure to report for a camera [state], or null when there is nothing to report.
  *
  * Only critical errors count; CameraX retries recoverable ones itself. [stale] is the state object that was already
- * current when the session started, so it belongs to an earlier session and is ignored. Disabled-by-policy and
- * Do-Not-Disturb errors are [CameraFailure.BlockedByDevice], which offers no retry; every other critical error is
+ * current when the session started, so it belongs to an earlier session and is ignored. A camera disabled by device
+ * policy is [CameraFailure.BlockedByDevice], which offers no retry; every other critical error is
  * [CameraFailure.CouldNotStart].
  */
 internal fun criticalFailure(
@@ -103,7 +99,7 @@ internal fun criticalFailure(
     return when {
         state === stale -> null
         error == null || error.type != CameraState.ErrorType.CRITICAL -> null
-        error.code in blockedByDeviceCodes -> CameraFailure.BlockedByDevice
+        error.code == CameraState.ERROR_CAMERA_DISABLED -> CameraFailure.BlockedByDevice
         else -> CameraFailure.CouldNotStart
     }
 }

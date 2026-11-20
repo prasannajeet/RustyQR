@@ -1,10 +1,8 @@
 package com.p2.apps.rustyqr.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
-import com.p2.apps.rustyqr.bridge.isCameraPermissionGranted
-import com.p2.apps.rustyqr.bridge.isCameraPermissionPermanentlyDenied
-import com.p2.apps.rustyqr.bridge.openAppSettings
-import com.p2.apps.rustyqr.bridge.requestCameraPermission
+import com.p2.apps.rustyqr.bridge.CameraPermissions
+import com.p2.apps.rustyqr.bridge.PlatformCameraPermissions
 import com.p2.apps.rustyqr.bridge.triggerHaptic
 import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.ui.mvi.ScanQRCodeScreenIntent
@@ -16,7 +14,7 @@ import kotlinx.coroutines.flow.update
 /**
  * Processes [ScanQRCodeScreenIntent]s and manages [ScanScreenState].
  *
- * [isPermissionGranted] answers whether CAMERA permission is granted right now; tests substitute it.
+ * All permission queries and requests go through [permissions]; tests substitute it.
  *
  * The [scanGate] Boolean is read and written only on the main thread.
  * State mutations always happen on the main thread via [kotlinx.coroutines.Dispatchers.Main].
@@ -29,7 +27,7 @@ import kotlinx.coroutines.flow.update
  *     locked would swallow the first decode of the retried session
  */
 class ScanViewModel(
-    private val isPermissionGranted: () -> Boolean = ::isCameraPermissionGranted,
+    private val permissions: CameraPermissions = PlatformCameraPermissions,
 ) : ViewModel() {
     val state: StateFlow<ScanScreenState>
         field = MutableStateFlow(ScanScreenState())
@@ -48,7 +46,7 @@ class ScanViewModel(
             is ScanQRCodeScreenIntent.ResumeScanning -> handleDismissSheet()
             is ScanQRCodeScreenIntent.PermissionResult -> handlePermissionResult(intent.granted)
             is ScanQRCodeScreenIntent.RequestPermission -> handleRequestPermission()
-            is ScanQRCodeScreenIntent.OpenSettings -> openAppSettings()
+            is ScanQRCodeScreenIntent.OpenSettings -> permissions.openSettings()
             is ScanQRCodeScreenIntent.StartScanning -> handleStartScanning()
             is ScanQRCodeScreenIntent.CameraReady -> handleCameraReady()
             is ScanQRCodeScreenIntent.PreviewStarted -> handlePreviewStarted()
@@ -73,13 +71,22 @@ class ScanViewModel(
     }
 
     /**
-     * The app came back to the foreground while the permission-denied screen shows. The user may have granted the
-     * permission in Settings, which leaves the app without any callback, so ask the system again.
+     * The app came back to the foreground. Two screens wait for the user to change something outside the app, and
+     * neither gets a callback when they do:
+     * - A camera blocked by device policy: clear the failure and start the camera again. If the device still blocks
+     *   it, CameraX reports the failure again.
+     * - The permission-denied screen: the user may have granted the permission in Settings, so ask the system again.
      */
     private fun handleScreenResumed() {
         val current = state.value
-        if (current.permissionRequested && !current.hasPermission && isPermissionGranted()) {
-            handlePermissionResult(granted = true)
+        when {
+            current.cameraFailure == CameraFailure.BlockedByDevice -> {
+                state.update { it.copy(cameraFailure = null).withCameraActive(true) }
+            }
+
+            current.permissionRequested && !current.hasPermission && permissions.isGranted() -> {
+                handlePermissionResult(granted = true)
+            }
         }
     }
 
@@ -137,7 +144,7 @@ class ScanViewModel(
     }
 
     private fun handlePermissionResult(granted: Boolean) {
-        val permanentlyDenied = if (!granted) isCameraPermissionPermanentlyDenied() else false
+        val permanentlyDenied = if (!granted) permissions.isPermanentlyDenied() else false
         state.update {
             it
                 .copy(
@@ -149,13 +156,13 @@ class ScanViewModel(
     }
 
     private fun handleRequestPermission() {
-        requestCameraPermission { granted ->
+        permissions.request { granted ->
             onIntent(ScanQRCodeScreenIntent.PermissionResult(granted))
         }
     }
 
     private fun handleStartScanning() {
-        if (isPermissionGranted()) {
+        if (permissions.isGranted()) {
             state.update {
                 it
                     .copy(
@@ -165,7 +172,7 @@ class ScanViewModel(
                     ).withCameraActive(true)
             }
         } else {
-            requestCameraPermission { granted ->
+            permissions.request { granted ->
                 onIntent(ScanQRCodeScreenIntent.PermissionResult(granted))
             }
         }

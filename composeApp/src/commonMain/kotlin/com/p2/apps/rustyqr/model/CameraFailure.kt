@@ -12,8 +12,8 @@ enum class CameraFailure(
     CouldNotStart(isRetryable = true),
 
     /**
-     * The device refuses camera use: a device policy turned the camera off, or Do Not Disturb mode blocks it. Trying
-     * again keeps failing until the user or an administrator changes that, so there is no retry.
+     * A device policy turned the camera off. Trying again keeps failing until the user or an administrator changes
+     * that, so there is no retry button; the screen restarts the camera when the app resumes instead.
      */
     BlockedByDevice(isRetryable = false),
 }

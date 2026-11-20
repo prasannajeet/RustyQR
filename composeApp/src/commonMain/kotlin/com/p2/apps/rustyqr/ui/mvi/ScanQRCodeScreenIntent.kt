@@ -46,6 +46,6 @@ sealed interface ScanQRCodeScreenIntent {
     /** A camera preview session began: show the warm-up loader again until it delivers its first frame. */
     data object PreviewStarted : ScanQRCodeScreenIntent
 
-    /** The app resumed while the permission-denied screen shows: re-check, since Settings may have changed it. */
+    /** The app resumed: the ViewModel re-checks a denied permission and restarts a camera blocked by device policy. */
     data object ScreenResumed : ScanQRCodeScreenIntent
 }

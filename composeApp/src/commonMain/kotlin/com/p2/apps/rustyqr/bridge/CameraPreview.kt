@@ -26,7 +26,7 @@ import com.p2.apps.rustyqr.model.ScanResult
  *                        starting: a critical CameraX camera-state error (fatal camera error, stream configuration
  *                        failure) on Android, or an `AVCaptureSessionRuntimeError` on iOS.
  *                      - [CameraFailure.BlockedByDevice]: Android only. CameraX reported that a device policy
- *                        disabled the camera, or that Do Not Disturb mode blocks it. Retrying cannot help.
+ *                        disabled the camera. Retrying cannot help.
  *                      Not reported: errors CameraX retries itself (recoverable camera-state errors) and iOS session
  *                      interruptions, which the system resumes. [onCameraReady] does not fire for a session that
  *                      failed before its first frame, and frames stop being decoded once a failure is reported.

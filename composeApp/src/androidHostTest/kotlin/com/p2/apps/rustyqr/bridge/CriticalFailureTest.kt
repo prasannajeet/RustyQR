@@ -40,13 +40,6 @@ class CriticalFailureTest {
     }
 
     @Test
-    fun doNotDisturbModeIsBlockedByTheDevice() {
-        val state = stateWithError(CameraState.ERROR_DO_NOT_DISTURB_MODE_ENABLED)
-
-        assertEquals(CameraFailure.BlockedByDevice, criticalFailure(state, stale = null))
-    }
-
-    @Test
     fun otherCriticalErrorsCouldNotStart() {
         listOf(CameraState.ERROR_CAMERA_FATAL_ERROR, CameraState.ERROR_STREAM_CONFIG).forEach { code ->
             assertEquals(CameraFailure.CouldNotStart, criticalFailure(stateWithError(code), stale = null))

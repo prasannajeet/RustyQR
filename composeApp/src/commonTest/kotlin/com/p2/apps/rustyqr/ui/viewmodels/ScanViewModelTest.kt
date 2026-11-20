@@ -1,5 +1,6 @@
 package com.p2.apps.rustyqr.ui.viewmodels
 
+import com.p2.apps.rustyqr.bridge.CameraPermissions
 import com.p2.apps.rustyqr.model.CameraFailure
 import com.p2.apps.rustyqr.model.ScanResult
 import com.p2.apps.rustyqr.ui.mvi.ScanQRCodeScreenIntent
@@ -11,12 +12,42 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ScanViewModelTest {
-    private var permissionGranted = false
-    private val viewModel = ScanViewModel(isPermissionGranted = { permissionGranted })
+    /** A [CameraPermissions] whose answers the test sets and which records what the ViewModel asked of it. */
+    private class FakePermissions : CameraPermissions {
+        var granted = false
+        var permanentlyDenied = false
+        var settingsOpened = 0
+        val pendingRequests = mutableListOf<(Boolean) -> Unit>()
+
+        override fun isGranted() = granted
+
+        override fun isPermanentlyDenied() = permanentlyDenied
+
+        override fun request(onResult: (Boolean) -> Unit) {
+            pendingRequests += onResult
+        }
+
+        override fun openSettings() {
+            settingsOpened++
+        }
+    }
+
+    private val permissions = FakePermissions()
+    private val viewModel = ScanViewModel(permissions)
 
     private fun startCamera() {
-        // Same state StartScanning produces once permission is granted, without touching the permission bridge.
+        // The state a granted permission produces, reached directly instead of through StartScanning.
         viewModel.onIntent(ScanQRCodeScreenIntent.PermissionResult(granted = true))
+    }
+
+    private fun assertDismissed() {
+        val state = viewModel.state.value
+        assertFalse(viewModel.scanGate)
+        assertFalse(state.isSheetVisible)
+        assertNull(state.sheetContent)
+        assertFalse(state.isCameraActive)
+        assertFalse(state.isScanning)
+        assertFalse(state.isCameraWarmingUp)
     }
 
     @Test
@@ -145,9 +176,11 @@ class ScanViewModelTest {
 
     @Test
     fun resumeWithPermissionGrantedInSettingsStartsTheCamera() {
+        permissions.permanentlyDenied = true
         viewModel.onIntent(ScanQRCodeScreenIntent.PermissionResult(granted = false))
-        assertFalse(viewModel.state.value.hasPermission)
-        permissionGranted = true
+        assertTrue(viewModel.state.value.isPermanentlyDenied)
+        permissions.permanentlyDenied = false
+        permissions.granted = true
 
         viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)
 
@@ -171,7 +204,7 @@ class ScanViewModelTest {
 
     @Test
     fun resumeBeforePermissionWasEverRequestedDoesNotStartTheCamera() {
-        permissionGranted = true
+        permissions.granted = true
 
         viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)
 
@@ -182,7 +215,7 @@ class ScanViewModelTest {
     fun resumeWithPermissionAlreadyGrantedLeavesARunningCameraAlone() {
         startCamera()
         viewModel.onIntent(ScanQRCodeScreenIntent.CameraReady)
-        permissionGranted = true
+        permissions.granted = true
         val running = viewModel.state.value
 
         viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)
@@ -212,16 +245,6 @@ class ScanViewModelTest {
         assertFalse(viewModel.state.value.isCameraWarmingUp)
     }
 
-    private fun assertDismissed() {
-        val state = viewModel.state.value
-        assertFalse(viewModel.scanGate)
-        assertFalse(state.isSheetVisible)
-        assertNull(state.sheetContent)
-        assertFalse(state.isCameraActive)
-        assertFalse(state.isScanning)
-        assertFalse(state.isCameraWarmingUp)
-    }
-
     @Test
     fun failureUnlocksTheScanGate() {
         startCamera()
@@ -244,6 +267,101 @@ class ScanViewModelTest {
         val state = viewModel.state.value
         assertEquals(CameraFailure.CouldNotStart, state.cameraFailure)
         assertFalse(state.isSheetVisible)
+    }
+
+    @Test
+    fun resumeWhileBlockedByDeviceClearsTheFailureAndRestartsTheCamera() {
+        startCamera()
+        viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.BlockedByDevice))
+        assertEquals(CameraFailure.BlockedByDevice, viewModel.state.value.cameraFailure)
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)
+
+        val state = viewModel.state.value
+        assertNull(state.cameraFailure)
+        assertTrue(state.isCameraActive)
+        assertTrue(state.isScanning)
+        assertTrue(state.isCameraWarmingUp)
+    }
+
+    @Test
+    fun resumeWhileNotBlockedKeepsOtherFailures() {
+        startCamera()
+        viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.NoCamera))
+        val failed = viewModel.state.value
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)
+
+        assertEquals(failed, viewModel.state.value)
+    }
+
+    @Test
+    fun blockedByDeviceCannotBeRetriedWithTheRetryIntent() {
+        startCamera()
+        viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.BlockedByDevice))
+        val blocked = viewModel.state.value
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.RetryCamera)
+
+        assertEquals(blocked, viewModel.state.value)
+    }
+
+    @Test
+    fun startScanningWithPermissionStartsTheCameraWithoutAsking() {
+        permissions.granted = true
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.StartScanning)
+
+        val state = viewModel.state.value
+        assertTrue(state.hasPermission)
+        assertTrue(state.permissionRequested)
+        assertFalse(state.isPermanentlyDenied)
+        assertTrue(state.isCameraActive)
+        assertTrue(permissions.pendingRequests.isEmpty())
+    }
+
+    @Test
+    fun startScanningWithoutPermissionAsksAndAppliesTheAnswer() {
+        permissions.permanentlyDenied = true
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.StartScanning)
+        assertEquals(1, permissions.pendingRequests.size)
+        assertFalse(viewModel.state.value.permissionRequested)
+        permissions.pendingRequests.single()(false)
+
+        val state = viewModel.state.value
+        assertFalse(state.hasPermission)
+        assertTrue(state.permissionRequested)
+        assertTrue(state.isPermanentlyDenied)
+        assertFalse(state.isCameraActive)
+    }
+
+    @Test
+    fun grantingThePermissionFromTheDialogStartsTheCamera() {
+        viewModel.onIntent(ScanQRCodeScreenIntent.RequestPermission)
+        permissions.pendingRequests.single()(true)
+
+        assertTrue(viewModel.state.value.isCameraActive)
+    }
+
+    @Test
+    fun resumeAfterGrantingInSettingsClearsThePermanentlyDeniedFlag() {
+        permissions.permanentlyDenied = true
+        viewModel.onIntent(ScanQRCodeScreenIntent.PermissionResult(granted = false))
+        assertTrue(viewModel.state.value.isPermanentlyDenied)
+        permissions.granted = true
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)
+
+        assertFalse(viewModel.state.value.isPermanentlyDenied)
+        assertTrue(viewModel.state.value.hasPermission)
+    }
+
+    @Test
+    fun openSettingsIsForwardedToThePlatform() {
+        viewModel.onIntent(ScanQRCodeScreenIntent.OpenSettings)
+
+        assertEquals(1, permissions.settingsOpened)
     }
 
     @Test
