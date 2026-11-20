@@ -161,6 +161,9 @@ impl From<rusty_qr_core::QrError> for FfiQrError {
 ///
 /// This is the simplest entry point — uses the default (Medium) error-correction
 /// level. The output is a `Vec<u8>` containing valid PNG bytes.
+///
+/// `size` must be in `1..=4096` and at least the code's width in modules plus 8 for the quiet zone (29 for
+/// the smallest code, 185 for the largest); a smaller size fails with `InvalidInput`.
 #[uniffi::export]
 fn generate_png(content: &str, size: u32) -> Result<Vec<u8>, FfiQrError> {
     rusty_qr_core::encoder::generate_png(content, size).map_err(FfiQrError::from)
@@ -198,6 +201,8 @@ fn get_library_version() -> String {
 }
 
 /// Whether `generate_png` can encode `content`; `false` means it would fail with `ContentTooLong`.
+///
+/// `true` guarantees generation at any size of at least 185 px (a version 40 code at one pixel per module).
 #[uniffi::export]
 fn content_fits(content: &str) -> Result<bool, FfiQrError> {
     rusty_qr_core::encoder::content_fits(content).map_err(FfiQrError::from)

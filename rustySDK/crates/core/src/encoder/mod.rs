@@ -82,8 +82,10 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 /// The output image is square; both width and height equal `size`. The QR
 /// code is drawn at the largest whole number of pixels per module that fits
 /// `size` together with its quiet zone, so every module is the same size and
-/// the code stays scannable. It is centred on a white background, which makes
-/// the margin up to one module wider than the quiet zone on each side.
+/// the code stays scannable. It is centred on a white background. The pixels left over after the whole
+/// modules (`size % (modules + 8)`) widen the margin beyond the quiet zone, so a large code can fill as
+/// little as about 70% of the image (a version 40 code at 512 px gets about 35 modules of extra white
+/// on each side).
 ///
 /// # Arguments
 ///
@@ -141,6 +143,7 @@ pub fn generate_with_config(content: &str, config: QrConfig) -> Result<Vec<u8>, 
 
 /// Reports whether [`generate_png`] can encode `content` (error-correction level M).
 ///
+/// `true` guarantees generation at any size of at least 185 px (a version 40 code at one pixel per module).
 /// `Ok(false)` exactly when [`generate_png`], for any valid size, would return [`QrError::ContentTooLong`].
 /// It runs the same bit-building path as generation but stops before
 /// Reed-Solomon, matrix and PNG rendering, so it is cheap enough to call per keystroke.
@@ -192,13 +195,18 @@ fn render_qr_to_png(code: &qrcode::QrCode, size: u32) -> Result<Vec<u8>, QrError
         });
     }
 
+    // Draw the bare code: the quiet zone is the white canvas margin, so `QUIET_ZONE_MODULES` is its only source.
     let drawing = code
         .render::<Luma<u8>>()
+        .quiet_zone(false)
         .module_dimensions(pixels_per_module, pixels_per_module)
         .build();
 
-    // Centre the drawing on a white canvas of the requested size.
-    let offset = i64::from((size - drawing.width()) / 2);
+    // Centre the drawing on a white canvas of the requested size. The margin is at least the quiet zone.
+    let margin = size.checked_sub(drawing.width()).ok_or_else(|| QrError::ImageError {
+        reason: format!("a {} px drawing does not fit {size} px", drawing.width()),
+    })?;
+    let offset = i64::from(margin / 2);
     let mut canvas = GrayImage::from_pixel(size, size, Luma([u8::MAX]));
     imageops::replace(&mut canvas, &drawing, offset, offset);
 
@@ -233,6 +241,11 @@ mod tests {
     /// Asserts `png` starts with the PNG signature.
     fn assert_png(png: &[u8]) {
         assert_eq!(png.get(..8), Some(PNG_MAGIC), "output must start with PNG magic bytes");
+    }
+
+    /// Non-ASCII text of exactly `length` bytes: two-byte `é` characters, plus one `a` when `length` is odd.
+    fn utf8_text(length: usize) -> String {
+        format!("{}{}", "é".repeat(length / 2), "a".repeat(length % 2))
     }
 
     fn config(size: u32, error_correction: QrErrorCorrection) -> QrConfig {
@@ -358,9 +371,16 @@ mod tests {
 
     #[test]
     fn content_fits_at_level_agrees_with_generation_at_every_level() -> TestResult {
-        // The boundary table in tests/capacity.rs covers the public API; this covers the private per-level entry point.
-        for level in ALL_LEVELS {
-            for content in ["a".repeat(1273), "a".repeat(1274), "é".repeat(636), "é".repeat(637)] {
+        // The boundary table in tests/capacity.rs covers the public API; this covers the private per-level entry
+        // point, with each level on its own ASCII and UTF-8 byte capacity.
+        for (level, byte_capacity) in ALL_LEVELS.into_iter().zip([2953, 2331, 1663, 1273]) {
+            let utf8_capacity = byte_capacity - 1;
+            for content in [
+                "a".repeat(byte_capacity),
+                "a".repeat(byte_capacity + 1),
+                utf8_text(utf8_capacity),
+                utf8_text(utf8_capacity + 1),
+            ] {
                 let generated = match generate_with_config(&content, config(256, level)) {
                     Ok(_) => true,
                     Err(QrError::ContentTooLong { .. }) => false,
