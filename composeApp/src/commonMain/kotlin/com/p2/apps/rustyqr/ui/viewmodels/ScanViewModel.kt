@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.update
 /**
  * Processes [ScanQRCodeScreenIntent]s and manages [ScanScreenState].
  *
+ * [isPermissionGranted] answers whether CAMERA permission is granted right now; tests substitute it.
+ *
  * The [scanGate] Boolean is read and written only on the main thread.
  * State mutations always happen on the main thread via [kotlinx.coroutines.Dispatchers.Main].
  *
@@ -26,7 +28,9 @@ import kotlinx.coroutines.flow.update
  *   - Unlocks on [ScanQRCodeScreenIntent.CameraFailed]: the session is gone, so no frame can arrive, and a gate left
  *     locked would swallow the first decode of the retried session
  */
-class ScanViewModel : ViewModel() {
+class ScanViewModel(
+    private val isPermissionGranted: () -> Boolean = ::isCameraPermissionGranted,
+) : ViewModel() {
     val state: StateFlow<ScanScreenState>
         field = MutableStateFlow(ScanScreenState())
 
@@ -47,6 +51,8 @@ class ScanViewModel : ViewModel() {
             is ScanQRCodeScreenIntent.OpenSettings -> openAppSettings()
             is ScanQRCodeScreenIntent.StartScanning -> handleStartScanning()
             is ScanQRCodeScreenIntent.CameraReady -> handleCameraReady()
+            is ScanQRCodeScreenIntent.PreviewStarted -> handlePreviewStarted()
+            is ScanQRCodeScreenIntent.ScreenResumed -> handleScreenResumed()
             is ScanQRCodeScreenIntent.CameraFailed -> handleCameraFailed(intent.failure)
             is ScanQRCodeScreenIntent.RetryCamera -> handleRetryCamera()
         }
@@ -54,6 +60,27 @@ class ScanViewModel : ViewModel() {
 
     private fun handleCameraReady() {
         state.update { it.copy(isCameraWarmingUp = false) }
+    }
+
+    /**
+     * A new preview session began, for example when the user returns to Scan with the camera still active. The
+     * session has not delivered a frame yet, so the warm-up loader covers the black preview until it does.
+     */
+    private fun handlePreviewStarted() {
+        if (state.value.isCameraActive) {
+            state.update { it.copy(isCameraWarmingUp = true) }
+        }
+    }
+
+    /**
+     * The app came back to the foreground while the permission-denied screen shows. The user may have granted the
+     * permission in Settings, which leaves the app without any callback, so ask the system again.
+     */
+    private fun handleScreenResumed() {
+        val current = state.value
+        if (current.permissionRequested && !current.hasPermission && isPermissionGranted()) {
+            handlePermissionResult(granted = true)
+        }
     }
 
     private fun handleCameraFailed(failure: CameraFailure) {
@@ -128,7 +155,7 @@ class ScanViewModel : ViewModel() {
     }
 
     private fun handleStartScanning() {
-        if (isCameraPermissionGranted()) {
+        if (isPermissionGranted()) {
             state.update {
                 it
                     .copy(

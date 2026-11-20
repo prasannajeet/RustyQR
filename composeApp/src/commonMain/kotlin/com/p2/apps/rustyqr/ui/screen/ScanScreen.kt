@@ -17,14 +17,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.p2.apps.rustyqr.bridge.CameraPreview
 import com.p2.apps.rustyqr.ui.components.AmberButton
@@ -45,7 +48,8 @@ import rustyqr.composeapp.generated.resources.scan_start_scanning
  * Scan screen — camera preview with QR scanning, scanner overlay, and result bottom sheet.
  *
  * Opens in an idle state — the camera stays cold until the user taps "Start Scanning".
- * Permission is checked lazily at that point; there is no eager permission poll on resume.
+ * Permission is checked lazily at that point. The only re-check is on resume while the permission-denied screen
+ * shows, because the user may have granted access in Settings.
  *
  * Wires [ScanViewModel] to [ScanContent].
  */
@@ -83,6 +87,7 @@ private fun ScanContent(
     ) {
         when {
             state.permissionRequested && !state.hasPermission -> {
+                RecheckPermissionOnResume(onResumed = { onIntent(ScanQRCodeScreenIntent.ScreenResumed) })
                 PermissionDeniedContent(
                     isPermanentlyDenied = state.isPermanentlyDenied,
                     onGrantPermission = { onIntent(ScanQRCodeScreenIntent.RequestPermission) },
@@ -110,11 +115,24 @@ private fun ScanContent(
     }
 }
 
+/** Calls [onResumed] each time the host lifecycle resumes while this is in composition. */
+@Composable
+private fun RecheckPermissionOnResume(onResumed: () -> Unit) {
+    val latestOnResumed by rememberUpdatedState(onResumed)
+    LifecycleResumeEffect(Unit) {
+        latestOnResumed()
+        onPauseOrDispose { }
+    }
+}
+
 @Composable
 private fun CameraScanLayer(
     state: ScanScreenState,
     onIntent: (ScanQRCodeScreenIntent) -> Unit,
 ) {
+    // The preview is a new session each time this enters composition, so it needs the warm-up loader again.
+    LaunchedEffect(Unit) { onIntent(ScanQRCodeScreenIntent.PreviewStarted) }
+
     // Camera preview fills screen edge-to-edge (no inset padding on this layer)
     CameraPreview(
         isScanning = state.isScanning,

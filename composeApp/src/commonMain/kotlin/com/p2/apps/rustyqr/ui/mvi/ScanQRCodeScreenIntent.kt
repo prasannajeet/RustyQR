@@ -42,4 +42,10 @@ sealed interface ScanQRCodeScreenIntent {
 
     /** First camera frame has been delivered — clears the warm-up loader overlay. */
     data object CameraReady : ScanQRCodeScreenIntent
+
+    /** A camera preview session began: show the warm-up loader again until it delivers its first frame. */
+    data object PreviewStarted : ScanQRCodeScreenIntent
+
+    /** The app resumed while the permission-denied screen shows: re-check, since Settings may have changed it. */
+    data object ScreenResumed : ScanQRCodeScreenIntent
 }
