@@ -1,7 +1,9 @@
 package com.p2.apps.rustyqr.bridge
 
+import android.content.Context
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -15,6 +17,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.p2.apps.rustyqr.camera.packLumaRows
+import com.p2.apps.rustyqr.debug.FrameRecorder
+import com.p2.apps.rustyqr.debug.FrameTimings
+import com.p2.apps.rustyqr.debug.LOG_FRAME_TIMINGS
 import com.p2.apps.rustyqr.model.ScanResult
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -72,6 +77,9 @@ actual fun CameraPreview(
     )
 }
 
+/** Process-scoped so the debug frame budget is per app launch, not per composition. */
+private val frameRecorder = FrameRecorder(platform = "android")
+
 /** Everything the per-frame analyzer needs: where it runs and how it reports back. */
 private class FrameAnalysis(
     val executor: java.util.concurrent.ExecutorService,
@@ -79,6 +87,8 @@ private class FrameAnalysis(
     val onQrDecoded: (ScanResult) -> Unit,
     val readyFired: AtomicBoolean,
     val onCameraReady: () -> Unit,
+    // One per composition: [executor] is single-threaded and only it touches this, so no locking is needed.
+    val timings: FrameTimings = FrameTimings(),
 )
 
 private fun bindCamera(
@@ -103,43 +113,10 @@ private fun bindCamera(
                 .build()
                 .also { useCase ->
                     useCase.setAnalyzer(analysis.executor) { imageProxy ->
-                        // Fire the ready callback on the first delivered frame (even if not scanning),
-                        // so the "Starting camera…" overlay clears as soon as the preview is live.
-                        if (analysis.readyFired.compareAndSet(false, true)) {
-                            ContextCompat.getMainExecutor(context).execute { analysis.onCameraReady() }
-                        }
-                        if (!analysis.isScanning()) {
-                            imageProxy.close()
-                            return@setAnalyzer
-                        }
-                        val planeProxy = imageProxy.planes[0]
-                        if (planeProxy.pixelStride != 1) {
-                            imageProxy.close()
-                            return@setAnalyzer
-                        }
-                        val buffer = planeProxy.buffer
-                        val bytes = ByteArray(buffer.remaining())
-                        buffer.get(bytes)
-
-                        val packed =
-                            packLumaRows(bytes, imageProxy.width, imageProxy.height, planeProxy.rowStride)
-                                .getOrNull()
-                        if (packed == null) {
-                            imageProxy.close()
-                            return@setAnalyzer
-                        }
-
-                        QrBridge
-                            .decodeQrFromRaw(
-                                pixels = packed,
-                                width = imageProxy.width,
-                                height = imageProxy.height,
-                            ).onRight { result ->
-                                // Left (no QR found) is silently discarded — expected for most frames
-                                val mainExecutor = ContextCompat.getMainExecutor(context)
-                                mainExecutor.execute { analysis.onQrDecoded(result) }
-                            }
-                        imageProxy.close()
+                        // Timed around the whole analyzer, close included. Frames that never reach Rust stay uncounted.
+                        if (LOG_FRAME_TIMINGS) analysis.timings.startFrame()
+                        imageProxy.use { analyzeFrame(it, analysis, context) }
+                        if (LOG_FRAME_TIMINGS) analysis.timings.endFrame()
                     }
                 }
 
@@ -151,4 +128,43 @@ private fun bindCamera(
             imageAnalysis,
         )
     }, ContextCompat.getMainExecutor(context))
+}
+
+/** Analyzes one frame; the caller closes [proxy]. Does nothing past the ready callback while not scanning. */
+private fun analyzeFrame(
+    proxy: ImageProxy,
+    analysis: FrameAnalysis,
+    context: Context,
+) {
+    // Fire the ready callback on the first delivered frame (even if not scanning),
+    // so the "Starting camera…" overlay clears as soon as the preview is live.
+    if (analysis.readyFired.compareAndSet(false, true)) {
+        ContextCompat.getMainExecutor(context).execute { analysis.onCameraReady() }
+    }
+    if (!analysis.isScanning()) return
+    val plane = proxy.planes[0]
+    if (plane.pixelStride == 1) decodePlane(proxy, plane, analysis, context)
+}
+
+/** Decodes the Y plane, then offers it to the debug [frameRecorder]. */
+private fun decodePlane(
+    proxy: ImageProxy,
+    plane: ImageProxy.PlaneProxy,
+    analysis: FrameAnalysis,
+    context: Context,
+) {
+    val buffer = plane.buffer
+    val bytes = ByteArray(buffer.remaining())
+    buffer.get(bytes)
+
+    val packed = packLumaRows(bytes, proxy.width, proxy.height, plane.rowStride).getOrNull() ?: return
+    if (LOG_FRAME_TIMINGS) analysis.timings.endCopy()
+    val decoded = QrBridge.decodeQrFromRaw(packed, proxy.width, proxy.height)
+    if (LOG_FRAME_TIMINGS) analysis.timings.endRust(decoded)
+    // Left (no QR found) is silently discarded — expected for most frames
+    decoded.onRight { result ->
+        ContextCompat.getMainExecutor(context).execute { analysis.onQrDecoded(result) }
+    }
+    // After the result is dispatched, so the blocking write cannot delay it. `bytes` keeps the row padding.
+    frameRecorder.record(bytes, proxy.width, proxy.height, plane.rowStride, decoded.getOrNull()?.content)
 }
