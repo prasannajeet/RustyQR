@@ -67,6 +67,7 @@ class PendingPermissionRequestTest {
         PendingPermissionRequest.add { calls++ }
 
         PendingPermissionRequest.hostDestroyed(changingConfigurations = false)
+        PendingPermissionRequest.complete(granted = true)
 
         assertEquals(0, calls)
         assertTrue(PendingPermissionRequest.add { })

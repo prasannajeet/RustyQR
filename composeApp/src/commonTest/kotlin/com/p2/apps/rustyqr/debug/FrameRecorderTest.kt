@@ -50,6 +50,11 @@ class FrameRecorderTest {
         platform: String = "android",
     ) = FrameRecorder(platform, lazy { Either.Right(files) }, isEnabled = true, policy = policy, clockMillis = { 99L })
 
+    private fun manifestLine(
+        file: String,
+        content: String?,
+    ) = FrameManifestEntry(file, "android", FrameLayout(1, 1, 1), timestampMs = 1L, content = content).toJsonLine()
+
     @Test
     fun disabledRecorderNeverTouchesFilesOrPolicy() {
         var created = false
@@ -154,11 +159,6 @@ class FrameRecorderTest {
         recorder(files).record(ByteArray(1), 1, 1, 1, "x")
         assertEquals(setOf("android-1x1-s1-5.y"), files.written.keys)
     }
-
-    private fun manifestLine(
-        file: String,
-        content: String?,
-    ) = FrameManifestEntry(file, "android", FrameLayout(1, 1, 1), timestampMs = 1L, content = content).toJsonLine()
 
     @Test
     fun survivingManifestKeepsNumberingAfterTheFramesAreDeleted() {
