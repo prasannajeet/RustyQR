@@ -49,7 +49,8 @@ pub enum FfiQrErrorCorrection {
 /// Mirrors [`rusty_qr_core::QrConfig`].
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct FfiQrConfig {
-    /// Output image size in pixels (width = height). Must be 1..=4096.
+    /// Output image size in pixels (width = height). Must be 1..=4096, and at least the code's width in modules
+    /// plus 8 for the quiet zone (29 for the smallest code, 185 for the largest).
     pub size: u32,
     /// Error-correction level.
     pub error_correction: FfiQrErrorCorrection,
@@ -246,65 +247,22 @@ mod tests {
     }
 
     #[test]
-    fn core_error_converts_to_ffi_all_variants() {
-        let cases: Vec<(rusty_qr_core::QrError, &str)> = vec![
-            (
-                rusty_qr_core::QrError::InvalidInput {
-                    reason: "bad input".into(),
-                },
-                "bad input",
-            ),
-            (
-                rusty_qr_core::QrError::EncodingFailed {
-                    reason: "encode fail".into(),
-                },
-                "encode fail",
-            ),
-            (
-                rusty_qr_core::QrError::ContentTooLong {
-                    reason: "too long".into(),
-                },
-                "too long",
-            ),
-            (
-                rusty_qr_core::QrError::DecodingFailed {
-                    reason: "decode fail".into(),
-                },
-                "decode fail",
-            ),
-            (
-                rusty_qr_core::QrError::ImageError {
-                    reason: "img error".into(),
-                },
-                "img error",
-            ),
+    fn core_error_converts_to_the_same_ffi_variant_and_reason() {
+        use rusty_qr_core::QrError;
+        // Both enums share identical `#[error]` formats, so equal text means same variant and same reason.
+        let reason = || String::from("the reason");
+        let cases = [
+            QrError::InvalidInput { reason: reason() },
+            QrError::EncodingFailed { reason: reason() },
+            QrError::ContentTooLong { reason: reason() },
+            QrError::DecodingFailed { reason: reason() },
+            QrError::ImageError { reason: reason() },
         ];
-
-        for (core_err, expected_reason) in cases {
-            let ffi_err: FfiQrError = core_err.into();
-            let (FfiQrError::InvalidInput { reason }
-            | FfiQrError::EncodingFailed { reason }
-            | FfiQrError::ContentTooLong { reason }
-            | FfiQrError::DecodingFailed { reason }
-            | FfiQrError::ImageError { reason }) = ffi_err;
-            assert_eq!(reason, expected_reason);
+        for core_err in cases {
+            let expected = core_err.to_string();
+            assert!(expected.ends_with("the reason"), "{expected}");
+            assert_eq!(FfiQrError::from(core_err).to_string(), expected);
         }
-
-        // Also verify variant matching specifically
-        let inv: FfiQrError = rusty_qr_core::QrError::InvalidInput { reason: "x".into() }.into();
-        assert!(matches!(inv, FfiQrError::InvalidInput { .. }));
-
-        let enc: FfiQrError = rusty_qr_core::QrError::EncodingFailed { reason: "x".into() }.into();
-        assert!(matches!(enc, FfiQrError::EncodingFailed { .. }));
-
-        let long: FfiQrError = rusty_qr_core::QrError::ContentTooLong { reason: "x".into() }.into();
-        assert!(matches!(long, FfiQrError::ContentTooLong { .. }));
-
-        let dec: FfiQrError = rusty_qr_core::QrError::DecodingFailed { reason: "x".into() }.into();
-        assert!(matches!(dec, FfiQrError::DecodingFailed { .. }));
-
-        let img: FfiQrError = rusty_qr_core::QrError::ImageError { reason: "x".into() }.into();
-        assert!(matches!(img, FfiQrError::ImageError { .. }));
     }
 
     // -----------------------------------------------------------------------
@@ -377,32 +335,6 @@ mod tests {
                 "FFI and core must agree for {} bytes",
                 content.len()
             );
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn content_fits_agrees_with_generate_png_at_mode_boundaries() -> Result<(), Box<dyn std::error::Error>> {
-        let x12345 = "x12345".repeat(2332);
-        let cases: [(String, usize); 4] = [
-            ("7".repeat(5597), 5596),
-            ("A".repeat(3392), 3391),
-            ("a".repeat(2332), 2331),
-            (x12345, 2331),
-        ];
-        for (text, capacity) in cases {
-            for length in [capacity, capacity + 1] {
-                let content = text.get(..length).ok_or("text too short")?;
-                let fits = content_fits(content)?;
-                assert_eq!(fits, length == capacity, "{length} bytes of a {capacity}-capacity mode");
-                match generate_png(content, 64) {
-                    Ok(_) => assert!(fits, "generation succeeded where content_fits said no"),
-                    Err(FfiQrError::ContentTooLong { .. }) => {
-                        assert!(!fits, "generation failed where content_fits said yes");
-                    }
-                    Err(other) => return Err(other.into()),
-                }
-            }
         }
         Ok(())
     }

@@ -1,12 +1,12 @@
 # Benchmark Results
 
-Measured on Apple Silicon (M-series) via `cargo bench -p rusty-qr-core` (Criterion, 100 samples). Only the `content_fits` rows were re-measured, in this change; the other rows keep their earlier values.
+Measured on Apple Silicon (M-series) via `cargo bench -p rusty-qr-core` (Criterion, 100 samples). Only the `content_fits` and `generate_png` rows were re-measured; the other rows keep their earlier values. The `generate_png` rows were measured on a heavily loaded machine, so they are upper bounds: rendering at whole pixels per module replaced a render at 8 px per module followed by a resize.
 
 | Benchmark                                                   | Measured | Target          | Status                                     |
 |-------------------------------------------------------------|----------|-----------------|--------------------------------------------|
-| `generate_png` 256px                                        | ~1.1 ms  | < 10 ms         | PASS                                       |
-| `generate_png` 1024px                                       | ~9.9 ms  | < 50 ms         | PASS                                       |
-| `generate_png` 4096px                                       | ~175 ms  | —               | stress test                                |
+| `generate_png` 256px                                        | ~0.5 ms  | < 10 ms         | PASS                                       |
+| `generate_png` 1024px                                       | ~1.3 ms  | < 50 ms         | PASS                                       |
+| `generate_png` 4096px                                       | ~9 ms    | —               | stress test                                |
 | `decode` PNG 256px                                          | ~2.3 ms  | < 20 ms         | PASS                                       |
 | `decode` PNG 1080px                                         | ~15.4 ms | < 100 ms        | PASS                                       |
 | `decode_from_raw` 256px                                     | ~2.2 ms  | < 20 ms         | synthetic only; not yet measured on device |

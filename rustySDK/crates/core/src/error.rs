@@ -7,8 +7,7 @@
 
 /// Errors that can occur during QR code operations.
 ///
-/// All variants use named fields to remain compatible with `UniFFI`, which will
-/// be added in Phase 3 when the FFI crate is wired up.
+/// All variants use named fields to remain compatible with `UniFFI`.
 #[derive(Debug, thiserror::Error)]
 pub enum QrError {
     /// The caller supplied invalid input (e.g. empty content or out-of-range size).
@@ -28,11 +27,8 @@ pub enum QrError {
     #[error("Image processing error: {reason}")]
     ImageError { reason: String },
 
-    /// Neither the `qrcode` optimizer nor a single byte-mode segment fits the
-    /// largest QR code (version 40) at the requested error-correction level.
-    ///
-    /// Declared last on purpose. Kept in the same order as `FfiQrError`, which
-    /// crosses FFI by declaration index.
+    /// The content does not fit the largest QR code (version 40) at the requested
+    /// error-correction level, in any segmentation the encoder tries.
     #[error("Content too long: {reason}")]
     ContentTooLong { reason: String },
 }

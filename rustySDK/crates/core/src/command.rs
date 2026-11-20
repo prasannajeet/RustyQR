@@ -26,7 +26,7 @@ pub enum QrCommand {
     GeneratePng {
         /// The text to encode. Must not be empty.
         content: String,
-        /// Output image side length in pixels. Must be in `1..=4096`.
+        /// Output image side length in pixels. Must be in `1..=4096` and hold the code at one pixel per module.
         size: u32,
     },
     /// Generate a QR code PNG with custom configuration.

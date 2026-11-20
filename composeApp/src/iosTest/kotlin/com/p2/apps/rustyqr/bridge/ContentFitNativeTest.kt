@@ -28,7 +28,8 @@ private const val BYTE_CAPACITY = 2331
 // those 4 bits plus one whole byte, so 2331 becomes 2330.
 private const val UTF8_CAPACITY = 2330
 
-private const val QR_SIZE_PX = 64
+// Whole pixels per module: version 40 needs at least 185 px, so smaller sizes are refused at render time.
+private const val QR_SIZE_PX = 256
 private const val MIXED_UNIT = "id=0123456789012345678901234567890123456789;"
 private val MIXED_CONTENT_LENGTHS = listOf(BYTE_CAPACITY, 3000, 3500, 4000, 4500)
 

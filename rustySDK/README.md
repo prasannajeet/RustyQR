@@ -7,13 +7,13 @@
 <p>
   <img alt="Rust" src="https://img.shields.io/badge/Rust-edition%202021-CE422B?logo=rust&logoColor=white" />
   <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-0.32-3B6FE0" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-90%20passing-3DDC84" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-80%20passing-3DDC84" />
   <img alt="Benchmarks" src="https://img.shields.io/badge/criterion-19%20benches-F5A623" />
   <img alt="Panics" src="https://img.shields.io/badge/panics-0-brightgreen" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue" />
 </p>
 
-<p><b>3 crates (core, ffi, wasm) · 90 tests · 0 panics · ~2.2&nbsp;ms to decode a 256 × 256 synthetic frame (Apple Silicon, Criterion)</b></p>
+<p><b>3 crates (core, ffi, wasm) · 80 tests · 0 panics · ~2.2&nbsp;ms to decode a 256 × 256 synthetic frame (Apple Silicon, Criterion)</b></p>
 
 <sub>One codebase, two platforms, zero manual bridging. The SDK exposes six pure functions for QR generation and scanning; UniFFI emits the Kotlin bindings automatically. On-device decode figures are pending.</sub>
 
@@ -142,13 +142,16 @@ rustySDK/
 │   │   ├── Cargo.toml         # Dependencies: qrcode, image, rqrr, thiserror
 │   │   ├── src/
 │   │   │   ├── lib.rs         # Public API: re-exports modules
-│   │   │   ├── encoder.rs     # QR generation (text -> PNG bytes)
+│   │   │   ├── encoder/       # QR generation (text -> PNG bytes)
+│   │   │   │   ├── mod.rs     # Validation, generate_*, content_fits, rendering
+│   │   │   │   └── segment.rs # Capacity decision: segmentation and version search
 │   │   │   ├── decoder.rs     # QR scanning (image bytes -> text)
 │   │   │   ├── types.rs       # Shared types: QrConfig, ScanResult, QrErrorCorrection
 │   │   │   ├── error.rs       # QrError enum (5 variants)
 │   │   │   └── command.rs     # Command dispatcher (internal, for testing)
 │   │   ├── tests/             # Integration tests
 │   │   │   ├── round_trip.rs  # Encode -> decode preserves content
+│   │   │   ├── capacity.rs    # Capacity boundaries per mode and level; content_fits vs generation
 │   │   │   ├── determinism.rs # Same input -> identical output
 │   │   │   ├── thread_safety.rs # Concurrent access from multiple threads
 │   │   │   └── jpeg_decode.rs # JPEG decode path validation
@@ -176,7 +179,7 @@ graph TD
 
     subgraph "rusty-qr-core (library)"
         CORE[lib.rs<br/>Pure Rust business logic]
-        ENC[encoder.rs]
+        ENC[encoder/]
         DEC[decoder.rs]
         TYP[types.rs]
         ERR[error.rs]
@@ -460,7 +463,7 @@ crate-type = ["cdylib", "staticlib"]
 sequenceDiagram
     participant App as Mobile App
     participant FFI as FFI Layer (ffi/lib.rs)
-    participant Enc as Encoder (core/encoder.rs)
+    participant Enc as Encoder (core/encoder/)
     participant QR as qrcode crate
     participant Img as image crate
     App ->> FFI: generate_png("Hello", 256)
@@ -470,7 +473,7 @@ sequenceDiagram
     Enc ->> QR: QrCode::new("Hello")
     QR -->> Enc: QR data matrix
     Enc ->> Img: render to grayscale image
-    Enc ->> Img: resize to 256x256 (Nearest filter)
+    Enc ->> Img: centre on a white 256x256 canvas<br/>(whole pixels per module)
     Enc ->> Img: PngEncoder::write_image()
     Img -->> Enc: PNG bytes (Vec u8)
     Enc -->> FFI: Ok(png_bytes)
@@ -545,7 +548,7 @@ graph TB
     subgraph "Rust SDK"
         FFI[ffi crate<br/>Thin wrappers only]
         Core[core crate<br/>All business logic]
-        Enc[encoder.rs]
+        Enc[encoder/]
         Dec[decoder.rs]
         Err[error.rs]
         Typ[types.rs]
@@ -728,7 +731,7 @@ unhandled exception — it would crash the mobile app. Every error is caught and
 
 | Variant          | When it occurs                                          | Caller action                              |
 |------------------|---------------------------------------------------------|--------------------------------------------|
-| `InvalidInput`   | Empty content, size = 0, size > 4096, empty image bytes | Fix the input — never retry                |
+| `InvalidInput`   | Empty content, size = 0, size > 4096, size too small for one pixel per module (29 to 185 px), empty image bytes | Fix the input — never retry                |
 | `EncodingFailed` | Internal `qrcode` error; not expected for text input    | Report as a bug                            |
 | `DecodingFailed` | No QR code found in image                               | Expected — not all images contain QR codes |
 | `ImageError`     | PNG/JPEG parsing failed, image encoding error           | Check the image format                     |
@@ -757,7 +760,7 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 </details>
 
 <details>
-<summary><b>Testing</b> — 90 tests across four tiers (unit, integration, FFI, doctests), 5 browser tests, plus benches</summary>
+<summary><b>Testing</b> — 80 tests across four tiers (unit, integration, FFI, doctests), 5 browser tests, plus benches</summary>
 
 <br/>
 
@@ -765,14 +768,14 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 
 | Tier              | Location                | Count | What it validates                              |
 |-------------------|-------------------------|-------|------------------------------------------------|
-| Unit tests        | `crates/core/src/*.rs`  | 59    | Individual functions in isolation              |
-| Integration tests | `crates/core/tests/`    | 12    | Cross-module behaviour, round-trips (determinism 2, JPEG 1, round trip 6, thread safety 3) |
-| FFI tests         | `crates/ffi/src/lib.rs` | 17    | Type conversion, delegation, error propagation |
+| Unit tests        | `crates/core/src/`      | 40    | Individual functions in isolation              |
+| Integration tests | `crates/core/tests/`    | 22    | Cross-module behaviour, round-trips, capacity boundaries (capacity 10, determinism 2, JPEG 1, round trip 6, thread safety 3) |
+| FFI tests         | `crates/ffi/src/lib.rs` | 16    | Type conversion, delegation, error propagation |
 | Doctests          | `crates/core/src/*.rs`  | 2     | Examples in the documentation compile and run  |
 | Browser tests (`wasm-pack`) | `crates/wasm/tests/` | 5 | The wasm exports in headless Chrome; `cargo test` does not count or run these |
 | Benchmarks        | `crates/core/benches/`  | 19    | Performance against PRD targets (not tests; run with `cargo bench`) |
 
-The counts are from `cd rustySDK && cargo test --workspace` (59 + 2 + 1 + 6 + 3 + 17 + 2 = 90); the 5 browser tests run with `wasm-pack test --headless --chrome crates/wasm`.
+The counts are from `cd rustySDK && cargo test --workspace` (40 + 10 + 2 + 1 + 6 + 3 + 16 + 2 = 80); the 5 browser tests run with `wasm-pack test --headless --chrome crates/wasm`.
 
 ### What's Tested
 
