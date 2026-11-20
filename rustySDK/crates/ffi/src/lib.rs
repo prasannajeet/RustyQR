@@ -202,7 +202,7 @@ fn get_library_version() -> String {
 
 /// Whether `generate_png` can encode `content`; `false` means it would fail with `ContentTooLong`.
 ///
-/// `true` guarantees generation at any size of at least 185 px (a version 40 code at one pixel per module).
+/// `true` guarantees generation at any size in `185..=4096` (a version 40 code at one pixel per module).
 #[uniffi::export]
 fn content_fits(content: &str) -> Result<bool, FfiQrError> {
     rusty_qr_core::encoder::content_fits(content).map_err(FfiQrError::from)

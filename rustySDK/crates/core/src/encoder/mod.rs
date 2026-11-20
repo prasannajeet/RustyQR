@@ -83,9 +83,9 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 /// code is drawn at the largest whole number of pixels per module that fits
 /// `size` together with its quiet zone, so every module is the same size and
 /// the code stays scannable. It is centred on a white background. The pixels left over after the whole
-/// modules (`size % (modules + 8)`) widen the margin beyond the quiet zone, so a large code can fill as
-/// little as about 70% of the image (a version 40 code at 512 px gets about 35 modules of extra white
-/// on each side).
+/// modules (`size % (modules + 8)`) widen the margin beyond the quiet zone, so the code and its quiet zone
+/// can fill as little as about half the image when `size` is just under twice the code's width; a version 40
+/// code at 512 px fills about 70%, with about 35 modules of extra white on each side.
 ///
 /// # Arguments
 ///
@@ -143,7 +143,7 @@ pub fn generate_with_config(content: &str, config: QrConfig) -> Result<Vec<u8>, 
 
 /// Reports whether [`generate_png`] can encode `content` (error-correction level M).
 ///
-/// `true` guarantees generation at any size of at least 185 px (a version 40 code at one pixel per module).
+/// `true` guarantees generation at any size in `185..=4096` (a version 40 code at one pixel per module).
 /// `Ok(false)` exactly when [`generate_png`], for any valid size, would return [`QrError::ContentTooLong`].
 /// It runs the same bit-building path as generation but stops before
 /// Reed-Solomon, matrix and PNG rendering, so it is cheap enough to call per keystroke.
