@@ -5,6 +5,3 @@ root = true
 indent_size = 4
 ij_kotlin_continuation_indent_size = 4
 ktlint_function_naming_ignore_when_annotated_with = Composable
-
-[**/build/generated/**/*.{kt,kts}]
-ktlint = disabled

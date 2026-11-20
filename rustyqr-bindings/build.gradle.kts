@@ -71,12 +71,6 @@ uniffi {
     }
 }
 
-ktlint {
-    filter {
-        exclude { it.file.path.contains("/generated/") }
-    }
-}
-
 // Type resolution: detekt only wires a classpath for the JVM and Android targets, so `detektTestJvm` is the
 // type-resolved task for the shared tests. src/ffiTest is part of jvmTest, so it is checked against the JVM classpath.
 // `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved tasks.

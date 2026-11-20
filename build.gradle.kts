@@ -2,7 +2,6 @@ plugins {
     // this is necessary to avoid the plugins to be loaded multiple times
     // in each subproject's classloader (detekt and ktlint come with the build-logic convention plugin)
     alias(libs.plugins.androidApplication) apply false
-    alias(libs.plugins.androidLibrary) apply false
     alias(libs.plugins.composeMultiplatform) apply false
     alias(libs.plugins.composeCompiler) apply false
     alias(libs.plugins.kotlinMultiplatform) apply false
@@ -14,6 +13,19 @@ plugins {
 // Repository-wide tasks live here, not in :composeApp: a library module must not depend on its consumers
 // (:androidApp), and `./gradlew lintAll` should run once for the whole repository.
 val repoRoot = layout.projectDirectory.asFile.absolutePath
+
+// The root has no src/, which is where detekt 2 looks by default: point it at the build scripts instead.
+detekt {
+    source.setFrom(
+        files(
+            "build.gradle.kts",
+            "settings.gradle.kts",
+            "build-logic/build.gradle.kts",
+            "build-logic/settings.gradle.kts",
+            "build-logic/src/main/kotlin",
+        ),
+    )
+}
 
 // Points git at the tracked .husky/ scripts (relative core.hooksPath), so every worktree runs its own branch's hooks.
 tasks.register<Exec>("installGitHooks") {
@@ -47,36 +59,50 @@ tasks.register<Exec>("generateXcodeProject") {
     }
 }
 
+// Homebrew installs to /opt/homebrew/bin on Apple silicon and /usr/local/bin on Intel Macs; fall back to PATH.
+// Resolved when the task runs, so nothing is read at configuration time and the configuration cache stays valid.
+val findSwiftlint =
+    """
+    for dir in /opt/homebrew/bin /usr/local/bin; do
+        if [ -x "${'$'}dir/swiftlint" ]; then exec "${'$'}dir/swiftlint" "${'$'}@"; fi
+    done
+    if command -v swiftlint >/dev/null 2>&1; then exec swiftlint "${'$'}@"; fi
+    echo "swiftlint not found in /opt/homebrew/bin, /usr/local/bin or PATH (brew install swiftlint)" >&2
+    exit 127
+    """.trimIndent()
+
 tasks.register<Exec>("swiftlint") {
     group = "verification"
     description = "Runs SwiftLint on iOS source files"
     workingDir = File(repoRoot, "iosApp")
-    commandLine("/opt/homebrew/bin/swiftlint", "lint", "--config", "$repoRoot/.swiftlint.yml", "--strict")
+    commandLine(
+        "sh",
+        "-c",
+        findSwiftlint,
+        "swiftlint",
+        "lint",
+        "--config",
+        "$repoRoot/.swiftlint.yml",
+        "--strict",
+    )
 }
 
-// Every Kotlin check in the repository: ktlint and detekt of each module and of the root scripts, ktlint of
-// build-logic (it applies no detekt), plus the font-file check (:composeApp:verifyFontFiles).
-// The per-module `detekt` also runs that module's type-resolved tasks.
-val lintKotlin =
-    tasks.register("lintKotlin") {
-        group = "verification"
-        description = "Runs ktlint, detekt (type-resolved included) and verifyFontFiles for the whole repository"
-        dependsOn(
-            ":ktlintCheck",
-            ":detekt",
-            ":composeApp:ktlintCheck",
-            ":composeApp:detekt",
-            ":composeApp:verifyFontFiles",
-            ":androidApp:ktlintCheck",
-            ":androidApp:detekt",
-            ":rustyqr-bindings:ktlintCheck",
-            ":rustyqr-bindings:detekt",
-            gradle.includedBuild("build-logic").task(":ktlintCheck"),
-        )
-    }
+// Every module that applies rustyqr.kotlin-lint registers its own `lintKotlin` (ktlint + detekt, type-resolved
+// included), and `./gradlew lintKotlin` runs the one of every project. This root task adds what no module owns: the
+// font-file check (:composeApp:verifyFontFiles) and ktlint of build-logic (an included build that applies no detekt).
+// Its own ktlint and detekt cover the root scripts and build-logic sources (see the detekt block above).
+// It also pulls in every module's task, so `./gradlew :lintKotlin` and `lintAll` cover the whole repository too.
+tasks.named("lintKotlin") {
+    description = "Runs ktlint, detekt (type-resolved included) and verifyFontFiles for the whole repository"
+    dependsOn(
+        ":composeApp:verifyFontFiles",
+        gradle.includedBuild("build-logic").task(":ktlintCheck"),
+        provider { subprojects.flatMap { it.tasks.matching { task -> task.name == "lintKotlin" } } },
+    )
+}
 
 tasks.register("lintAll") {
     group = "verification"
     description = "Runs all linters: lintKotlin (ktlint, detekt) and swiftlint"
-    dependsOn(lintKotlin, "swiftlint")
+    dependsOn("lintKotlin", "swiftlint")
 }
