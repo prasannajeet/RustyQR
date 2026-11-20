@@ -11,6 +11,13 @@ plugins {
     id("rustyqr.kotlin-lint")
 }
 
+tasks.register<VerifyFontFiles>("verifyFontFiles") {
+    group = "verification"
+    description = "Fails if any file under composeResources/font is not a real font."
+    fonts.from(fileTree("src/commonMain/composeResources/font"))
+    marker.set(layout.buildDirectory.file("verifyFontFiles/ok"))
+}
+
 kotlin {
     android {
         namespace = "com.p2.apps.rustyqr.composeapp"
