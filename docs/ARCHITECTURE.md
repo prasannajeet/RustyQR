@@ -52,9 +52,9 @@ graph TB
         CI["generated cinterop<br/>(iOS targets)"]
     end
 
-    subgraph "Android app (composeApp)"
+    subgraph "Android app (androidApp → composeApp)"
         JNA["JNA loads the .so<br/>(plugin-packaged jniLibs)"]
-        APK["composeApp-debug.apk"]
+        APK["androidApp-debug.apk"]
     end
 
     subgraph "iOS app (iosApp)"
@@ -88,7 +88,7 @@ published or hand-assembled.
 
 `:rustyqr-bindings` is an Android library module (it applies the Android KMP library plugin). The
 UniFFI Gradle plugin builds one `librusty_qr_ffi.so` per ABI and packages them as that module's
-`jniLibs`. The Android Gradle Plugin merges them into the APK of `composeApp`. There is no
+`jniLibs`. The Android Gradle Plugin merges them into the APK of `androidApp`. There is no
 `composeApp/src/androidMain/jniLibs/` directory and nothing to copy by hand.
 
 You would only need to publish an AAR if you wanted to share the Rust library through Maven with
@@ -196,8 +196,8 @@ lists them):
   (`image`, `rqrr`, `qrcode`, and `rusty-qr-core` itself), so debug builds still scan at a realistic
   speed. Debug builds cover all three Android ABIs, listed in `androidAbis` in `gradle.properties`.
 - **Release** builds need `-PreleaseBuild=true`. Xcode adds the flag for every configuration except
-  Debug. `composeApp` has a `verifyReleaseRustProfile` task that fails release packaging without it,
-  so a shipped artifact can never embed the debug Rust library.
+  Debug. `composeApp` has a `verifyReleaseRustProfile` task, wired into `androidApp` release packaging and the iOS
+  release link, that fails without it, so a shipped artifact can never embed the debug Rust library.
 - **NDK:** the plugin uses the newest NDK under the Android SDK. Pin one with
   `-PndkVersion=<version>`.
 
@@ -230,7 +230,7 @@ generated functions and maps `FfiQrException` to the app's `Either<QrError, T>`.
 
 ## Android Branch — `.rs` to installable APK
 
-The Android pipeline is driven by one Gradle command: `./gradlew :composeApp:assembleDebug`.
+The Android pipeline is driven by one Gradle command: `./gradlew :androidApp:assembleDebug`.
 
 ```mermaid
 sequenceDiagram
@@ -242,7 +242,7 @@ sequenceDiagram
     participant AGP as Android Gradle Plugin
 
     Dev->>G: assembleDebug
-    G->>B: composeApp depends on :rustyqr-bindings
+    G->>B: androidApp depends on composeApp,<br/>which depends on :rustyqr-bindings
 
     Note over B: Cargo — one build per ABI
     B->>C: build rusty-qr-ffi for<br/>aarch64-linux-android<br/>armv7-linux-androideabi<br/>x86_64-linux-android
@@ -256,7 +256,7 @@ sequenceDiagram
     B->>B: mergeUniffiAndroidJniLibs<br/>.so per ABI as jniLibs
 
     G->>AGP: compile Kotlin, merge native libs
-    AGP-->>Dev: composeApp-debug.apk<br/>(3 × .so + generated Kotlin)
+    AGP-->>Dev: androidApp-debug.apk<br/>(3 × .so + generated Kotlin)
 ```
 
 ### Why three `.so` files but one generated Kotlin API?
@@ -277,7 +277,7 @@ rustyqr-bindings/build/generated/jniLibs/mergeUniffiAndroidJniLibs/
 └── x86_64/librusty_qr_ffi.so          # Mac-hosted emulators
 ```
 
-`composeApp` sets `abiFilters` to the same three ABIs, so another ABI that a dependency ships
+`androidApp` sets `abiFilters` to the same three ABIs, so another ABI that a dependency ships
 cannot install and then crash for lack of a Rust library. The two 64-bit ABIs (`arm64-v8a`, `x86_64`) are linked with 16KB ELF page
 alignment (LOAD `align 0x4000`), which is what Android's November 2025 requirement covers; NDK 28+
 does that automatically. `armeabi-v7a` stays at 4KB (`0x1000`), because the NDK aligns only 64-bit ABIs.
@@ -286,7 +286,7 @@ does that automatically. `armeabi-v7a` stays at 4KB (`0x1000`), because the NDK 
 
 The UniFFI-generated Kotlin code calls Rust functions through **JNA** (Java Native Access), not
 `System.loadLibrary`. JNA is a runtime library that discovers and calls C functions by name. The
-plugin's runtime artifact brings it in, so `composeApp` declares nothing extra:
+plugin's runtime artifact brings it in, so neither `composeApp` nor `androidApp` declares anything extra:
 
 ```mermaid
 graph LR

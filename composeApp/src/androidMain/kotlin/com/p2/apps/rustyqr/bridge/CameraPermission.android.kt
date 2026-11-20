@@ -7,16 +7,16 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import com.p2.apps.rustyqr.MainActivityHolder
+import com.p2.apps.rustyqr.BridgeHostActivityHolder
 
 /**
- * Android actual — delegates to [MainActivityHolder] for context access.
+ * Android actual — delegates to [BridgeHostActivityHolder] for context access.
  *
  * [isCameraPermissionGranted] is safe to call from any thread.
  * [requestCameraPermission] must be called from the main thread.
  */
 actual fun isCameraPermissionGranted(): Boolean {
-    val context = MainActivityHolder.activity ?: return false
+    val context = BridgeHostActivityHolder.activity ?: return false
     return ContextCompat.checkSelfPermission(
         context,
         Manifest.permission.CAMERA,
@@ -25,7 +25,7 @@ actual fun isCameraPermissionGranted(): Boolean {
 
 actual fun requestCameraPermission(onResult: (Boolean) -> Unit) {
     val activity =
-        MainActivityHolder.activity ?: run {
+        BridgeHostActivityHolder.activity ?: run {
             onResult(false)
             return
         }
@@ -33,7 +33,7 @@ actual fun requestCameraPermission(onResult: (Boolean) -> Unit) {
 }
 
 actual fun isCameraPermissionPermanentlyDenied(): Boolean {
-    val activity = MainActivityHolder.activity ?: return false
+    val activity = BridgeHostActivityHolder.activity ?: return false
     // Not granted AND shouldShowRationale is false → permanently denied
     val notGranted =
         ContextCompat.checkSelfPermission(
@@ -49,7 +49,7 @@ actual fun isCameraPermissionPermanentlyDenied(): Boolean {
 }
 
 actual fun openAppSettings() {
-    val activity = MainActivityHolder.activity ?: return
+    val activity = BridgeHostActivityHolder.activity ?: return
     val intent =
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", activity.packageName, null)

@@ -152,12 +152,12 @@ checks are skipped automatically on non-macOS hosts.
 ### 4. Build and run on Android
 
 ```bash
-./gradlew :composeApp:assembleDebug
+./gradlew :androidApp:assembleDebug
 ```
 
 Gradle builds the Rust library for all three Android ABIs, generates the Kotlin bindings and
 packages the APK. The first build also compiles the UniFFI Kotlin generator with `cargo install`,
-which takes several minutes. Install the resulting APK from `composeApp/build/outputs/apk/debug/`
+which takes several minutes. Install the resulting APK from `androidApp/build/outputs/apk/debug/`
 on an emulator or device.
 
 > **Upgrading an old checkout?** Delete `composeApp/src/androidMain/jniLibs` and
@@ -400,7 +400,9 @@ Motion uses MD3 easing curves from `ui/theme/Motion.kt`:
 
 ```
 Rusty-QR/
-├── composeApp/                 # KMP module — shared UI + Android actuals + iOS actuals
+├── androidApp/                 # Android app shell: MainActivity, Application, manifest, icons
+│
+├── composeApp/                 # KMP library — shared UI + Android actuals + iOS actuals
 │   ├── src/commonMain/         # Shared Kotlin: UI, ViewModels, bridges (expect)
 │   ├── src/androidMain/        # Android actuals + CameraX
 │   └── src/iosMain/            # iOS actuals (Kotlin/Native)
@@ -421,6 +423,8 @@ Rusty-QR/
 │
 ├── version.properties          # versionName + buildNumber (single source for Android + iOS)
 ├── config/detekt/              # Detekt static analysis rules
+├── build-logic/                # Convention plugin `rustyqr.kotlin-lint`: shared detekt + ktlint setup for every module
+├── .editorconfig               # ktlint style for every Kotlin module
 ├── docs/                       # PRD, implementation plan, ADRs
 └── .husky/                     # Git hooks (pre-commit lint, commit-msg format)
 ```
@@ -468,8 +472,8 @@ For per-module details, see the nested READMEs linked above.
 | Rust tests             | Cargo test      | `cargo test --workspace`                                                       |
 | Rust benchmarks        | Criterion       | `cargo bench -p rusty-qr-core`                                                 |
 | Rust supply chain      | cargo-deny      | `cargo deny check`                                                             |
-| Kotlin formatting      | ktlint          | `./gradlew :composeApp:ktlintCheck`                                            |
-| Kotlin static analysis | detekt          | `./gradlew :composeApp:detekt`                                                 |
+| Kotlin formatting      | ktlint          | `./gradlew :composeApp:ktlintCheck` (`:composeApp:lintAll` covers androidApp)  |
+| Kotlin static analysis | detekt          | `./gradlew :composeApp:detekt` (`:composeApp:lintAll` covers androidApp)       |
 | Swift linting          | SwiftLint       | `./gradlew :composeApp:swiftlint`                                              |
 | Pre-commit hook        | Husky           | `lintAll` on staged `.kt`/`.kts`/`.swift`; `cargo fmt --check` on staged `.rs` |
 | Commit messages        | commit-msg hook | Enforces conventional commits (`type(scope): message`)                         |

@@ -2,39 +2,17 @@ import ch.ubique.uniffi.plugin.model.RustHost
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.plugin.mpp.NativeBuildType
 import org.jetbrains.kotlin.gradle.tasks.KotlinNativeLink
-import java.util.Properties
-
-// Read centralized version from version.properties — single source of truth for Android + iOS.
-// Duplicated from settings.gradle.kts; buildSrc extraction is out of scope.
-val versionPropsFile = rootProject.projectDir.resolve("version.properties")
-if (!versionPropsFile.exists()) {
-    throw GradleException("version.properties not found at ${versionPropsFile.absolutePath}")
-}
-val versionProps = Properties().apply { versionPropsFile.inputStream().use { load(it) } }
-val rawVersionName = versionProps.getProperty("version_name") ?: ""
-if (rawVersionName.isBlank()) {
-    throw GradleException("version.properties: version_name must not be blank, got '$rawVersionName'")
-}
-val rawBuildNumber = versionProps.getProperty("build_number") ?: ""
-val appBuildNumber: Int =
-    rawBuildNumber.trim().toIntOrNull()
-        ?: throw GradleException("version.properties: build_number must be an integer, got '$rawBuildNumber'")
-if (appBuildNumber <= 0) {
-    throw GradleException("version.properties: build_number must be positive, got $appBuildNumber")
-}
-val appVersionName: String = rawVersionName.trim()
-
-// The ABIs that ship librusty_qr_ffi.so. Keep gradle.properties `androidAbis` in step with this list.
-val shippedAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
-    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.androidKotlinMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.detekt)
-    alias(libs.plugins.ktlint)
+    id("rustyqr.kotlin-lint")
 }
+
+val appVersionName = gradle.extra["appVersionName"] as String
+val appBuildNumber = gradle.extra["appBuildNumber"] as Int
 
 kotlin {
     compilerOptions {
@@ -44,10 +22,25 @@ kotlin {
         freeCompilerArgs.add("-Xexplicit-backing-fields")
     }
 
-    androidTarget {
+    android {
+        namespace = "com.p2.apps.rustyqr.composeapp"
+        compileSdk =
+            libs.versions.android.compileSdk
+                .get()
+                .toInt()
+        minSdk =
+            libs.versions.android.minSdk
+                .get()
+                .toInt()
         compilerOptions {
             jvmTarget.set(JvmTarget.JVM_11)
         }
+        // Compose Multiplatform resources and res/xml/file_paths.xml are Android resources; off by default here.
+        androidResources {
+            enable = true
+        }
+        // Runs commonTest on the host JVM.
+        withHostTest {}
     }
 
     if (RustHost.Platform.MacOS.isCurrent) {
@@ -68,8 +61,8 @@ kotlin {
 
     sourceSets {
         androidMain.dependencies {
-            implementation(libs.compose.uiToolingPreview)
-            implementation(libs.androidx.activity.compose)
+            // api: ComponentActivity is in the public API through BridgeHostActivity's supertype.
+            api(libs.androidx.activity.compose)
             implementation(libs.androidx.camera.core)
             implementation(libs.androidx.camera.camera2)
             implementation(libs.androidx.camera.lifecycle)
@@ -82,7 +75,6 @@ kotlin {
             implementation(libs.compose.ui)
             implementation(libs.androidx.navigationevent.compose)
             implementation(libs.compose.components.resources)
-            implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.arrow.core)
@@ -92,98 +84,29 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
-    }
-}
-
-android {
-    namespace = "com.p2.apps.rustyqr"
-    compileSdk =
-        libs.versions.android.compileSdk
-            .get()
-            .toInt()
-
-    defaultConfig {
-        applicationId = "com.p2.apps.rustyqr"
-        minSdk =
-            libs.versions.android.minSdk
-                .get()
-                .toInt()
-        targetSdk =
-            libs.versions.android.targetSdk
-                .get()
-                .toInt()
-        versionCode = appBuildNumber
-        versionName = appVersionName
-        ndk {
-            // Only the ABIs that ship librusty_qr_ffi.so. Other ABIs from CameraX or JNA would install and then crash.
-            abiFilters += shippedAbis
+        getByName("androidHostTest").dependencies {
+            implementation(libs.kotlin.testJunit)
         }
     }
-    packaging {
-        resources {
-            excludes += "/META-INF/{AL2.0,LGPL2.1}"
-        }
-    }
-    buildTypes {
-        getByName("release") {
-            isMinifyEnabled = false
-        }
-    }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
 }
 
-dependencies {
-    debugImplementation(libs.compose.uiTooling)
-    detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:${libs.versions.detekt.get()}")
-}
-
-detekt {
-    buildUponDefaultConfig = true
-    config.setFrom(files("${rootProject.projectDir}/config/detekt/detekt.yml"))
-    // The plain `detekt` task defaults to src/main/kotlin, which does not exist in a KMP layout. Point it at every
-    // KMP Kotlin source set (commonMain, androidMain, iosMain, commonTest, ...).
-    source.setFrom(
-        fileTree("src") {
-            include("*Main/kotlin/**/*.kt", "*Test/kotlin/**/*.kt")
-        },
-    )
-}
-
-tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
-    // Match on the project-relative path so a checkout that lives under a /build/ directory is not skipped.
-    val moduleRoot = project.projectDir
-    exclude {
-        val path = it.file.relativeTo(moduleRoot).invariantSeparatorsPath
-        path.startsWith("build/") || path.contains("/build/")
-    }
-}
-
-// Type resolution: detekt-gradle-plugin 1.23.x only wires a compile classpath for the JVM/Android targets, and
-// detekt 1.x cannot resolve Kotlin/Native types. So detektAndroidDebug is the type-resolved task; commonMain is
-// added to it so shared code is type-checked against the Android classpath. iosMain only gets the untyped
-// source-set scan configured above, as does commonTest.
-// The plugin registers its per-compilation tasks and sets their sources late, so add commonMain afterwards.
+// Type resolution: detekt 1.23.x routes the Android KMP library compilation through its generic path, which gives
+// `detektAndroidMain` a compile classpath (androidJvm) over the androidMain sources. commonMain is added to it so
+// shared code is type-checked against the Android classpath, and the SDK boot classpath makes `android.*` resolve.
+// detekt 1.x cannot resolve Kotlin/Native types, so iosMain and commonTest only get the untyped source-set scan
+// that the convention plugin configures.
+// The plugin registers its per-compilation tasks late, so adjust it afterwards (this fails loudly if the task is gone).
 afterEvaluate {
-    tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektAndroidDebug") {
+    tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektAndroidMain") {
         source(file("src/commonMain/kotlin"))
+        classpath.from(androidComponents.sdkComponents.bootClasspath)
     }
 }
 
 // `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved task, which
 // compiles the Android target, which needs the UniFFI bindings from :rustyqr-bindings.
 tasks.named("detekt") {
-    dependsOn("detektAndroidDebug")
-}
-
-ktlint {
-    android.set(true)
-    verbose.set(true)
-    filter {
-        exclude { it.file.path.contains("/build/") }
-    }
+    dependsOn("detektAndroidMain")
 }
 
 val rootDir = rootProject.projectDir.absolutePath
@@ -240,40 +163,36 @@ tasks.register<Exec>("swiftlint") {
 
 tasks.register("lintAll") {
     group = "verification"
-    description = "Runs all linters: ktlint, detekt, and swiftlint"
-    dependsOn("ktlintCheck", "detekt", "swiftlint", ":rustyqr-bindings:ktlintCheck", ":rustyqr-bindings:detekt")
+    description = "Runs all linters: ktlint, detekt, and swiftlint, for every module"
+    dependsOn(
+        "ktlintCheck",
+        "detekt",
+        "swiftlint",
+        ":androidApp:ktlintCheck",
+        ":androidApp:detekt",
+        ":rustyqr-bindings:ktlintCheck",
+        ":rustyqr-bindings:detekt",
+        gradle.includedBuild("build-logic").task(":ktlintCheck"),
+    )
 }
 
-// Anything that ships (non-debuggable Android variants, Kotlin/Native release frameworks) must carry the optimised
-// Rust library, which only -PreleaseBuild=true builds. This task has no outputs, so it always runs when it is in the
-// graph and can never be skipped or restored from the build cache.
+// Anything that ships (non-debuggable Android variants, wired from :androidApp, and Kotlin/Native release frameworks)
+// must carry the optimised Rust library, which only -PreleaseBuild=true builds. This task has no outputs, so it always
+// runs when it is in the graph and can never be skipped or restored from the build cache.
 val verifyReleaseRustProfile =
     tasks.register("verifyReleaseRustProfile") {
         group = "verification"
         description = "Fails unless -PreleaseBuild=true, so shipped artifacts never embed the debug Rust library."
         val flag = providers.gradleProperty("releaseBuild")
-        val abis = shippedAbis.joinToString(", ")
         doLast {
             if (flag.orNull != "true") {
                 throw GradleException(
-                    "Release builds need -PreleaseBuild=true so the Rust library is built optimised for $abis.",
+                    "Release builds need -PreleaseBuild=true so shipped Android and iOS artifacts " +
+                        "embed the optimised Rust library.",
                 )
             }
         }
     }
-
-// Guard only packaging: the native-library merge is shared by APK and AAB, while test, check and lint tasks never
-// reach it. Covers every non-debuggable variant, including future flavours and release-like build types.
-androidComponents {
-    onVariants { variant ->
-        if (!variant.debuggable) {
-            val mergeTaskName = "merge${variant.name.replaceFirstChar { it.uppercase() }}NativeLibs"
-            tasks
-                .matching { it.name == mergeTaskName }
-                .configureEach { dependsOn(verifyReleaseRustProfile) }
-        }
-    }
-}
 
 // Release frameworks reach Xcode through paths that skip the Xcode script (the IDE-support override,
 // direct Gradle runs). dependsOn on a no-output task, not doFirst: link tasks are cacheable and could be FROM-CACHE.
@@ -283,12 +202,7 @@ tasks.withType<KotlinNativeLink>().configureEach {
     }
 }
 
-// Make both preBuild and project sync tasks depend on installGitHooks
-tasks.named("preBuild") {
-    dependsOn("installGitHooks")
-}
-
-// Add hook installation to project sync
+// Reinstall the hooks on clean (the app module wires installGitHooks into its preBuild)
 tasks.named("clean") {
     dependsOn("installGitHooks")
 }

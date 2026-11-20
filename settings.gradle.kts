@@ -20,6 +20,9 @@ if (appBuildNumber <= 0) {
     throw GradleException("version.properties: build_number must be positive, got $appBuildNumber")
 }
 val appVersionName: String = rawVersionName.trim()
+// Shared with the project build scripts (composeApp, androidApp) through `gradle.extra`.
+gradle.extra["appVersionName"] = appVersionName
+gradle.extra["appBuildNumber"] = appBuildNumber
 
 // Bootstrap iosApp.xcodeproj on fresh clones — runs before any build.gradle.kts is parsed,
 // which beats the KMP plugin's configuration-time read of project.pbxproj.
@@ -55,6 +58,7 @@ run {
 }
 
 pluginManagement {
+    includeBuild("build-logic")
     repositories {
         google {
             mavenContent {
@@ -85,4 +89,5 @@ dependencyResolutionManagement {
 }
 
 include(":composeApp")
+include(":androidApp")
 include(":rustyqr-bindings")

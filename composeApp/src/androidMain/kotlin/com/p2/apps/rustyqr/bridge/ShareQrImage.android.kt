@@ -6,7 +6,8 @@ import arrow.core.Either
 import com.p2.apps.rustyqr.AppContextHolder
 import java.io.File
 
-private const val FILE_PROVIDER_AUTHORITY = "com.p2.apps.rustyqr.fileprovider"
+// Must match the `${applicationId}.fileprovider` authority in this module's AndroidManifest.xml.
+private const val FILE_PROVIDER_SUFFIX = ".fileprovider"
 private const val SHARE_CACHE_DIR = "qr_images"
 
 actual suspend fun shareQrImage(
@@ -19,7 +20,7 @@ actual suspend fun shareQrImage(
             val dir = File(context.cacheDir, SHARE_CACHE_DIR).apply { mkdirs() }
             val file = File(dir, "$suggestedName.png")
             file.writeBytes(bytes)
-            val uri = FileProvider.getUriForFile(context, FILE_PROVIDER_AUTHORITY, file)
+            val uri = FileProvider.getUriForFile(context, context.packageName + FILE_PROVIDER_SUFFIX, file)
             val send =
                 Intent(Intent.ACTION_SEND).apply {
                     type = "image/png"

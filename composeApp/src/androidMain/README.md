@@ -2,7 +2,7 @@
 
 # androidMain — Android Actuals & Build Pipeline
 
-### CameraX scanner. Rust loaded as native <code>.so</code> via JNA. Single-activity Compose host.
+### CameraX scanner. Rust loaded as native <code>.so</code> via JNA. `BridgeHostActivity` base for the app module's Activity.
 
 <p>
   <img alt="Android" src="https://img.shields.io/badge/Android-minSdk%2029-3DDC84?logo=android&logoColor=white" />
@@ -15,8 +15,8 @@
 <p><b>Rust <code>.so</code> × 3 ABIs · UniFFI Kotlin · CameraX Y-plane path · 16KB page-aligned on 64-bit ABIs</b></p>
 
 <sub>This source set holds Android-specific <code>actual</code> implementations for the expect
-declarations in <code>commonMain</code> plus the single-activity Compose host. The shared Compose
-UI itself lives in <code>commonMain</code>.</sub>
+declarations in <code>commonMain</code> plus the <code>BridgeHostActivity</code> base class that the app
+module's launcher Activity extends. The shared Compose UI itself lives in <code>commonMain</code>.</sub>
 
 </div>
 
@@ -46,7 +46,7 @@ UI itself lives in <code>commonMain</code>.</sub>
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 
 # Build Rust for 3 ABIs + generate the Kotlin bindings + build the APK
-./gradlew :composeApp:assembleDebug
+./gradlew :androidApp:assembleDebug
 ```
 
 The first build compiles the UniFFI Kotlin generator with `cargo install`, which takes several
@@ -64,14 +64,14 @@ Gradle sees that the Rust sources and bindings are up to date and skips them.
 
 | Task                                          | What it does                                                          |
 |-----------------------------------------------|-----------------------------------------------------------------------|
-| `:composeApp:assembleDebug`                   | Debug APK; builds Rust (3 ABIs) and the bindings first               |
-| `:composeApp:installDebug`                    | Install debug APK to connected device / emulator                      |
+| `:androidApp:assembleDebug`                   | Debug APK; builds Rust (3 ABIs) and the bindings first               |
+| `:androidApp:installDebug`                    | Install debug APK to connected device / emulator                      |
 | `:rustyqr-bindings:buildBindings`             | Install the bindgen, build the host library, generate the bindings    |
 | `:rustyqr-bindings:mergeUniffiAndroidJniLibs` | Collect the `.so` files per ABI                                       |
 
 Build options:
 
-- **Release:** `./gradlew :composeApp:assembleRelease -PreleaseBuild=true`. Without the flag,
+- **Release:** `./gradlew :androidApp:assembleRelease -PreleaseBuild=true`. Without the flag,
   `verifyReleaseRustProfile` fails the build, so a shipped APK can never embed the debug Rust library.
 - **NDK:** by default the plugin uses the newest NDK under `<sdk>/ndk`. Pin one with
   `-PndkVersion=<version>`.
@@ -92,9 +92,8 @@ Module-level linting and format tasks (ktlint, detekt, lintAll, installGitHooks)
 ```
 composeApp/src/androidMain/
 ├── kotlin/com/p2/apps/rustyqr/
-│   ├── MainActivity.kt                 # Single-activity host — sets Compose content + MainActivityHolder
-│   ├── MainActivityHolder.kt           # Weak-ref holder so bridges reach the foreground Activity
-│   ├── RustyQrApplication.kt           # Application subclass — seeds AppContextHolder
+│   ├── BridgeHostActivity.kt           # Open base Activity — registers in BridgeHostActivityHolder, owns the CAMERA launcher
+│   ├── BridgeHostActivityHolder.kt     # Weak-ref holder so bridges reach the foreground Activity
 │   ├── AppContextHolder.kt             # Static Application context for bridges (permissions, share, save)
 │   ├── Platform.android.kt             # Platform() actual
 │   └── bridge/
@@ -107,8 +106,15 @@ composeApp/src/androidMain/
 │       ├── SaveQrImage.android.kt      # actual — MediaStore.Images
 │       └── ImageDecoder.android.kt     # actual — BitmapFactory → ImageBitmap
 │
-├── res/xml/                            # FileProvider paths, adaptive icon, etc.
-└── AndroidManifest.xml                 # Permissions, activity, application class
+├── res/xml/                            # FileProvider paths
+└── AndroidManifest.xml                 # CAMERA permission and FileProvider (merged into the app's manifest)
+
+androidApp/src/main/                    # the Android app module
+├── kotlin/com/p2/apps/rustyqr/
+│   ├── MainActivity.kt                 # Launcher Activity (extends BridgeHostActivity) — sets Compose content
+│   └── RustyQrApplication.kt           # Application subclass — seeds AppContextHolder
+├── res/                                # Launcher icons, app_name
+└── AndroidManifest.xml                 # Application, launcher activity
 ```
 
 There is no `jniLibs/` and no generated Kotlin in this source set. The `.so` files and the UniFFI
@@ -201,7 +207,7 @@ Rust directly — they're different languages with different runtimes. Two thing
 
 The `:rustyqr-bindings` module does both, through the Ubique UniFFI Gradle plugin
 (`ch.ubique.uniffi.plugin`). `composeApp` depends on that module, so
-`./gradlew :composeApp:assembleDebug` is the only command you run. Nothing else is a developer
+`./gradlew :androidApp:assembleDebug` is the only command you run. Nothing else is a developer
 entry point: there is no script and no separate Rust task. `rustySDK/Makefile` exists only for the
 Rust checks (`make test` runs cargo test, clippy and `fmt --check`); it does not build the app.
 
@@ -252,7 +258,7 @@ The API lands in `commonMain` (`expect` declarations and the types), with an And
 calls the `.so` through JNA.
 
 **3. Package the libraries.** `mergeUniffiAndroidJniLibs` collects the three `.so` files as the
-module's `jniLibs`. `composeApp` filters its APK to the same three ABIs (`abiFilters`), so an
+module's `jniLibs`. `androidApp` filters its APK to the same three ABIs (`abiFilters`), so an
 ABI that a dependency ships but Rust does not cover cannot install and then crash.
 
 ### How Gradle picks up the artifacts
@@ -277,7 +283,7 @@ sequenceDiagram
     participant AGP as Android Gradle Plugin
 
     Dev->>G: assembleDebug
-    G->>B: composeApp depends on :rustyqr-bindings
+    G->>B: androidApp depends on composeApp,<br/>which depends on :rustyqr-bindings
 
     B->>C: cargoBuild… per ABI
     C->>C: compile aarch64-linux-android
@@ -292,7 +298,7 @@ sequenceDiagram
     B->>B: mergeUniffiAndroidJniLibs
 
     G->>AGP: compile Kotlin, merge native libs
-    AGP-->>Dev: composeApp-debug.apk
+    AGP-->>Dev: androidApp-debug.apk
 ```
 
 ### Why three `.so` files but one Kotlin API?
@@ -356,17 +362,17 @@ extra Cargo subcommand to install. `./scripts/bootstrap.sh` checks all of this.
 After that, every build is:
 
 ```bash
-./gradlew :composeApp:assembleDebug
+./gradlew :androidApp:assembleDebug
 ```
 
 ### Cleaning Up
 
 ```bash
-./gradlew :rustyqr-bindings:clean :composeApp:clean   # generated bindings, packaged .so files, APK
-cd rustySDK && cargo clean                            # Cargo build output (rustySDK/target/)
+./gradlew :rustyqr-bindings:clean :composeApp:clean :androidApp:clean # generated bindings, packaged .so files, APK
+cd rustySDK && cargo clean                                            # Cargo build output (rustySDK/target/)
 ```
 
-After cleaning, rebuild with `./gradlew :composeApp:assembleDebug`.
+After cleaning, rebuild with `./gradlew :androidApp:assembleDebug`.
 
 </details>
 

@@ -1,5 +1,0 @@
-root = true
-
-[*.{kt,kts}]
-indent_size = 4
-ij_kotlin_continuation_indent_size = 4
