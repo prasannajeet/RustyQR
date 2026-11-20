@@ -12,8 +12,10 @@ enum class CameraFailure(
     CouldNotStart(isRetryable = true),
 
     /**
-     * A device policy turned the camera off. Trying again keeps failing until the user or an administrator changes
-     * that, so there is no retry button; the screen restarts the camera when the app resumes instead.
+     * The device refused to open the camera (CameraX `ERROR_CAMERA_DISABLED`). Its documented causes are a device
+     * policy that turned the camera off, and a client in a background process trying to open it. Trying again keeps
+     * failing until something outside the app changes, so there is no retry button; the screen restarts the camera
+     * when it resumes instead.
      */
     BlockedByDevice(isRetryable = false),
 }

@@ -40,7 +40,7 @@
     <string name="scan_camera_failed_title">Problème de caméra</string>
     <string name="scan_camera_failed_body">Un problème est survenu avec la caméra. Réessayez.</string>
     <string name="scan_camera_blocked_title">Caméra indisponible</string>
-    <string name="scan_camera_blocked_body">Une politique de l\'appareil a désactivé la caméra. Modifiez ce réglage, puis revenez.</string>
+    <string name="scan_camera_blocked_body">L\'accès à la caméra est désactivé sur cet appareil. Réactivez-le, puis revenez.</string>
     <string name="scan_try_again">Réessayer</string>
 
     <string name="content_type_url">URL</string>

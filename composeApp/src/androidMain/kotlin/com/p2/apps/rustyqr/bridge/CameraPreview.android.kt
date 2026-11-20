@@ -87,9 +87,9 @@ private const val TAG = "CameraPreview"
  * The failure to report for a camera [state], or null when there is nothing to report.
  *
  * Only critical errors count; CameraX retries recoverable ones itself. [stale] is the state object that was already
- * current when the session started, so it belongs to an earlier session and is ignored. A camera disabled by device
- * policy is [CameraFailure.BlockedByDevice], which offers no retry; every other critical error is
- * [CameraFailure.CouldNotStart].
+ * current when the session started, so it belongs to an earlier session and is ignored. `ERROR_CAMERA_DISABLED`
+ * (documented causes: a device policy, or an open attempt from a background process) is
+ * [CameraFailure.BlockedByDevice], which offers no retry; every other critical error is [CameraFailure.CouldNotStart].
  */
 internal fun criticalFailure(
     state: CameraState,

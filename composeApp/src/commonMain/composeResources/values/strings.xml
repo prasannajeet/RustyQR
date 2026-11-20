@@ -40,7 +40,7 @@
     <string name="scan_camera_failed_title">Camera problem</string>
     <string name="scan_camera_failed_body">Something went wrong with the camera. Try again.</string>
     <string name="scan_camera_blocked_title">Camera unavailable</string>
-    <string name="scan_camera_blocked_body">A device policy has turned off the camera. Change that, then come back.</string>
+    <string name="scan_camera_blocked_body">Camera access is turned off on this device. Turn it back on, then come back.</string>
     <string name="scan_try_again">Try Again</string>
 
     <string name="content_type_url">URL</string>
