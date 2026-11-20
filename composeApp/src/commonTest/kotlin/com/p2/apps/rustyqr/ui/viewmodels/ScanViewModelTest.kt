@@ -246,14 +246,43 @@ class ScanViewModelTest {
     }
 
     @Test
-    fun failureUnlocksTheScanGate() {
+    fun failureWhileTheSheetShowsKeepsTheGateLockedUntilTheSheetIsDismissed() {
         startCamera()
         viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("a")))
-        assertTrue(viewModel.scanGate)
 
         viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.CouldNotStart))
+        assertTrue(viewModel.scanGate)
 
+        viewModel.onIntent(ScanQRCodeScreenIntent.DismissSheet)
         assertFalse(viewModel.scanGate)
+    }
+
+    @Test
+    fun resumeWhileBlockedWithTheResultSheetOpenDoesNotScan() {
+        startCamera()
+        viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("first")))
+        viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.BlockedByDevice))
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)
+        viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("second")))
+
+        val state = viewModel.state.value
+        assertFalse(state.isScanning)
+        assertNull(state.cameraFailure)
+        assertTrue(state.isSheetVisible)
+        assertEquals(ScanResult("first"), state.sheetContent)
+    }
+
+    @Test
+    fun retryWithTheResultSheetOpenDoesNotScan() {
+        startCamera()
+        viewModel.onIntent(ScanQRCodeScreenIntent.FrameDecoded(ScanResult("first")))
+        viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.CouldNotStart))
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.RetryCamera)
+
+        assertFalse(viewModel.state.value.isScanning)
+        assertEquals(ScanResult("first"), viewModel.state.value.sheetContent)
     }
 
     @Test
@@ -288,6 +317,17 @@ class ScanViewModelTest {
     fun resumeWhileNotBlockedKeepsOtherFailures() {
         startCamera()
         viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.NoCamera))
+        val failed = viewModel.state.value
+
+        viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)
+
+        assertEquals(failed, viewModel.state.value)
+    }
+
+    @Test
+    fun resumeWhileCouldNotStartKeepsTheFailureAndWaitsForTryAgain() {
+        startCamera()
+        viewModel.onIntent(ScanQRCodeScreenIntent.CameraFailed(CameraFailure.CouldNotStart))
         val failed = viewModel.state.value
 
         viewModel.onIntent(ScanQRCodeScreenIntent.ScreenResumed)

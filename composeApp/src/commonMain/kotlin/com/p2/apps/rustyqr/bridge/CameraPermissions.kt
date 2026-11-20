@@ -21,7 +21,7 @@ interface CameraPermissions {
 }
 
 /** [CameraPermissions] backed by the platform bridge. */
-object PlatformCameraPermissions : CameraPermissions {
+internal object PlatformCameraPermissions : CameraPermissions {
     override fun isGranted(): Boolean = isCameraPermissionGranted()
 
     override fun isPermanentlyDenied(): Boolean = isCameraPermissionPermanentlyDenied()

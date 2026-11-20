@@ -23,8 +23,8 @@ import kotlinx.coroutines.flow.update
  *   - Starts unlocked (false) — camera is analyzing
  *   - Locks (true) on first [ScanQRCodeScreenIntent.FrameDecoded] (first-write-wins)
  *   - Unlocks on [ScanQRCodeScreenIntent.DismissSheet] / [ScanQRCodeScreenIntent.ResumeScanning]
- *   - Unlocks on [ScanQRCodeScreenIntent.CameraFailed]: the session is gone, so no frame can arrive, and a gate left
- *     locked would swallow the first decode of the retried session
+ *   - Stays locked across [ScanQRCodeScreenIntent.CameraFailed] while the sheet shows: the gate is locked exactly
+ *     while the sheet is visible, and a restarted camera does not scan under an open sheet
  */
 class ScanViewModel(
     private val permissions: CameraPermissions = PlatformCameraPermissions,
@@ -71,9 +71,9 @@ class ScanViewModel(
     }
 
     /**
-     * The app came back to the foreground. Two screens wait for the user to change something outside the app, and
-     * neither gets a callback when they do:
-     * - A camera blocked by device policy: clear the failure and start the camera again. If the device still blocks
+     * The Scan screen resumed: the app returned to the foreground, or the tab re-entered composition. Two screens
+     * wait for the user to change something outside the app, and neither gets a callback when they do:
+     * - A camera the device blocked: clear the failure and start the camera again. If the device still blocks
      *   it, CameraX reports the failure again.
      * - The permission-denied screen: the user may have granted the permission in Settings, so ask the system again.
      */
@@ -91,10 +91,8 @@ class ScanViewModel(
     }
 
     private fun handleCameraFailed(failure: CameraFailure) {
-        // Dropping isCameraActive removes the preview from composition, which releases the camera. The session is
-        // over, so no frame can arrive; unlock the gate so a decode that locked it just before the failure cannot
-        // block the first decode of a retried session.
-        scanGate = false
+        // Dropping isCameraActive removes the preview from composition, which releases the camera. The gate is left
+        // alone: it is locked exactly while the result sheet shows, and dismissing the sheet unlocks it.
         state.update {
             it.copy(
                 isScanning = false,
@@ -179,6 +177,9 @@ class ScanViewModel(
     }
 }
 
-/** The camera on and scanning with the warm-up loader showing, or all three off. */
+/**
+ * The camera on with the warm-up loader showing, or off. It scans only while no result sheet is open, so a restart
+ * (retry, resume, permission result) never replaces a result the user is looking at.
+ */
 private fun ScanScreenState.withCameraActive(active: Boolean): ScanScreenState =
-    copy(isCameraActive = active, isScanning = active, isCameraWarmingUp = active)
+    copy(isCameraActive = active, isScanning = active && !isSheetVisible, isCameraWarmingUp = active)
