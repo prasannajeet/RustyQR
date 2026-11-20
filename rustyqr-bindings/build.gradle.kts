@@ -13,7 +13,9 @@ plugins {
 val isReleaseBuild = providers.gradleProperty("releaseBuild").orNull == "true"
 
 if (isReleaseBuild) {
-    logger.lifecycle("releaseBuild=true: the JVM target and the type-resolved detektJvmTest are skipped.")
+    logger.lifecycle(
+        "releaseBuild=true: the JVM target and the type-resolved detektMainJvm and detektTestJvm tasks are skipped.",
+    )
 }
 
 kotlin {
@@ -77,7 +79,9 @@ ktlint {
 
 // Type resolution: detekt only wires a classpath for the JVM and Android targets, so `detektTestJvm` is the
 // type-resolved task for the shared tests. src/ffiTest is part of jvmTest, so it is checked against the JVM classpath.
-// `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved task.
+// `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved tasks.
+// `detektMainJvm` has no hand-written sources (main is the UniFFI bindings under build/, which detekt excludes), so it
+// runs as NO-SOURCE today. It stays wired so hand-written commonMain or jvmMain sources would be type-checked.
 tasks.named("detekt") {
     if (!isReleaseBuild) {
         dependsOn("detektMainJvm", "detektTestJvm")

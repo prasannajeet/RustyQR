@@ -54,9 +54,9 @@ tasks.register<Exec>("swiftlint") {
     commandLine("/opt/homebrew/bin/swiftlint", "lint", "--config", "$repoRoot/.swiftlint.yml", "--strict")
 }
 
-// Every Kotlin check in the repository: ktlint and detekt of each module, of build-logic and of the root scripts,
-// plus the font-file check (:composeApp:verifyFontFiles).
-// The per-module `detekt` also runs that module's type-resolved task.
+// Every Kotlin check in the repository: ktlint and detekt of each module and of the root scripts, ktlint of
+// build-logic (it applies no detekt), plus the font-file check (:composeApp:verifyFontFiles).
+// The per-module `detekt` also runs that module's type-resolved tasks.
 val lintKotlin =
     tasks.register("lintKotlin") {
         group = "verification"
