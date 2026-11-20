@@ -93,7 +93,8 @@ fn candidate_segmentations(segments: &[Segment], data_len: usize) -> Vec<Vec<Seg
 /// The fit is decided arithmetically before anything is packed: the ECI header plus the encoded length of
 /// `segments` at `version` must not exceed the data capacity at `level`. `None` can only mean capacity: the
 /// segments are never Kanji and the designator is valid, so for `Version::Normal(1..=40)` the only error the
-/// `qrcode` push functions return is `DataTooLong`, which the check rules out.
+/// `qrcode` push functions return is `DataTooLong`. The check rules out overflowing capacity, and a length
+/// field cannot overflow before capacity does, so the pushes after it succeed.
 fn bits_at(data: &[u8], segments: &[Segment], version: Version, level: EcLevel, eci: Option<u32>) -> Option<Bits> {
     let mut bits = Bits::new(version);
     if let Some(designator) = eci {
@@ -167,9 +168,9 @@ mod tests {
             .all(|candidate| whole_len < total_encoded_len(candidate, version))
     }
 
-    /// Deterministic ASCII samples: random runs of digits, upper-case, lower-case and mixed text, plus prefixes
-    /// of repeated realistic units (a URL, `x12345`, a sentence with phone numbers).
-    fn mixed_ascii_samples() -> Vec<String> {
+    /// Deterministic samples: random runs of digits, upper-case, lower-case and mixed ASCII text, plus prefixes
+    /// of repeated realistic units (a URL, `x12345`, a sentence with phone numbers) and of non-ASCII units.
+    fn mixed_samples() -> Vec<String> {
         let mut samples = Vec::new();
         let mut state = 0x2545_F491_u32;
         for _ in 0..40 {
@@ -197,6 +198,9 @@ mod tests {
             "https://example.com/a/b?id=12345&ref=ABC",
             "x12345",
             "Call me at 5551234 or 5559876 tomorrow. ",
+            "é12345日AB-",
+            "東1京A",
+            "é1",
         ] {
             samples.push(unit.repeat(3000 / unit.len() + 1));
         }
@@ -255,9 +259,9 @@ mod tests {
     }
 
     #[test]
-    fn version_is_the_minimum_over_all_candidates_and_never_above_the_old_choice() -> TestResult {
+    fn version_is_the_minimum_over_all_candidates_and_ascii_is_never_above_the_old_choice() -> TestResult {
         let (mut compared, mut improved, mut worse) = (0_usize, 0_usize, 0_usize);
-        for text in mixed_ascii_samples() {
+        for text in mixed_samples() {
             for level in ALL_LEVELS {
                 for eci in [None, Some(ECI_UTF8)] {
                     for length in (40..=text.len().min(3000)).step_by(41) {
@@ -276,7 +280,7 @@ mod tests {
                             chosen, expected,
                             "version differs at {length} bytes, level {level:?}, eci {eci:?}"
                         );
-                        if eci.is_some() {
+                        if eci.is_some() || !data.is_ascii() {
                             continue;
                         }
                         if let (Some(chosen), Some(single)) = (chosen, single_byte_version(data, level)) {

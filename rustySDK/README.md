@@ -734,7 +734,7 @@ unhandled exception — it would crash the mobile app. Every error is caught and
 | `InvalidInput`   | Empty content, size = 0, size > 4096, size too small for one pixel per module (29 to 185 px), empty image bytes | Fix the input — never retry                |
 | `EncodingFailed` | Internal `qrcode` error; not expected for text input    | Report as a bug                            |
 | `DecodingFailed` | No QR code found in image                               | Expected — not all images contain QR codes |
-| `ImageError`     | PNG/JPEG parsing failed, image encoding error           | Check the image format                     |
+| `ImageError`     | PNG/JPEG parsing failed, image encoding error, or the image to decode is over the decoder limits (16384 px per side, 256 MiB to decode; a 108 MP photo or a very wide panorama is refused) | Check the image format                     |
 | `ContentTooLong` | Content exceeds the largest QR code at the chosen level | Shorten the text or lower the EC level; `content_fits` reports whether it fits |
 
 ### Validation Pattern

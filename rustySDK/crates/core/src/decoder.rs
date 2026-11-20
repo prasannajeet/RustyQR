@@ -20,6 +20,9 @@ use crate::types::ScanResult;
 /// A 48 MP phone photo (8064 x 6048) needs 146 MB as RGB and 195 MB as RGBA, so it still decodes. Without
 /// this the `image` default of 512 MiB lets a tiny, highly compressed file claim a 484 MP image, and the
 /// grayscale copy and the `rqrr` buffer then triple that.
+///
+/// This bounds the decoder's own buffer only: a 16384 x 16384 L8 image (256 MiB) passes, and `rqrr` then
+/// copies it, for about 512 MiB peak.
 const MAX_DECODE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
 
 /// Longest side of an image the decoder accepts, in pixels. Strict, and checked from the file header
@@ -301,8 +304,9 @@ mod tests {
 
     #[test]
     fn decode_rejects_images_over_the_limits_without_allocating_them() {
-        // 30000 x 30000 breaks the dimension limit; 15000 x 15000 RGB (675 MB) only the allocation limit.
-        for (width, height) in [(30_000, 30_000), (15_000, 15_000), (MAX_DECODE_DIMENSION + 1, 1)] {
+        // 30000 x 30000 and 16385 x 1 break the dimension limit. 11000 x 11000 RGB (363 MB) is under the
+        // dimension limit and under the `image` default of 512 MiB, so only `MAX_DECODE_ALLOC_BYTES` rejects it.
+        for (width, height) in [(30_000, 30_000), (11_000, 11_000), (MAX_DECODE_DIMENSION + 1, 1)] {
             let png = png_declaring(width, height);
             assert!(png.len() < 200);
             let result = decode(&png);

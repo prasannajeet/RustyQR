@@ -63,6 +63,19 @@ fn capacity_rows() -> Vec<(&'static str, QrErrorCorrection, usize)> {
                 ("é", level, byte - 1),
             ]
         })
+        .chain([
+            // Digit runs inside prose: the optimiser splits them, one whole byte segment is shorter.
+            (
+                "Call me at 5551234 or 5559876 tomorrow. ",
+                QrErrorCorrection::Medium,
+                BYTE_CAPACITY_M,
+            ),
+            (
+                "order 48213 shipped, tracking 9400111 ok; ",
+                QrErrorCorrection::Medium,
+                BYTE_CAPACITY_M,
+            ),
+        ])
         .collect()
 }
 
