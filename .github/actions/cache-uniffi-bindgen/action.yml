@@ -12,6 +12,14 @@ inputs:
 runs:
   using: composite
   steps:
+    # GitHub does not enforce `required: true` for composite actions; an empty key would silently drop the toolchain
+    # from the cache key.
+    - name: Require the toolchain key
+      shell: bash
+      env:
+        TOOLCHAIN_KEY: ${{ inputs.toolchain-key }}
+      run: test -n "$TOOLCHAIN_KEY" || { echo "::error::cache-uniffi-bindgen needs the toolchain-key input"; exit 1; }
+
     - id: plugin-version
       shell: bash
       run: |

@@ -1,7 +1,8 @@
 name: Set up Rust
 description: >-
   Installs the Rust toolchain pinned by rust-toolchain.toml and restores the cargo registry and build cache.
-  Run it after actions/checkout.
+  Run it after actions/checkout. It also exports RUSTUP_AUTO_INSTALL=0 to the rest of the job, so rustup never
+  installs toolchains or targets beyond the ones requested here.
 
 inputs:
   targets:
