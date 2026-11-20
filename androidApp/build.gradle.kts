@@ -7,8 +7,20 @@ plugins {
 val appVersionName = gradle.extra["appVersionName"] as String
 val appBuildNumber = gradle.extra["appBuildNumber"] as Int
 
-// The ABIs that ship librusty_qr_ffi.so. Keep gradle.properties `androidAbis` in step with this list.
+// The ABIs that ship librusty_qr_ffi.so. Release builds package exactly these.
 val shippedAbis = listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+
+// Debug builds package the ABIs the Rust library was built for: gradle.properties `androidAbis`, which the UniFFI
+// plugin also reads, so `-PandroidAbis=arm64-v8a` shrinks the Rust build and the APK together. Other ABIs from CameraX
+// or JNA would install and then crash on the first Rust call, so every listed ABI must be one that ships.
+val debugAbis =
+    providers
+        .gradleProperty("androidAbis")
+        .map { list -> list.split(',').map { it.trim() }.filter { it.isNotEmpty() } }
+        .getOrElse(shippedAbis)
+require(debugAbis.isNotEmpty() && shippedAbis.containsAll(debugAbis)) {
+    "androidAbis=$debugAbis must be a non-empty subset of the shipped ABIs $shippedAbis"
+}
 
 // One JVM target for the Java/Kotlin compile (built-in Kotlin follows compileOptions).
 val jvmTargetVersion = JavaVersion.VERSION_11
@@ -32,10 +44,6 @@ android {
                 .toInt()
         versionCode = appBuildNumber
         versionName = appVersionName
-        ndk {
-            // Only the ABIs that ship librusty_qr_ffi.so. Other ABIs from CameraX or JNA would install and then crash.
-            abiFilters += shippedAbis
-        }
     }
     buildFeatures {
         compose = true
@@ -46,8 +54,12 @@ android {
         }
     }
     buildTypes {
+        getByName("debug") {
+            ndk { abiFilters += debugAbis }
+        }
         getByName("release") {
             isMinifyEnabled = false
+            ndk { abiFilters += shippedAbis }
         }
     }
     // Built-in Kotlin takes its jvmTarget from these.

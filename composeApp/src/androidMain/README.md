@@ -76,8 +76,8 @@ Build options:
 - **NDK:** by default the plugin uses the newest NDK under `<sdk>/ndk`. Pin one with
   `-PndkVersion=<version>`.
 - **ABIs:** debug builds cover `arm64-v8a`, `armeabi-v7a` and `x86_64`, from `androidAbis` in
-  `gradle.properties`. Passing fewer (`-PandroidAbis=arm64-v8a`) builds faster, but only devices of
-  that ABI can run the result.
+  `gradle.properties`. Passing fewer (`-PandroidAbis=arm64-v8a`) builds faster and limits the APK to
+  those ABIs too, so only devices of that ABI can install the result. Release builds always ship all three.
 
 Module-level linting and format tasks (ktlint, detekt) live on each module; `lintAll` and `installGitHooks` are root
 tasks — see the [module README](../../README.md).
@@ -175,7 +175,8 @@ sequenceDiagram
 Key design decisions on Android:
 
 - **Two flags, two jobs.** The analyzer never closes over `isScanning` or the callbacks.
-  `CameraPreview.android.kt` reads them through `rememberUpdatedState` and hands providers to
+  `CameraPreview.android.kt` calls `rememberFrameDispatcher` (`commonMain/.../camera/RememberFrameDispatcher.kt`),
+  which reads them through `rememberUpdatedState` and hands providers to
   `FrameDispatcher` (`commonMain/.../camera/FrameDispatcher.kt`), which calls them when needed, so
   the latest value always wins (the screen's `ScanScreenState.isScanning` is read on the analysis
   executor's thread, as snapshot state). Separately, `ScanViewModel.scanGate` is a plain `Boolean` that
@@ -259,8 +260,8 @@ The API lands in `commonMain` (`expect` declarations and the types), with an And
 calls the `.so` through JNA.
 
 **3. Package the libraries.** `mergeUniffiAndroidJniLibs` collects the three `.so` files as the
-module's `jniLibs`. `androidApp` filters its APK to the same three ABIs (`abiFilters`), so an
-ABI that a dependency ships but Rust does not cover cannot install and then crash.
+module's `jniLibs`. `androidApp` filters its APK to the ABIs Rust was built for (`abiFilters`, per build
+type), so an ABI that a dependency ships but Rust does not cover cannot install and then crash.
 
 ### How Gradle picks up the artifacts
 
@@ -379,13 +380,9 @@ After cleaning, rebuild with `./gradlew :androidApp:assembleDebug`.
 </details>
 
 <details>
-<summary><b>Troubleshooting</b> — emulator crashes, detekt complaints, missing haptics</summary>
+<summary><b>Troubleshooting</b> — detekt complaints, missing haptics</summary>
 
 <br/>
-
-**Emulator crashes on scan launch with `UnsatisfiedLinkError`.** The APK has no `.so` for the
-emulator's ABI, typically because the build was made with `-PandroidAbis=arm64-v8a` and the
-emulator is x86_64. Rebuild without that property, so all three ABIs are built.
 
 **Gradle says the SDK location is not found.** Export `ANDROID_HOME` or add `sdk.dir=<path>` to
 `local.properties`.
