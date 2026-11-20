@@ -64,29 +64,9 @@ class GenerateScreenStateTest {
     }
 
     @Test
-    fun statesDifferingOnlyInContentFitAreNotEqual() {
-        val first = GenerateScreenState(inputText = "a", contentFit = ContentFit("a", fits = true))
-        val second = GenerateScreenState(inputText = "a", contentFit = ContentFit("a", fits = false))
-        assertNotEquals(first, second)
-    }
-
-    @Test
-    fun statesWithEqualByteContentsAreEqual() {
-        val first = GenerateScreenState(qrImageBytes = byteArrayOf(1, 2))
-        val second = GenerateScreenState(qrImageBytes = byteArrayOf(1, 2))
-        assertEquals(first, second)
-        assertEquals(first.hashCode(), second.hashCode())
-    }
-
-    @Test
-    fun statesWithDifferentByteContentsAreNotEqual() {
-        val first = GenerateScreenState(qrImageBytes = byteArrayOf(1, 2))
-        val second = GenerateScreenState(qrImageBytes = byteArrayOf(1, 3))
-        assertNotEquals(first, second)
-    }
-
-    @Test
-    fun statesWithDifferentInputTextAreNotEqual() {
-        assertNotEquals(GenerateScreenState(inputText = "a"), GenerateScreenState(inputText = "b"))
+    fun qrPngComparesByContent() {
+        assertEquals(QrPng(byteArrayOf(1, 2)), QrPng(byteArrayOf(1, 2)))
+        assertEquals(QrPng(byteArrayOf(1, 2)).hashCode(), QrPng(byteArrayOf(1, 2)).hashCode())
+        assertNotEquals(QrPng(byteArrayOf(1, 2)), QrPng(byteArrayOf(1, 3)))
     }
 }

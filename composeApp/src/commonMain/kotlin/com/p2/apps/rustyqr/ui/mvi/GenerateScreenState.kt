@@ -14,6 +14,18 @@ data class ContentFit(
 )
 
 /**
+ * PNG bytes of a generated QR code. An array compares by identity, so this wrapper compares by content: the state
+ * stays a plain data class and [kotlinx.coroutines.flow.MutableStateFlow] drops only genuinely identical updates.
+ */
+class QrPng(
+    val bytes: ByteArray,
+) {
+    override fun equals(other: Any?): Boolean = this === other || (other is QrPng && bytes.contentEquals(other.bytes))
+
+    override fun hashCode(): Int = bytes.contentHashCode()
+}
+
+/**
  * Animation phase for the Generate screen.
  */
 enum class AnimationPhase {
@@ -32,7 +44,7 @@ enum class AnimationPhase {
  */
 data class GenerateScreenState(
     val inputText: String = "",
-    val qrImageBytes: ByteArray? = null,
+    val qrPng: QrPng? = null,
     val isGenerating: Boolean = false,
     val animationPhase: AnimationPhase = AnimationPhase.Input,
     val error: UiText? = null,
@@ -60,26 +72,4 @@ data class GenerateScreenState(
 
     /** Whether the Generate action is available for the current input. */
     val canGenerate: Boolean get() = contentToEncode.isNotEmpty() && !isInputTooLong
-
-    override fun equals(other: Any?): Boolean = this === other || (other is GenerateScreenState && sameContentAs(other))
-
-    private fun sameContentAs(other: GenerateScreenState): Boolean =
-        inputText == other.inputText &&
-            qrImageBytes.contentEquals(other.qrImageBytes) &&
-            isGenerating == other.isGenerating &&
-            animationPhase == other.animationPhase &&
-            error == other.error &&
-            message == other.message &&
-            contentFit == other.contentFit
-
-    override fun hashCode(): Int {
-        var result = inputText.hashCode()
-        result = 31 * result + (qrImageBytes?.contentHashCode() ?: 0)
-        result = 31 * result + isGenerating.hashCode()
-        result = 31 * result + animationPhase.hashCode()
-        result = 31 * result + (error?.hashCode() ?: 0)
-        result = 31 * result + (message?.hashCode() ?: 0)
-        result = 31 * result + (contentFit?.hashCode() ?: 0)
-        return result
-    }
 }
