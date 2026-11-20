@@ -8,12 +8,14 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.p2.apps.rustyqr.camera.packLumaRows
 import com.p2.apps.rustyqr.model.ScanResult
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -35,6 +37,8 @@ actual fun CameraPreview(
     val lifecycleOwner = LocalLifecycleOwner.current
     val analysisExecutor = remember { Executors.newSingleThreadExecutor() }
     val readyFired = remember { AtomicBoolean(false) }
+    val scanningFlag = remember { AtomicBoolean(isScanning) }
+    SideEffect { scanningFlag.set(isScanning) }
 
     DisposableEffect(lifecycleOwner) {
         onDispose {
@@ -55,16 +59,14 @@ actual fun CameraPreview(
                 previewView = previewView,
                 lifecycleOwner = lifecycleOwner,
                 analysisExecutor = analysisExecutor,
-                isScanning = { isScanning },
+                isScanning = { scanningFlag.get() },
                 onQrDecoded = onQrDecoded,
                 readyFired = readyFired,
                 onCameraReady = onCameraReady,
             )
             previewView
         },
-        update = { _ ->
-            // isScanning changes are read directly in the analyzer lambda
-        },
+        update = { _ -> },
     )
 }
 
@@ -104,13 +106,25 @@ private fun bindCamera(
                             return@setAnalyzer
                         }
                         val planeProxy = imageProxy.planes[0]
+                        if (planeProxy.pixelStride != 1) {
+                            imageProxy.close()
+                            return@setAnalyzer
+                        }
                         val buffer = planeProxy.buffer
                         val bytes = ByteArray(buffer.remaining())
                         buffer.get(bytes)
 
+                        val packed =
+                            packLumaRows(bytes, imageProxy.width, imageProxy.height, planeProxy.rowStride)
+                                .getOrNull()
+                        if (packed == null) {
+                            imageProxy.close()
+                            return@setAnalyzer
+                        }
+
                         QrBridge
                             .decodeQrFromRaw(
-                                pixels = bytes,
+                                pixels = packed,
                                 width = imageProxy.width,
                                 height = imageProxy.height,
                             ).onRight { result ->
