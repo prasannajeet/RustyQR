@@ -1,27 +1,51 @@
 #!/bin/sh
 
-# Skip on Windows
-if [ "$(uname)" = "Windows_NT" ]; then
-    echo "Running on Windows. Skipping pre-commit checks."
-    exit 0
-fi
-
 echo "Running pre-commit quality checks..."
 
-# Check which file types are staged
-STAGED_KT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.kts\?$' || true)
-STAGED_SWIFT_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.swift$' || true)
-STAGED_RS_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.rs$' || true)
-STAGED_FONT_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep 'composeResources/font/' || true)
+# Check which file types are staged. Added, copied, modified and renamed files all count: a moved and edited file is
+# status R. core.quotePath=false keeps non-ASCII names unquoted, so the extension patterns below still match.
+STAGED_KT_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR | grep '\.kts\?$' || true)
+STAGED_SWIFT_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR | grep '\.swift$' || true)
+STAGED_RS_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR | grep '\.rs$' || true)
+STAGED_FONT_FILES=$(git -c core.quotePath=false diff --cached --name-only --diff-filter=ACMR | grep 'composeResources/font/' || true)
 
 if [ -z "$STAGED_KT_FILES" ] && [ -z "$STAGED_SWIFT_FILES" ] && [ -z "$STAGED_RS_FILES" ] && [ -z "$STAGED_FONT_FILES" ]; then
     echo "No staged Kotlin, Swift, Rust, or font files, skipping lint checks."
     exit 0
 fi
 
+# The linters read the working tree, not the index. A file that is staged with a violation but fixed (or broken) only
+# on disk would be checked against the wrong content, so refuse until staged and working-tree content agree.
+UNSTAGED_RELEVANT=""
+STAGED_RELEVANT=$(printf '%s\n%s\n%s\n%s\n' "$STAGED_KT_FILES" "$STAGED_SWIFT_FILES" "$STAGED_RS_FILES" "$STAGED_FONT_FILES")
+UNSTAGED_ALL=$(git -c core.quotePath=false diff --name-only)
+while IFS= read -r staged_file; do
+    [ -n "$staged_file" ] || continue
+    if printf '%s\n' "$UNSTAGED_ALL" | grep -qxF -- "$staged_file"; then
+        UNSTAGED_RELEVANT="$UNSTAGED_RELEVANT
+  $staged_file"
+    fi
+done <<EOF2
+$STAGED_RELEVANT
+EOF2
+if [ -n "$UNSTAGED_RELEVANT" ]; then
+    echo "These files are staged and also have unstaged changes:$UNSTAGED_RELEVANT"
+    echo ""
+    echo "The lint checks read the working tree, so they would not check what is being committed."
+    echo "Stage the rest of each file (git add) or stash the unstaged part (git stash push --keep-index) first."
+    exit 1
+fi
+
+# Swift can only be linted (and its Kotlin framework built) on macOS; CI's iOS job runs SwiftLint on every change.
+if [ "$(uname)" = "Darwin" ]; then
+    LINT_TASK=lintAll
+else
+    LINT_TASK=lintKotlin
+fi
+
 # Kotlin + Swift lint
 if [ -n "$STAGED_KT_FILES" ] || [ -n "$STAGED_SWIFT_FILES" ]; then
-    ./gradlew lintAll --no-daemon -q 2>&1
+    ./gradlew "$LINT_TASK" --no-daemon -q 2>&1
     if [ $? -ne 0 ]; then
         echo ""
         echo "Kotlin/Swift lint failed. Fix issues before committing."
@@ -31,7 +55,7 @@ if [ -n "$STAGED_KT_FILES" ] || [ -n "$STAGED_SWIFT_FILES" ]; then
     fi
 fi
 
-# Font files must be real fonts (lintAll already runs this when Kotlin/Swift files are staged)
+# Font files must be real fonts (the Kotlin lint already runs this when Kotlin/Swift files are staged)
 if [ -n "$STAGED_FONT_FILES" ] && [ -z "$STAGED_KT_FILES" ] && [ -z "$STAGED_SWIFT_FILES" ]; then
     ./gradlew :composeApp:verifyFontFiles --no-daemon -q 2>&1
     if [ $? -ne 0 ]; then
