@@ -64,8 +64,8 @@ configuration except Debug. With `-PreleaseBuild=true`, `:rustyqr-bindings:jvmTe
 
 ## Module-Level Gradle Tasks
 
-`composeApp` is a KMP library: it has no launcher of its own. The Android app shell (`MainActivity`, `Application`,
-manifest, icons, APK packaging) lives in `:androidApp`, which depends on this module. The repository-wide tasks
+`composeApp` is a KMP library: it has no launcher of its own. The Android app shell (`MainActivity`, the
+manifest, icons, APK packaging; no custom `Application`) lives in `:androidApp`, which depends on this module. The repository-wide tasks
 (`lintAll`, `swiftlint`, `installGitHooks`, `generateXcodeProject`, `cleanXcodeProject`) belong to the root project, so
 run them as `./gradlew lintAll` and so on. Host tests: `:composeApp:testAndroidHostTest`.
 
