@@ -7,13 +7,13 @@
 <p>
   <img alt="Rust" src="https://img.shields.io/badge/Rust-edition%202021-CE422B?logo=rust&logoColor=white" />
   <img alt="UniFFI" src="https://img.shields.io/badge/UniFFI-0.32-3B6FE0" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-69%20passing-3DDC84" />
-  <img alt="Benchmarks" src="https://img.shields.io/badge/criterion-11%20benches-F5A623" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-90%20passing-3DDC84" />
+  <img alt="Benchmarks" src="https://img.shields.io/badge/criterion-19%20benches-F5A623" />
   <img alt="Panics" src="https://img.shields.io/badge/panics-0-brightgreen" />
   <img alt="License" src="https://img.shields.io/badge/license-MIT-blue" />
 </p>
 
-<p><b>2 crates · 69 tests · 0 panics · ~2.2&nbsp;ms to decode a 256 × 256 synthetic frame (Apple Silicon, Criterion)</b></p>
+<p><b>3 crates (core, ffi, wasm) · 90 tests · 0 panics · ~2.2&nbsp;ms to decode a 256 × 256 synthetic frame (Apple Silicon, Criterion)</b></p>
 
 <sub>One codebase, two platforms, zero manual bridging. The SDK exposes six pure functions for QR generation and scanning; UniFFI emits the Kotlin bindings automatically. On-device decode figures are pending.</sub>
 
@@ -88,6 +88,16 @@ Six stateless, pure functions. Same input → same output, no side effects, triv
 | `decode_qr_from_raw`   | grayscale pixels + dimensions  | decoded text   | Decode from a live camera frame (no image encoding overhead)    |
 | `get_library_version`  | —                              | version string | Runtime version check                                           |
 | `content_fits`         | text                           | bool           | Whether `generate_png` can encode the text (`false` = too long) |
+
+**Text encoding.** ASCII-only content is segmented optimally (numeric, alphanumeric and byte modes
+mixed). Content with any non-ASCII byte is encoded as UTF-8 behind an ECI designator 26 header
+(12 bits), in numeric, alphanumeric and byte segments but never Kanji mode. The `qrcode` crate's
+automatic parser would pack UTF-8 byte pairs that fall in Shift-JIS ranges into Kanji mode, which
+other scanners (iOS Camera, ZXing, Google Lens) decode as Shift-JIS and show garbled, mostly for CJK
+text. Text that needs byte mode throughout holds at most 2330 UTF-8 bytes at level M (2952 L, 1662 Q,
+1272 H), one byte below the plain byte-mode capacity because of the ECI header; digit and upper-case
+runs still pack tighter, and ASCII-only capacity is unchanged. `decode_qr` returns the original text
+for both kinds.
 
 ---
 
@@ -745,7 +755,7 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 </details>
 
 <details>
-<summary><b>Testing</b> — 69 tests across four tiers (unit, integration, FFI, doctests) plus benches</summary>
+<summary><b>Testing</b> — 90 tests across four tiers (unit, integration, FFI, doctests), 5 browser tests, plus benches</summary>
 
 <br/>
 
@@ -753,13 +763,14 @@ fn validate_generate_inputs(content: &str, size: u32) -> Result<(), QrError> {
 
 | Tier              | Location                | Count | What it validates                              |
 |-------------------|-------------------------|-------|------------------------------------------------|
-| Unit tests        | `crates/core/src/*.rs`  | 53    | Individual functions in isolation              |
+| Unit tests        | `crates/core/src/*.rs`  | 59    | Individual functions in isolation              |
 | Integration tests | `crates/core/tests/`    | 12    | Cross-module behaviour, round-trips (determinism 2, JPEG 1, round trip 6, thread safety 3) |
 | FFI tests         | `crates/ffi/src/lib.rs` | 17    | Type conversion, delegation, error propagation |
 | Doctests          | `crates/core/src/*.rs`  | 2     | Examples in the documentation compile and run  |
-| Benchmarks        | `crates/core/benches/`  | 16    | Performance against PRD targets (not tests; run with `cargo bench`) |
+| Browser tests (`wasm-pack`) | `crates/wasm/tests/` | 5 | The wasm exports in headless Chrome; `cargo test` does not count or run these |
+| Benchmarks        | `crates/core/benches/`  | 19    | Performance against PRD targets (not tests; run with `cargo bench`) |
 
-The counts are from `cd rustySDK && cargo test --workspace` (53 + 2 + 1 + 6 + 3 + 17 + 2 = 84).
+The counts are from `cd rustySDK && cargo test --workspace` (59 + 2 + 1 + 6 + 3 + 17 + 2 = 90); the 5 browser tests run with `wasm-pack test --headless --chrome crates/wasm`.
 
 ### What's Tested
 

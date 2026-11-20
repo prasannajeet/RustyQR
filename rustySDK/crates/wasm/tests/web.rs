@@ -14,6 +14,15 @@ fn generated_png_decodes_back_to_the_content() -> Result<(), JsValue> {
 }
 
 #[wasm_bindgen_test]
+fn non_ascii_content_round_trips_as_utf8() -> Result<(), JsValue> {
+    for text in ["こんにちは世界こんにちは世界こんにちは世界", "Café 東京 2026"] {
+        let png = generate_png(text, 512)?;
+        assert_eq!(decode_image(&png)?, text);
+    }
+    Ok(())
+}
+
+#[wasm_bindgen_test]
 fn empty_content_is_an_error() {
     assert!(generate_png("", 256).is_err());
 }

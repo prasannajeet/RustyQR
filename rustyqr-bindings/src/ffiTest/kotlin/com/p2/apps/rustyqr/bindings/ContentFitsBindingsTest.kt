@@ -13,6 +13,10 @@ private const val DIGIT_RUN_UNIT = "x12345"
 private const val NUMERIC_CAPACITY = 5596
 private const val ALPHANUMERIC_CAPACITY = 3391
 private const val BYTE_CAPACITY = 2331
+
+// Non-ASCII content is UTF-8 behind a 12-bit ECI header, which leaves one byte less than the byte capacity.
+private const val UTF8_CAPACITY = 2330
+
 private const val MIXED_UNIT = "id=0123456789012345678901234567890123456789;"
 private const val EMOJI = "😀"
 private val EMOJI_COUNTS = listOf(500, 582, 583, 1000, 1500)
@@ -30,13 +34,13 @@ class ContentFitsBindingsTest {
 
     @Test
     fun multibyteContentIsMeasuredInBytes() {
-        val fitting = "a" + "é".repeat((BYTE_CAPACITY - 1) / 2)
-        assertEquals(BYTE_CAPACITY, fitting.encodeToByteArray().size)
+        val fitting = "é".repeat(UTF8_CAPACITY / 2)
+        assertEquals(UTF8_CAPACITY, fitting.encodeToByteArray().size)
         assertTrue(contentFits(fitting))
         assertTrue(generatePng(fitting, QR_SIZE_PX).isNotEmpty())
 
-        val overflowing = "é".repeat((BYTE_CAPACITY + 1) / 2)
-        assertEquals(BYTE_CAPACITY + 1, overflowing.encodeToByteArray().size)
+        val overflowing = fitting + "a"
+        assertEquals(UTF8_CAPACITY + 1, overflowing.encodeToByteArray().size)
         assertFalse(contentFits(overflowing))
         assertFailsWith<FfiQrException.ContentTooLong> { generatePng(overflowing, QR_SIZE_PX) }
     }

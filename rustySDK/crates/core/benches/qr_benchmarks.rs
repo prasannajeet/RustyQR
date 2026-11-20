@@ -106,6 +106,18 @@ fn main() -> BenchResult {
     let mixed = "x12345".repeat(400);
     let mixed_2331 = mixed.get(..2331).ok_or("pattern too short")?;
     bench_content_fits(&mut c, "content_fits_2331B_mixed_fallback", mixed_2331, true)?;
+    // Non-ASCII content: ECI 26 plus Kanji-free segmentation.
+    let japanese = "日本語のテキスト、東京都渋谷区".repeat(100);
+    let japanese_2328 = japanese.get(..2328).ok_or("pattern too short")?;
+    bench_content_fits(&mut c, "content_fits_2328B_cjk", japanese_2328, true)?;
+    // Worst non-ASCII fit: alternating accented letter and digits, right at the 2330-byte limit.
+    let alternating = "é12345".repeat(400);
+    let alternating_2330 = alternating.get(..2330).ok_or("pattern too short")?;
+    bench_content_fits(&mut c, "content_fits_2330B_alternating", alternating_2330, true)?;
+    // Worst non-ASCII overflow: the largest input the size cap lets through.
+    let overflow = "é1".repeat(3000);
+    let overflow_7089 = overflow.get(..7089).ok_or("pattern too short")?;
+    bench_content_fits(&mut c, "content_fits_7089B_non_ascii_overflow", overflow_7089, false)?;
     bench_content_fits(&mut c, "content_fits_7000B_overflow", &"a".repeat(7000), false)?;
     // Input beyond the encodable cap is rejected before any parsing.
     bench_content_fits(&mut c, "content_fits_1MB_cap", &"a".repeat(1024 * 1024), false)?;
