@@ -26,7 +26,9 @@ object QrBridge : QrEncoder {
      * Generates a QR code PNG for the given text content at the specified pixel size.
      *
      * @param content The text or URL to encode. Must not be blank.
-     * @param size Output image side length in pixels (1..4096).
+     * @param size Output image side length in pixels (at most 4096). Rust draws whole pixels per module, so a size
+     *   smaller than the code's module count plus its quiet zone returns [QrError.InvalidInput]. Any size of at least
+     *   185 px (version 40) holds every code that [contentFits] accepts.
      * @return [Either.Right] with PNG bytes, or [Either.Left] with [QrError] on failure.
      */
     override fun generateQrPng(
@@ -35,7 +37,7 @@ object QrBridge : QrEncoder {
     ): Either<QrError, ByteArray> =
         Either
             .catch { ffiGeneratePng(content, size.toUInt()) }
-            .mapLeft { ffiErrorToQrError(it, fallback = QrError::EncodingFailed) }
+            .mapLeft { encodeError(it) }
 
     /**
      * Reports whether [content] fits in a QR code, as decided by the same Rust encoder that generates it.
@@ -47,7 +49,7 @@ object QrBridge : QrEncoder {
     override fun contentFits(content: String): Either<QrError, Boolean> =
         Either
             .catch { ffiContentFits(content) }
-            .mapLeft { ffiErrorToQrError(it, fallback = QrError::EncodingFailed) }
+            .mapLeft { encodeError(it) }
 
     /**
      * Decodes a QR code from PNG or JPEG image bytes.
@@ -58,7 +60,7 @@ object QrBridge : QrEncoder {
     fun decodeQr(imageData: ByteArray): Either<QrError, ScanResult> =
         Either
             .catch { ScanResult(content = ffiDecodeQr(imageData).content) }
-            .mapLeft { ffiErrorToQrError(it, fallback = QrError::DecodingFailed) }
+            .mapLeft { decodeError(it) }
 
     /**
      * Decodes a QR code from a raw grayscale (Y-plane) pixel buffer.
@@ -79,15 +81,20 @@ object QrBridge : QrEncoder {
     ): Either<QrError, ScanResult> =
         Either
             .catch { ScanResult(content = ffiDecodeQrFromRaw(pixels, width.toUInt(), height.toUInt()).content) }
-            .mapLeft { ffiErrorToQrError(it, fallback = QrError::DecodingFailed) }
+            .mapLeft { decodeError(it) }
 }
+
+/** The [QrError] for a throwable from an encode call: a non-FFI failure there is an [QrError.EncodingFailed]. */
+internal fun encodeError(throwable: Throwable): QrError = ffiErrorToQrError(throwable, QrError::EncodingFailed)
+
+/** The [QrError] for a throwable from a decode call: a non-FFI failure there is a [QrError.DecodingFailed]. */
+internal fun decodeError(throwable: Throwable): QrError = ffiErrorToQrError(throwable, QrError::DecodingFailed)
 
 /**
  * Maps [FfiQrException] variants to the corresponding [QrError] subtype. Any other throwable becomes the error
- * [fallback] builds from its message, so a failure on the encode path is an [QrError.EncodingFailed] and one on the
- * decode path a [QrError.DecodingFailed].
+ * [fallback] builds from its message.
  */
-internal fun ffiErrorToQrError(
+private fun ffiErrorToQrError(
     throwable: Throwable,
     fallback: (String) -> QrError,
 ): QrError =

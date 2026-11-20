@@ -8,7 +8,7 @@ import kotlin.test.assertIs
 class QrBridgeErrorTest {
     @Test
     fun aNonFfiThrowableOnTheEncodePathIsAnEncodingFailure() {
-        val error = ffiErrorToQrError(IllegalStateException("boom"), fallback = QrError::EncodingFailed)
+        val error = encodeError(IllegalStateException("boom"))
 
         assertIs<QrError.EncodingFailed>(error)
         assertEquals("boom", error.reason)
@@ -16,7 +16,7 @@ class QrBridgeErrorTest {
 
     @Test
     fun aNonFfiThrowableOnTheDecodePathIsADecodingFailure() {
-        val error = ffiErrorToQrError(IllegalStateException("boom"), fallback = QrError::DecodingFailed)
+        val error = decodeError(IllegalStateException("boom"))
 
         assertIs<QrError.DecodingFailed>(error)
         assertEquals("boom", error.reason)
@@ -24,8 +24,6 @@ class QrBridgeErrorTest {
 
     @Test
     fun aThrowableWithoutAMessageStillHasAReason() {
-        val error = ffiErrorToQrError(IllegalStateException(), fallback = QrError::EncodingFailed)
-
-        assertEquals("Unknown error", error.reason)
+        assertEquals("Unknown error", encodeError(IllegalStateException()).reason)
     }
 }
