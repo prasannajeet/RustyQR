@@ -20,7 +20,7 @@
 //! | `decode_qr`             | `rusty_qr_core::decoder::decode` |
 //! | `decode_qr_from_raw`    | `rusty_qr_core::decoder::decode_from_raw` |
 //! | `get_library_version`   | `rusty_qr_core::encoder::get_library_version` |
-//! | `max_content_bytes`     | `rusty_qr_core::encoder::MAX_BYTE_CONTENT_LEN_LEVEL_M_U32` |
+//! | `content_fits`          | `rusty_qr_core::encoder::content_fits` |
 
 uniffi::setup_scaffolding!();
 
@@ -196,12 +196,10 @@ fn get_library_version() -> String {
     rusty_qr_core::encoder::get_library_version()
 }
 
-/// Returns the number of UTF-8 bytes of content that always encodes with `generate_png`.
-///
-/// Longer content encodes only if it packs into numeric or alphanumeric mode.
+/// Whether `generate_png` can encode `content`; `false` means it would fail with `ContentTooLong`.
 #[uniffi::export]
-fn max_content_bytes() -> u32 {
-    rusty_qr_core::encoder::MAX_BYTE_CONTENT_LEN_LEVEL_M_U32
+fn content_fits(content: &str) -> Result<bool, FfiQrError> {
+    rusty_qr_core::encoder::content_fits(content).map_err(FfiQrError::from)
 }
 
 #[cfg(test)]
@@ -369,18 +367,53 @@ mod tests {
     }
 
     #[test]
-    fn max_content_bytes_is_the_boundary_of_generate_png() -> Result<(), Box<dyn std::error::Error>> {
-        let limit = usize::try_from(max_content_bytes())?;
-        assert!(
-            generate_png(&"a".repeat(limit), 256).is_ok(),
-            "content at the limit must encode"
-        );
-        let over = generate_png(&"a".repeat(limit + 1), 256);
-        assert!(
-            matches!(over, Err(FfiQrError::ContentTooLong { .. })),
-            "one byte over must be ContentTooLong, got {over:?}"
-        );
+    fn content_fits_delegates_to_core() -> Result<(), FfiQrError> {
+        for content in ["hello", &"a".repeat(2332), &"7".repeat(5597)] {
+            let ffi_result = content_fits(content)?;
+            let core_result = rusty_qr_core::encoder::content_fits(content).map_err(FfiQrError::from)?;
+            assert_eq!(
+                ffi_result,
+                core_result,
+                "FFI and core must agree for {} bytes",
+                content.len()
+            );
+        }
         Ok(())
+    }
+
+    #[test]
+    fn content_fits_agrees_with_generate_png_at_mode_boundaries() -> Result<(), Box<dyn std::error::Error>> {
+        let x12345 = "x12345".repeat(2332);
+        let cases: [(String, usize); 4] = [
+            ("7".repeat(5597), 5596),
+            ("A".repeat(3392), 3391),
+            ("a".repeat(2332), 2331),
+            (x12345, 2331),
+        ];
+        for (text, capacity) in cases {
+            for length in [capacity, capacity + 1] {
+                let content = text.get(..length).ok_or("text too short")?;
+                let fits = content_fits(content)?;
+                assert_eq!(fits, length == capacity, "{length} bytes of a {capacity}-capacity mode");
+                match generate_png(content, 64) {
+                    Ok(_) => assert!(fits, "generation succeeded where content_fits said no"),
+                    Err(FfiQrError::ContentTooLong { .. }) => {
+                        assert!(!fits, "generation failed where content_fits said yes");
+                    }
+                    Err(other) => return Err(other.into()),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn content_fits_empty_returns_invalid_input() {
+        let result = content_fits("");
+        assert!(
+            matches!(result, Err(FfiQrError::InvalidInput { .. })),
+            "expected InvalidInput, got {result:?}"
+        );
     }
 
     // -----------------------------------------------------------------------

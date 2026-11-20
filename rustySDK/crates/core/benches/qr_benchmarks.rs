@@ -78,6 +78,17 @@ fn bench_round_trip_256(c: &mut Criterion) -> BenchResult {
     Ok(())
 }
 
+/// Benchmarks `content_fits` on `content`; the verdict is checked once before timing.
+fn bench_content_fits(c: &mut Criterion, name: &str, content: &str, expected: bool) -> BenchResult {
+    if encoder::content_fits(content)? != expected {
+        return Err(format!("{name}: unexpected verdict").into());
+    }
+    c.bench_function(name, |b| {
+        b.iter(|| encoder::content_fits(content));
+    });
+    Ok(())
+}
+
 /// Custom entry point so setup failures propagate via `?` instead of panicking.
 fn main() -> BenchResult {
     let mut c = Criterion::default().configure_from_args();
@@ -89,6 +100,15 @@ fn main() -> BenchResult {
     bench_decode_from_raw_256(&mut c)?;
     bench_generate_with_config_all_ecl(&mut c)?;
     bench_round_trip_256(&mut c)?;
+    bench_content_fits(&mut c, "content_fits_2331B_byte", &"a".repeat(2331), true)?;
+    bench_content_fits(&mut c, "content_fits_5596_numeric", &"7".repeat(5596), true)?;
+    // Worst case that still fits: the optimizer overflows, so the single byte segment search runs.
+    let mixed = "x12345".repeat(400);
+    let mixed_2331 = mixed.get(..2331).ok_or("pattern too short")?;
+    bench_content_fits(&mut c, "content_fits_2331B_mixed_fallback", mixed_2331, true)?;
+    bench_content_fits(&mut c, "content_fits_7000B_overflow", &"a".repeat(7000), false)?;
+    // Input beyond the encodable cap is rejected before any parsing.
+    bench_content_fits(&mut c, "content_fits_1MB_cap", &"a".repeat(1024 * 1024), false)?;
     c.final_summary();
     Ok(())
 }

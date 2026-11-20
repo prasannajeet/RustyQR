@@ -247,11 +247,13 @@ rustyqr-bindings/build/uniffi/bindings/
 ```
 
 The generated API is a single `commonMain` surface (`generatePng`, `decodeQr`, `decodeQrFromRaw`,
-`generateWithConfig`, `getLibraryVersion`, `maxContentBytes`, `FfiQrConfig`, `FfiScanResult`,
+`generateWithConfig`, `getLibraryVersion`, `contentFits`, `FfiQrConfig`, `FfiScanResult`,
 `FfiQrException`, `FfiQrErrorCorrection`) with one `actual` per platform.
 `composeApp/src/commonMain/.../bridge/QrBridge.kt` is a plain `object` over that API: it calls the
 generated functions and maps `FfiQrException` to the app's `Either<QrError, T>`. It is not an
-`expect`, and it has no platform actuals.
+`expect`, and it has no platform actuals. It implements the plain `QrEncoder` interface, the seam
+`GenerateViewModel` takes so tests can fake Rust; the ViewModel calls `contentFits` through it for each
+distinct trimmed text, cancelling the previous check, so Generate is gated by Rust's own capacity rule.
 
 > **Stale checkouts.** An older checkout may still have `composeApp/src/androidMain/jniLibs/` and
 > `composeApp/src/androidMain/kotlin/generated/` on disk from the previous build pipeline. Gradle
@@ -527,8 +529,9 @@ Conversion flow:
 - **Outputs** (Rust → app): `ScanResult` → `FfiScanResult` via `From` impls in the `ffi` crate.
 - **Errors**: `QrError` → `FfiQrError` → `FfiQrException`. `QrBridge` maps the exception to the
   app's `QrError` inside an `Either`. The variants include `ContentTooLong`, which Rust raises for
-  generate input over the encoder's capacity (2331 UTF-8 bytes at error-correction level M); the
-  `max_content_bytes` export (`maxContentBytes()` in Kotlin) returns that limit.
+  generate input over the encoder's capacity, which depends on the content's mode (numeric,
+  alphanumeric, byte); the `content_fits` export (`contentFits()` in Kotlin) reports whether
+  content fits, using the same code path as generation.
 
 ---
 

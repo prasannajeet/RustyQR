@@ -4,6 +4,7 @@ import arrow.core.Either
 import com.p2.apps.rustyqr.model.QrError
 import com.p2.apps.rustyqr.model.ScanResult
 import com.p2.apps.rustyqr.rust.FfiQrException
+import com.p2.apps.rustyqr.rust.contentFits as ffiContentFits
 import com.p2.apps.rustyqr.rust.decodeQr as ffiDecodeQr
 import com.p2.apps.rustyqr.rust.decodeQrFromRaw as ffiDecodeQrFromRaw
 import com.p2.apps.rustyqr.rust.generatePng as ffiGeneratePng
@@ -18,11 +19,11 @@ import com.p2.apps.rustyqr.rust.getLibraryVersion as ffiGetLibraryVersion
  * them off the main thread. The caller chooses the context, for example a ViewModel's injected
  * `ioDispatcher`, or the camera analysis executor or queue.
  *
- * Error contract: [generateQrPng], [decodeQr] and [decodeQrFromRaw] return [Either.Left] with a
+ * Error contract: [generateQrPng], [contentFits], [decodeQr] and [decodeQrFromRaw] return [Either.Left] with a
  * [QrError] on failure, so callers use [Either.fold] or [Either.onRight] and need no try/catch.
  * [getLibraryVersion] is the exception: it returns a plain [String] and can throw.
  */
-object QrBridge {
+object QrBridge : QrEncoder {
     /**
      * Generates a QR code PNG for the given text content at the specified pixel size.
      *
@@ -30,12 +31,24 @@ object QrBridge {
      * @param size Output image side length in pixels (1..4096).
      * @return [Either.Right] with PNG bytes, or [Either.Left] with [QrError] on failure.
      */
-    fun generateQrPng(
+    override fun generateQrPng(
         content: String,
         size: Int,
     ): Either<QrError, ByteArray> =
         Either
             .catch { ffiGeneratePng(content, size.toUInt()) }
+            .mapLeft { ffiErrorToQrError(it) }
+
+    /**
+     * Reports whether [content] fits in a QR code, as decided by the same Rust encoder that generates it.
+     *
+     * @param content The text or URL to check. Must not be empty.
+     * @return [Either.Right] with whether it fits, or [Either.Left] with [QrError.InvalidInput] for empty content, or another [QrError]
+     *   if the check itself fails.
+     */
+    override fun contentFits(content: String): Either<QrError, Boolean> =
+        Either
+            .catch { ffiContentFits(content) }
             .mapLeft { ffiErrorToQrError(it) }
 
     /**
