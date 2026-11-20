@@ -31,6 +31,13 @@ private const val UTF8_CAPACITY = 2330
 // Whole pixels per module: version 40 needs at least 185 px, so smaller sizes are refused at render time.
 private const val QR_SIZE_PX = 256
 private const val MIXED_UNIT = "id=0123456789012345678901234567890123456789;"
+
+// MIXED_UNIT is 44 characters: "id=" and ";" are bytes, the 40 digits are numeric. At version 40 a byte segment costs
+// 4 + 16 + 8n bits and a numeric one 4 + 14 + 10 per 3 digits. The best split joins ";id=" into one 52-bit byte
+// segment and sends each 40-digit run to a 152-bit numeric segment (4 + 14 + 13 * 10 + 4 for the last digit), so a
+// period costs about 204 bits.
+// 3500 chars: 79 periods and a 24-char tail, about 79 * 204 + 44 + 88 = 16248 bits, under the 18672 of 40-M.
+// 4500 chars: 102 periods and a 12-char tail, about 102 * 204 + 44 + 48 = 20900 bits, over 18672.
 private const val MIXED_FITTING_LENGTH = 3500
 private const val MIXED_OVERFLOWING_LENGTH = 4500
 private val MIXED_FITTING_LENGTHS = listOf(BYTE_CAPACITY, MIXED_FITTING_LENGTH)
@@ -68,7 +75,7 @@ class ContentFitNativeTest {
     }
 
     @Test
-    fun mixedContentFitsUpToTheBindingsVerdictAndGenerationMatches() {
+    fun mixedContentThatFitsIsReportedAsFittingAndGenerates() {
         for (length in MIXED_FITTING_LENGTHS) {
             val content = mixedContent(length)
             assertEquals(true, QrBridge.contentFits(content).getOrNull(), "length $length")
