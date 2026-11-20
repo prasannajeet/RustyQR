@@ -8,13 +8,30 @@
 //! Both paths converge on the private `decode_grayscale` helper, which uses
 //! the `rqrr` crate's grid detection and decoding pipeline.
 
+use std::io::Cursor;
+
+use image::{ImageReader, Limits};
+
 use crate::error::QrError;
 use crate::types::ScanResult;
+
+/// Most bytes the image decoder may allocate for one image (256 MiB), counting the decoded pixel buffer.
+///
+/// A 48 MP phone photo (8064 x 6048) needs 146 MB as RGB and 195 MB as RGBA, so it still decodes. Without
+/// this the `image` default of 512 MiB lets a tiny, highly compressed file claim a 484 MP image, and the
+/// grayscale copy and the `rqrr` buffer then triple that.
+const MAX_DECODE_ALLOC_BYTES: u64 = 256 * 1024 * 1024;
+
+/// Longest side of an image the decoder accepts, in pixels. Strict, and checked from the file header
+/// before any pixel is allocated.
+const MAX_DECODE_DIMENSION: u32 = 16_384;
 
 /// Decodes a QR code from PNG or JPEG image bytes.
 ///
 /// The image is loaded into memory, converted to grayscale, and then scanned
-/// for a QR code. Only the first detected QR code is decoded.
+/// for a QR code. Only the first detected QR code is decoded. Images over
+/// [`MAX_DECODE_DIMENSION`] pixels on a side, or needing more than
+/// [`MAX_DECODE_ALLOC_BYTES`] to decode, are rejected before their pixels are allocated.
 ///
 /// # Arguments
 ///
@@ -23,7 +40,8 @@ use crate::types::ScanResult;
 /// # Errors
 ///
 /// * [`QrError::InvalidInput`] – `image_data` is empty.
-/// * [`QrError::ImageError`] – The bytes could not be decoded as a valid image.
+/// * [`QrError::ImageError`] – The bytes could not be decoded as a valid image, or the image is larger
+///   than the decoder's limits.
 /// * [`QrError::DecodingFailed`] – No QR code was found in the image, or the
 ///   detected QR code could not be decoded.
 pub fn decode(image_data: &[u8]) -> Result<ScanResult, QrError> {
@@ -33,9 +51,17 @@ pub fn decode(image_data: &[u8]) -> Result<ScanResult, QrError> {
         });
     }
 
-    let img = image::load_from_memory(image_data).map_err(|e| QrError::ImageError { reason: e.to_string() })?;
-
-    let luma = img.to_luma8();
+    let image_error = |reason: String| QrError::ImageError { reason };
+    let mut reader = ImageReader::new(Cursor::new(image_data))
+        .with_guessed_format()
+        .map_err(|e| image_error(e.to_string()))?;
+    // `Limits` is non-exhaustive, so it cannot be built with a struct expression.
+    let mut limits = Limits::default();
+    limits.max_image_width = Some(MAX_DECODE_DIMENSION);
+    limits.max_image_height = Some(MAX_DECODE_DIMENSION);
+    limits.max_alloc = Some(MAX_DECODE_ALLOC_BYTES);
+    reader.limits(limits);
+    let luma = reader.decode().map_err(|e| image_error(e.to_string()))?.into_luma8();
     decode_grayscale(luma.width(), luma.height(), luma.as_raw())
 }
 
@@ -88,10 +114,7 @@ pub fn decode_from_raw(pixels: &[u8], width: u32, height: u32) -> Result<ScanRes
 /// With `rqrr`'s default features off, as this crate builds it, this copies
 /// each pixel into `rqrr`'s own buffer. `rqrr`'s optional `img` feature
 /// (`GrayImage::from_raw` + `PreparedImage::prepare`) would avoid that copy at
-/// the cost of taking ownership of a `Vec<u8>`; it is not adopted pending the
-/// benchmark in spec 2.2. The cost for a 640×480 camera frame (~307 K pixels)
-/// is not yet measured; the only raw-frame (camera path) figure so far is
-/// for a 256×256 synthetic frame (see `BENCHMARKS.md`).
+/// the cost of taking ownership of a `Vec<u8>`.
 fn decode_grayscale(width: u32, height: u32, pixels: &[u8]) -> Result<ScanResult, QrError> {
     let (w, h) = (width as usize, height as usize);
     let expected = w.checked_mul(h).ok_or_else(|| QrError::InvalidInput {
@@ -233,6 +256,82 @@ mod tests {
         let png = encoder::generate_with_config("hi", config)?;
         let result = decode(&png)?;
         assert_eq!(result.content, "hi");
+        Ok(())
+    }
+
+    /// CRC-32 (IEEE) as PNG chunks use it.
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = u32::MAX;
+        for &byte in bytes {
+            crc ^= u32::from(byte);
+            for _ in 0..8 {
+                crc = if crc & 1 == 1 {
+                    (crc >> 1) ^ 0xEDB8_8320
+                } else {
+                    crc >> 1
+                };
+            }
+        }
+        !crc
+    }
+
+    fn png_chunk(kind: [u8; 4], data: &[u8]) -> Vec<u8> {
+        let mut chunk = Vec::new();
+        chunk.extend_from_slice(&u32::try_from(data.len()).unwrap_or(0).to_be_bytes());
+        let mut body = kind.to_vec();
+        body.extend_from_slice(data);
+        chunk.extend_from_slice(&body);
+        chunk.extend_from_slice(&crc32(&body).to_be_bytes());
+        chunk
+    }
+
+    /// A few dozen bytes that declare a `width` x `height` 8-bit RGB PNG whose pixels are never stored.
+    fn png_declaring(width: u32, height: u32) -> Vec<u8> {
+        let mut header = Vec::new();
+        header.extend_from_slice(&width.to_be_bytes());
+        header.extend_from_slice(&height.to_be_bytes());
+        header.extend_from_slice(&[8, 2, 0, 0, 0]);
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.extend(png_chunk(*b"IHDR", &header));
+        // An empty stored zlib stream, so the header parses to the point where limits are checked.
+        png.extend(png_chunk(*b"IDAT", &[0x78, 0x01, 0x03, 0x00, 0x00, 0x00, 0x00, 0x01]));
+        png.extend(png_chunk(*b"IEND", &[]));
+        png
+    }
+
+    #[test]
+    fn decode_rejects_images_over_the_limits_without_allocating_them() {
+        // 30000 x 30000 breaks the dimension limit; 15000 x 15000 RGB (675 MB) only the allocation limit.
+        for (width, height) in [(30_000, 30_000), (15_000, 15_000), (MAX_DECODE_DIMENSION + 1, 1)] {
+            let png = png_declaring(width, height);
+            assert!(png.len() < 200);
+            let result = decode(&png);
+            assert!(
+                matches!(&result, Err(QrError::ImageError { reason }) if reason.to_lowercase().contains("limit")),
+                "{width}x{height}: got {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn decode_accepts_a_photo_sized_image() -> Result<(), Box<dyn std::error::Error>> {
+        use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+        use image::{imageops, DynamicImage, GrayImage, ImageEncoder, Luma};
+
+        // 8064 x 6048 (48 MP) RGB with a QR code in the middle.
+        let code = image::load_from_memory(&encoder::generate_png("photo", 1024)?)?.to_luma8();
+        let mut photo = GrayImage::from_pixel(8064, 6048, Luma([255]));
+        imageops::replace(&mut photo, &code, 3520, 2512);
+        let rgb = DynamicImage::ImageLuma8(photo).to_rgb8();
+        let mut png = Vec::new();
+        PngEncoder::new_with_quality(&mut png, CompressionType::Fast, FilterType::NoFilter).write_image(
+            rgb.as_raw(),
+            rgb.width(),
+            rgb.height(),
+            image::ExtendedColorType::Rgb8,
+        )?;
+        drop(rgb);
+        assert_eq!(decode(&png)?.content, "photo");
         Ok(())
     }
 }
