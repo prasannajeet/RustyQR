@@ -100,9 +100,11 @@ private fun ScanContent(
                     onOpenSettings = { onIntent(ScanQRCodeScreenIntent.OpenSettings) },
                 )
             }
+
             state.isCameraActive && state.hasPermission -> {
                 CameraScanLayer(state = state, onIntent = onIntent)
             }
+
             else -> {
                 IdleContent(
                     onStartScanning = { onIntent(ScanQRCodeScreenIntent.StartScanning) },

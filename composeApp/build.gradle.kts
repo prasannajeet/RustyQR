@@ -48,6 +48,7 @@ kotlin {
         androidMain.dependencies {
             // api: ComponentActivity is in the public API through BridgeHostActivity's supertype.
             api(libs.androidx.activity.compose)
+            implementation(libs.androidx.startup.runtime)
             implementation(libs.androidx.camera.core)
             implementation(libs.androidx.camera.camera2)
             implementation(libs.androidx.camera.lifecycle)
@@ -75,23 +76,13 @@ kotlin {
     }
 }
 
-// Type resolution: detekt 1.23.x routes the Android KMP library compilation through its generic path, which gives
-// `detektAndroidMain` a compile classpath (androidJvm) over the androidMain sources. commonMain is added to it so
-// shared code is type-checked against the Android classpath, and the SDK boot classpath makes `android.*` resolve.
-// detekt 1.x cannot resolve Kotlin/Native types, so iosMain and commonTest only get the untyped source-set scan
-// that the convention plugin configures.
-// The plugin registers its per-compilation tasks late, so adjust it afterwards (this fails loudly if the task is gone).
-afterEvaluate {
-    tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektAndroidMain") {
-        source(file("src/commonMain/kotlin"))
-        classpath.from(androidComponents.sdkComponents.bootClasspath)
-    }
-}
-
-// `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved task, which
-// compiles the Android target, which needs the UniFFI bindings from :rustyqr-bindings.
+// Type resolution: detekt 2 registers a type-resolved task per Android compilation (`detektMainAndroid` covers
+// androidMain and commonMain, `detektHostTestAndroid` the host tests) next to the untyped per-source-set tasks.
+// detekt cannot resolve Kotlin/Native types, so iosMain only gets the untyped source-set scan.
+// `detekt` is the entry point for lintAll and the pre-commit hook. It also runs the type-resolved tasks, which
+// compile the Android target, which needs the UniFFI bindings from :rustyqr-bindings.
 tasks.named("detekt") {
-    dependsOn("detektAndroidMain")
+    dependsOn("detektMainAndroid", "detektHostTestAndroid")
 }
 
 // Anything that ships (non-debuggable Android variants, wired from :androidApp, and Kotlin/Native release frameworks)

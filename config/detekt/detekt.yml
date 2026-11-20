@@ -2,3 +2,14 @@ naming:
   FunctionNaming:
     # Compose convention: composable functions start with an uppercase letter.
     functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
+
+ktlint:
+  # detekt 2 replaced the formatting rule set's `android` flag with `code_style`. ktlint_official is the style
+  # the ktlint-gradle ktlintCheck tasks enforce here (the repository sets no code style), so detekt's ktlint rules agree.
+  code_style: 'ktlint_official'
+  # detekt's wrapper defaults these to "never force multiline"; ktlint_official (what ktlintCheck applies) forces it.
+  ClassSignature:
+    forceMultilineWhenParameterCountGreaterOrEqualThan: '1'
+  FunctionSignature:
+    forceMultilineWhenParameterCountGreaterOrEqualThan: 2
+    functionBodyExpressionWrapping: 'multiline'

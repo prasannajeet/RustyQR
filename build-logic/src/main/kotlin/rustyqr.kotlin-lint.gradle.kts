@@ -1,9 +1,9 @@
-import io.gitlab.arturbosch.detekt.Detekt
+import dev.detekt.gradle.Detekt
 
 // Lint setup shared by every Kotlin module: detekt (with the formatting rules) and ktlint, both at the repository's
 // own rules. Modules add only what is specific to them: which sources detekt scans and any type-resolved task.
 plugins {
-    id("io.gitlab.arturbosch.detekt")
+    id("dev.detekt")
     id("org.jlleitschuh.gradle.ktlint")
 }
 
@@ -16,7 +16,7 @@ val detektVersion =
         .requiredVersion
 
 dependencies {
-    detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:$detektVersion")
+    detektPlugins("dev.detekt:detekt-rules-ktlint-wrapper:$detektVersion")
 }
 
 detekt {

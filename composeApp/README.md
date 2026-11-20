@@ -258,7 +258,7 @@ three tools also run automatically as a pre-commit hook (installed by
 | Tool       | Scope                   | Config                                           |
 |------------|-------------------------|--------------------------------------------------|
 | ktlint     | Kotlin sources          | root `.editorconfig` (every module) — Android mode, continuation indent 4; the shared setup is the `rustyqr.kotlin-lint` convention plugin in `build-logic/` |
-| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — detekt defaults (max line length 120) plus the Compose `FunctionNaming` allowance; no suppressions. Type resolution covers androidMain and commonMain (`detektAndroidMain`) and `androidApp/src/main` (`detektDebug`) (detekt 1.x cannot type-resolve Kotlin/Native), iosMain and commonTest get the untyped scan |
+| detekt     | Kotlin sources          | `config/detekt/detekt.yml` — detekt defaults (max line length 120) plus the Compose `FunctionNaming` allowance; no suppressions. detekt 2.0.0-alpha.6 (plugin `dev.detekt`, formatting rules from `detekt-rules-ktlint-wrapper`). Type resolution covers androidMain and commonMain (`detektMainAndroid`), the Android host tests (`detektHostTestAndroid`) and `androidApp/src/main` (`detektDebug`); detekt cannot type-resolve Kotlin/Native, so iosMain and iosTest get the untyped per-source-set scan (`detekt<SourceSet>SourceSet`) |
 | SwiftLint  | `iosApp/` Swift sources | `.swiftlint.yml` — `trailing_whitespace` and `line_length` enabled |
 | rustfmt    | `rustySDK/` Rust sources | `rustySDK/rustfmt.toml` — edition 2024, max line width 120 (separate pre-commit step) |
 
@@ -266,7 +266,7 @@ Auto-fix Kotlin formatting with `./gradlew ktlintFormat` (every project, root in
 (for `build-logic/`: `./gradlew -p build-logic ktlintFormat`).
 
 **No setup step before linting:** `detekt` (and therefore `lintAll` and the pre-commit hook) also runs the
-type-resolved `detektAndroidMain` task (and `:androidApp:detektDebug`), which compiles the Android target. Gradle
+type-resolved `detektMainAndroid` and `detektHostTestAndroid` tasks (and `:androidApp:detektDebug`), which compiles the Android target. Gradle
 builds the gitignored UniFFI bindings (`:rustyqr-bindings:buildBindings`) first, so `./gradlew lintAll` works on a
 fresh checkout. That first run compiles the Rust library and takes several minutes.
 

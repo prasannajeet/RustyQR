@@ -15,6 +15,9 @@ ktlint {
 
 dependencies {
     // The Gradle plugin artifacts behind the `detekt` and `ktlint` entries in gradle/libs.versions.toml.
-    implementation("io.gitlab.arturbosch.detekt:detekt-gradle-plugin:${libs.versions.detekt.get()}")
+    implementation("dev.detekt:detekt-gradle-plugin:${libs.versions.detekt.get()}")
+    // detekt 2's plugin only compiles against the Kotlin compiler-plugin API, but the generated accessors for the
+    // convention plugin need the Kotlin Gradle plugin classes (KotlinBasePlugin) on this classpath.
+    implementation("org.jetbrains.kotlin:kotlin-gradle-plugin:${libs.versions.kotlin.get()}")
     implementation("org.jlleitschuh.gradle:ktlint-gradle:${libs.versions.ktlint.gradle.get()}")
 }

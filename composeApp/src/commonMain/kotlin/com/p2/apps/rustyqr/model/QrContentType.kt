@@ -25,5 +25,6 @@ fun detectContentType(content: String): QrContentType =
     when {
         content.startsWith("http://", ignoreCase = true) ||
             content.startsWith("https://", ignoreCase = true) -> QrContentType.URL
+
         else -> QrContentType.PLAIN_TEXT
     }

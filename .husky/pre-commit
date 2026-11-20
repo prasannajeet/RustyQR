@@ -25,7 +25,7 @@ if [ -n "$STAGED_KT_FILES" ] || [ -n "$STAGED_SWIFT_FILES" ]; then
         echo ""
         echo "Kotlin/Swift lint failed. Fix issues before committing."
         echo "  - ktlint auto-fix: ./gradlew ktlintFormat (every project incl. the root) and ./gradlew -p build-logic ktlintFormat"
-        echo "  - detekt reports:  composeApp/build/reports/detekt/ and androidApp/build/reports/detekt/"
+        echo "  - detekt reports:  <module>/build/reports/detekt/ (composeApp, androidApp, rustyqr-bindings)"
         exit 1
     fi
 fi
