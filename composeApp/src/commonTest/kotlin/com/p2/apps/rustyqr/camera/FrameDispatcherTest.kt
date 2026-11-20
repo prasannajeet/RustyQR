@@ -28,7 +28,7 @@ class FrameDispatcherTest {
     }
 
     @Test
-    fun latestDecodeCallbackWinsEvenWhenReplacedWhileFrameIsInFlight() {
+    fun decodeCallbackIsInvokedWhenThePostedWorkRunsNotWhenTheResultIsDelivered() {
         val first = mutableListOf<String>()
         val second = mutableListOf<String>()
         decodedSink = { first += it.content }
@@ -40,7 +40,7 @@ class FrameDispatcherTest {
     }
 
     @Test
-    fun latestReadyCallbackWinsAndFiresOnce() {
+    fun readyCallbackIsInvokedWhenThePostedWorkRunsAndFiresOnce() {
         var firstCalls = 0
         var secondCalls = 0
         readySink = { firstCalls++ }
@@ -93,7 +93,7 @@ class FrameDispatcherTest {
     }
 
     @Test
-    fun failureIsDeliveredOnceToTheLatestCallback() {
+    fun failureCallbackIsInvokedWhenThePostedWorkRunsAndFiresOnce() {
         val first = mutableListOf<CameraFailure>()
         val second = mutableListOf<CameraFailure>()
         errorSink = { first += it }
