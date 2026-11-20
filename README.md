@@ -354,17 +354,22 @@ packages:
 ```
 commonMain/kotlin/com/p2/apps/rustyqr/bridge/
 ├── QrEncoder.kt            // interface seam for generate + contentFits (plain interface, not an expect)
-├── QrBridge.kt             // Rust FFI — generate/decode/contentFits/version (an object implementing QrEncoder, not an expect)
+├── QrBridge.kt             // Rust FFI — generate/decode/contentFits (an object implementing QrEncoder, not an expect)
+├── CameraPermissions.kt    // interface seam for the permission calls (plain interface + object, not an expect)
 ├── CameraPreview.kt        // camera composable
 ├── CameraPermission.kt     // runtime permission check + request
+├── DebugBuild.kt           // whether this is a debug build
+├── FrameFiles.kt           // debug frame recording files
 ├── HapticFeedback.kt       // tap/success haptic
+├── Logging.kt              // platform log line
 ├── OpenUrl.kt              // open http(s) URL in system browser
+├── PlainTextClipEntry.kt   // clipboard entry for plain text
 ├── ShareQrImage.kt         // system share sheet for PNG bytes
 ├── SaveQrImage.kt          // save PNG to gallery / Photos
 └── ImageDecoder.kt         // PNG bytes → ImageBitmap
 ```
 
-Every file except `QrEncoder.kt` and `QrBridge.kt` is an `expect` with a matching `*.android.kt` and `*.ios.kt` actual.
+Every file except `QrEncoder.kt`, `QrBridge.kt` and `CameraPermissions.kt` holds an `expect` with a matching `*.android.kt` and `*.ios.kt` actual.
 `QrBridge` is one `commonMain` object over the generated bindings. The `MatchingDeclarationName` detekt rule
 is enabled; it accepts the `*.android.kt` / `*.ios.kt` actual naming convention, and actual-only
 helper classes are kept `private` so they do not need to match the file name. No lint

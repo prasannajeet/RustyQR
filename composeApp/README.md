@@ -92,8 +92,9 @@ composeApp/src/
 ├── commonMain/
 │   └── kotlin/com/p2/apps/rustyqr/
 │       ├── App.kt                          # Root composable — hosts navigation + theme
-│       ├── Platform.kt                     # expect fun Platform(): String
-│       ├── model/                          # Shared data types (ScanResult, QrError, ...)
+│       ├── model/                          # Shared data types (ScanResult, QrError, CameraFailure, ...)
+│       ├── camera/                         # FrameDispatcher + rememberFrameDispatcher: thread-safe camera callbacks
+│       ├── debug/                          # Debug-only frame recording and timings (DebugFlags, FrameRecorder, ...)
 │       ├── ui/
 │       │   ├── screen/                     # ScanScreen, GenerateScreen — shared Compose
 │       │   ├── components/                 # PillTabBar, ScanResultSheet, AmberButton, ...
@@ -106,8 +107,13 @@ composeApp/src/
 │           ├── QrEncoder.kt                # plain interface (not an expect): generateQrPng + contentFits, the seam GenerateViewModel tests fake
 │           ├── CameraPreview.kt            # @Composable — platform draws the live preview + decodes frames
 │           ├── CameraPermission.kt         # expect funs — status check, request, permanent-denied, openAppSettings
-│           ├── HapticFeedback.kt           # expect fun — triggerImpactHaptic
-│           ├── OpenUrl.kt                  # expect fun — openUrlExternally
+│           ├── CameraPermissions.kt        # plain interface + PlatformCameraPermissions, the seam ScanViewModel tests fake
+│           ├── DebugBuild.kt               # expect val isDebugBuild
+│           ├── FrameFiles.kt               # FrameFiles interface + expect fun frameFiles() for debug frame recording
+│           ├── HapticFeedback.kt           # expect fun — triggerHaptic
+│           ├── Logging.kt                  # expect fun — logInfo
+│           ├── OpenUrl.kt                  # expect fun — openUrl
+│           ├── PlainTextClipEntry.kt       # expect fun — clipboard entry for plain text
 │           ├── ShareQrImage.kt             # expect fun — system share sheet with PNG bytes
 │           ├── SaveQrImage.kt              # expect fun — save PNG to gallery / photos
 │           └── ImageDecoder.kt             # expect fun — platform image bytes → ImageBitmap

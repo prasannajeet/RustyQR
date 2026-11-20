@@ -96,10 +96,13 @@ composeApp/src/androidMain/
 │   ├── BridgeHostActivityHolder.kt     # Weak-ref holder so bridges reach the foreground Activity
 │   ├── AppContextHolder.kt             # Internal static Application context for bridges (permissions, share, save)
 │   ├── AppContextInitializer.kt        # androidx.startup Initializer that seeds AppContextHolder (declared in the manifest)
-│   ├── Platform.android.kt             # Platform() actual
+│   ├── PendingPermissionRequest.kt     # Process-scoped camera permission callbacks, kept across Activity recreation
 │   └── bridge/
 │       ├── CameraPreview.android.kt    # actual — CameraX PreviewView + ImageAnalysis; dispatches via commonMain camera/FrameDispatcher.kt
-│       ├── CameraPermission.android.kt # actual — ActivityResultLauncher
+│       ├── CameraPermission.android.kt # actual — ActivityResultLauncher via PendingPermissionRequest
+│       ├── DebugBuild.android.kt       # actual — FLAG_DEBUGGABLE
+│       ├── FrameFiles.android.kt       # actual — debug frame recording under cacheDir/frames
+│       ├── Logging.android.kt          # actual — Log.i
 │       ├── HapticFeedback.android.kt   # actual — HapticFeedbackType via View
 │       ├── OpenUrl.android.kt          # actual — Intent(ACTION_VIEW)
 │       ├── PlainTextClipEntry.android.kt # actual — ClipEntry for plain text
