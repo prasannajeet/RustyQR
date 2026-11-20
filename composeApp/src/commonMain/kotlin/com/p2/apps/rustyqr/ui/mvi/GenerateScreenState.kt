@@ -23,6 +23,8 @@ class QrPng(
     override fun equals(other: Any?): Boolean = this === other || (other is QrPng && bytes.contentEquals(other.bytes))
 
     override fun hashCode(): Int = bytes.contentHashCode()
+
+    override fun toString(): String = "QrPng(${bytes.size} bytes)"
 }
 
 /**

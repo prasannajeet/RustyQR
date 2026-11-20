@@ -140,7 +140,7 @@ private fun PillTabItem(
         animationSpec = tween(durationMillis = 300, easing = StandardEasing),
         label = "tabTextColor",
     )
-    val tabStateDescription = tabStateDescription(isSelected, position)
+    val stateText = tabStateDescription(isSelected, position)
     val tabItemModifier =
         modifier
             .clip(TabShape)
@@ -148,7 +148,7 @@ private fun PillTabItem(
             .semantics {
                 // stateDescription is merged into the selectable node below so
                 // TalkBack announces e.g. "Scan tab, selected, 1 of 2".
-                stateDescription = tabStateDescription
+                stateDescription = stateText
             }.selectable(
                 selected = isSelected,
                 role = Role.Tab,

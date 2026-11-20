@@ -3,6 +3,7 @@ package com.p2.apps.rustyqr.ui.viewmodels
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import arrow.core.Either
 import com.p2.apps.rustyqr.bridge.QrBridge
 import com.p2.apps.rustyqr.bridge.QrEncoder
 import com.p2.apps.rustyqr.bridge.logInfo
@@ -41,8 +42,9 @@ internal const val KEY_INPUT_TEXT = "generate.inputText"
 
 /**
  * Most input text kept in [SavedStateHandle]. Android writes saved state into a size-limited transaction when the app
- * backgrounds, so an unbounded paste would crash it. This is far above Rust's 7089-byte encode limit, so no input that
- * can be encoded is cut; only the restored copy of an over-limit paste is.
+ * backgrounds, so an unbounded paste would crash it. This is far above what any QR code holds (7089 digits at the
+ * lowest error-correction level, 5596 at the level the app encodes at), so no input that can be encoded is cut; only
+ * the restored copy of an over-limit paste is.
  */
 internal const val MAX_SAVED_INPUT_CHARS = 32_768
 
@@ -67,8 +69,9 @@ internal fun QrError.toGenerateErrorText(): UiText =
  * Processes [GenerateQRCodeScreenIntent]s and updates [GenerateScreenState].
  *
  * Input text survives process death via [SavedStateHandle], capped at [MAX_SAVED_INPUT_CHARS]. Blocking bridge work
- * (FFI, gallery and share I/O) runs on [ioDispatcher]. Failure reasons from Rust and the platform are English text for
- * developers, so they go to [log] and the screen shows a localised message instead.
+ * (FFI, gallery and share I/O) runs on [ioDispatcher]; [saveImage] and [shareImage] default to the platform bridge.
+ * Failure reasons from Rust and the platform are English text for developers, so they go to [log] and the screen
+ * shows a localised message instead.
  *
  * Whether the text fits in a QR code is Rust's decision. Each distinct trimmed text is checked through
  * [qrEncoder], and a newer text cancels the check for an older one. The check is advisory and fails open: while
@@ -79,6 +82,8 @@ class GenerateViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val qrEncoder: QrEncoder = QrBridge,
     private val log: (String) -> Unit = { logInfo(LOG_TAG, it) },
+    private val saveImage: suspend (ByteArray, String) -> Either<String, Unit> = ::saveQrImage,
+    private val shareImage: suspend (ByteArray, String) -> Either<String, Unit> = ::shareQrImage,
 ) : ViewModel() {
     val state: StateFlow<GenerateScreenState>
         field =
@@ -172,7 +177,10 @@ class GenerateViewModel(
         if (content.isNotEmpty()) {
             withContext(ioDispatcher) { qrEncoder.contentFits(content) }
                 .fold(
-                    ifLeft = { state.update { s -> s.copy(contentFit = null) } },
+                    ifLeft = { error ->
+                        log("Fit check failed: ${error.reason}")
+                        state.update { s -> s.copy(contentFit = null) }
+                    },
                     ifRight = { fits -> state.update { it.copy(contentFit = ContentFit(content, fits)) } },
                 )
         }
@@ -182,7 +190,7 @@ class GenerateViewModel(
         val bytes = state.value.qrPng?.bytes ?: return
         val fileName = suggestedName()
         viewModelScope.launch {
-            withContext(ioDispatcher) { shareQrImage(bytes, fileName) }.fold(
+            withContext(ioDispatcher) { shareImage(bytes, fileName) }.fold(
                 ifLeft = { reason ->
                     log("Share failed: $reason")
                     state.update { it.copy(error = shareFailedText) }
@@ -196,7 +204,7 @@ class GenerateViewModel(
         val bytes = state.value.qrPng?.bytes ?: return
         val fileName = suggestedName()
         viewModelScope.launch {
-            withContext(ioDispatcher) { saveQrImage(bytes, fileName) }.fold(
+            withContext(ioDispatcher) { saveImage(bytes, fileName) }.fold(
                 ifLeft = { reason ->
                     log("Save failed: $reason")
                     state.update { it.copy(error = saveFailedText) }

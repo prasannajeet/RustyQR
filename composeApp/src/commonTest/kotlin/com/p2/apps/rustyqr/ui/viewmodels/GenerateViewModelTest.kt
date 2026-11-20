@@ -24,6 +24,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import rustyqr.composeapp.generated.resources.Res
 import rustyqr.composeapp.generated.resources.generate_error_failed
+import rustyqr.composeapp.generated.resources.generate_error_save_failed
+import rustyqr.composeapp.generated.resources.generate_error_share_failed
 import rustyqr.composeapp.generated.resources.generate_error_too_long
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -38,6 +40,8 @@ import kotlin.test.assertTrue
 private const val NUMERIC_CAPACITY_LEVEL_M = 5596
 private val tooLongError = UiText.Res(Res.string.generate_error_too_long)
 private val failedError = UiText.Res(Res.string.generate_error_failed)
+private val saveFailedError = UiText.Res(Res.string.generate_error_save_failed)
+private val shareFailedError = UiText.Res(Res.string.generate_error_share_failed)
 
 /** A [QrEncoder] whose answers come from the test and which records every call. */
 private class FakeQrEncoder(
@@ -83,10 +87,20 @@ class GenerateViewModelTest {
         encoder: QrEncoder,
         handle: SavedStateHandle = SavedStateHandle(),
         ioDispatcher: CoroutineDispatcher = dispatcher,
+        imageResult: Either<String, Unit> = Unit.right(),
     ): GenerateViewModel {
         val factory =
             viewModelFactory {
-                initializer { GenerateViewModel(handle, ioDispatcher, encoder, log = { logged += it }) }
+                initializer {
+                    GenerateViewModel(
+                        handle,
+                        ioDispatcher,
+                        encoder,
+                        log = { logged += it },
+                        saveImage = { _, _ -> imageResult },
+                        shareImage = { _, _ -> imageResult },
+                    )
+                }
             }
         return ViewModelProvider.create(store, factory)[GenerateViewModel::class]
     }
@@ -327,5 +341,48 @@ class GenerateViewModelTest {
             viewModel.type(text)
 
             assertEquals(text, handle.get<String>(KEY_INPUT_TEXT))
+        }
+
+    @Test
+    fun saveFailureShowsLocalisedTextAndLogsThePlatformReason() =
+        runTest(dispatcher) {
+            val viewModel = viewModel(FakeQrEncoder(), imageResult = "disk full".left())
+            viewModel.type("abc")
+            advanceUntilIdle()
+            viewModel.onIntent(GenerateQRCodeScreenIntent.Generate)
+            advanceUntilIdle()
+
+            viewModel.onIntent(GenerateQRCodeScreenIntent.SaveQr)
+            advanceUntilIdle()
+
+            assertEquals(saveFailedError, viewModel.state.value.error)
+            assertEquals(listOf("Save failed: disk full"), logged)
+        }
+
+    @Test
+    fun shareFailureShowsLocalisedTextAndLogsThePlatformReason() =
+        runTest(dispatcher) {
+            val viewModel = viewModel(FakeQrEncoder(), imageResult = "no share target".left())
+            viewModel.type("abc")
+            advanceUntilIdle()
+            viewModel.onIntent(GenerateQRCodeScreenIntent.Generate)
+            advanceUntilIdle()
+
+            viewModel.onIntent(GenerateQRCodeScreenIntent.ShareQr)
+            advanceUntilIdle()
+
+            assertEquals(shareFailedError, viewModel.state.value.error)
+            assertEquals(listOf("Share failed: no share target"), logged)
+        }
+
+    @Test
+    fun failedContentFitCheckIsLogged() =
+        runTest(dispatcher) {
+            val viewModel = viewModel(FakeQrEncoder(fits = { QrError.EncodingFailed("check boom").left() }))
+
+            viewModel.type("abc")
+            advanceUntilIdle()
+
+            assertEquals(listOf("Fit check failed: check boom"), logged)
         }
 }
