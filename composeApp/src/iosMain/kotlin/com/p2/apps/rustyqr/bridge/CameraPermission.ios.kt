@@ -6,6 +6,7 @@ import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.AVFoundation.AVAuthorizationStatusAuthorized
 import platform.AVFoundation.AVAuthorizationStatusDenied
+import platform.AVFoundation.AVAuthorizationStatusRestricted
 import platform.AVFoundation.AVCaptureDevice
 import platform.AVFoundation.AVMediaTypeVideo
 import platform.AVFoundation.authorizationStatusForMediaType
@@ -36,9 +37,16 @@ actual fun requestCameraPermission(onResult: (Boolean) -> Unit) {
 }
 
 /**
- * iOS actual — returns true when the user has explicitly denied camera access.
+ * iOS actual — returns true when camera access is denied by the user or restricted (Screen Time, MDM). Neither
+ * shows a prompt, so only the Settings path can help.
  */
-actual fun isCameraPermissionPermanentlyDenied(): Boolean = cameraAuthorizationStatus() == AVAuthorizationStatusDenied
+actual fun isCameraPermissionPermanentlyDenied(): Boolean = isPermanentlyDenied(cameraAuthorizationStatus())
+
+internal fun isPermanentlyDenied(status: Long): Boolean =
+    when (status) {
+        AVAuthorizationStatusDenied, AVAuthorizationStatusRestricted -> true
+        else -> false
+    }
 
 /**
  * iOS actual — opens the app's settings page so the user can change camera access.
