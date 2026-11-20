@@ -200,7 +200,7 @@ private class CameraPreviewUIView(
  * The scan gate, the ready-once rule and all main-thread callback delivery are owned by [dispatcher]. This class
  * holds no callbacks and no view or session reference, so it cannot form a retain cycle.
  */
-internal class FrameDelegate(
+private class FrameDelegate(
     private val dispatcher: FrameDispatcher,
 ) : NSObject(),
     AVCaptureVideoDataOutputSampleBufferDelegateProtocol {
@@ -306,7 +306,7 @@ private fun createDeviceInput(device: AVCaptureDevice): AVCaptureDeviceInput? =
 /** Left says why the session cannot run; on Left nothing was added to [session]. */
 internal fun configureSession(
     session: AVCaptureSession,
-    delegate: FrameDelegate,
+    delegate: AVCaptureVideoDataOutputSampleBufferDelegateProtocol,
 ): Either<CameraFailure, Unit> =
     either {
         val device = ensureNotNull(backVideoDevice()) { CameraFailure.NoCamera }
@@ -319,7 +319,7 @@ internal fun configureSession(
 private fun addToSession(
     session: AVCaptureSession,
     input: AVCaptureDeviceInput,
-    delegate: FrameDelegate,
+    delegate: AVCaptureVideoDataOutputSampleBufferDelegateProtocol,
 ): Either<CameraFailure, Unit> {
     // Dedicated serial queue for frame delivery — keeps Rust decode off the main thread.
     // Results reach the main queue through FrameDispatcher (postToMainQueue).
