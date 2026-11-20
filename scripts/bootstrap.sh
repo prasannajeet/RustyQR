@@ -4,21 +4,27 @@
 # required to build the project on Android and iOS. Run this once after cloning.
 #
 # Usage:
-#   scripts/bootstrap.sh            # check, prompt to auto-install missing tools
-#   scripts/bootstrap.sh --check    # report only, never install, non-zero exit if anything missing
-#   scripts/bootstrap.sh --yes      # non-interactive, auto-install everything possible
+#   scripts/bootstrap.sh              # check, prompt to auto-install missing tools
+#   scripts/bootstrap.sh --check      # report only, never install, non-zero exit if anything missing
+#   scripts/bootstrap.sh --yes        # non-interactive, auto-install everything possible
+#   scripts/bootstrap.sh --with-wasm  # also require the WebAssembly tools (wasm32 target, wasm-pack);
+#                                     # without it they are optional and a missing one only prints a warning.
+#
+# Flags combine, e.g. --check --with-wasm.
 #
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 MODE="interactive"
+WITH_WASM=false
 for arg in "$@"; do
     case "$arg" in
         --check) MODE="check" ;;
         --yes|-y) MODE="yes" ;;
+        --with-wasm) WITH_WASM=true ;;
         --help|-h)
-            sed -n '2,/^set -euo/p' "$0" | sed 's/^#//; s/^ //'
+            sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^#//; s/^ //'
             exit 0
             ;;
         *) echo "unknown flag: $arg" >&2; exit 2 ;;
@@ -49,12 +55,14 @@ OK=()
 MISSING=()
 INSTALLED=()
 SKIPPED=()
+OPTIONAL_MISSING=()
 
 section() { echo "${BOLD}${BLUE}▸ $1${RESET}"; }
 pass()    { echo "  ${GREEN}✓${RESET} $1"; OK+=("$1"); }
 fail()    { echo "  ${RED}✗${RESET} $1"; MISSING+=("$1"); }
 warn()    { echo "  ${YELLOW}!${RESET} $1"; }
 installed() { echo "  ${GREEN}↓ installed${RESET} $1"; INSTALLED+=("$1"); }
+optional() { echo "  ${YELLOW}!${RESET} optional: $1"; OPTIONAL_MISSING+=("$2"); }
 skipped() { echo "  ${DIM}- skipped${RESET} $1"; SKIPPED+=("$1"); }
 
 # ---------------------------------------------------------------------------
@@ -76,24 +84,31 @@ echo
 # Install-prompt helper
 # ---------------------------------------------------------------------------
 # $1 = human name, $2 = install command (string)
+# Call it right after the matching `fail`: a successful install takes that entry back out of MISSING. Callers append
+# `|| true`, which switches `set -e` off in here, so the install command's exit status is checked explicitly.
+run_install() {
+    local name="$1"
+    local cmd="$2"
+    echo "  ${DIM}→ $cmd${RESET}"
+    if bash -c "$cmd"; then
+        installed "$name"
+        unset "MISSING[$((${#MISSING[@]} - 1))]"
+        return 0
+    fi
+    warn "installing $name failed: $cmd"
+    return 1
+}
+
 maybe_install() {
     local name="$1"
     local cmd="$2"
     case "$MODE" in
         check) return 1 ;;
-        yes)
-            echo "  ${DIM}→ $cmd${RESET}"
-            bash -c "$cmd"
-            installed "$name"
-            return 0
-            ;;
+        yes) run_install "$name" "$cmd" ;;
         interactive)
             read -r -p "  install $name now? [Y/n] " reply
             if [[ -z "$reply" || "$reply" =~ ^[Yy]$ ]]; then
-                echo "  ${DIM}→ $cmd${RESET}"
-                bash -c "$cmd"
-                installed "$name"
-                return 0
+                run_install "$name" "$cmd"
             else
                 skipped "$name"
                 return 1
@@ -140,8 +155,8 @@ elif ! command -v rustup &>/dev/null; then
         maybe_install "rustup" \
             "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y" \
             || true
-        # shellcheck disable=SC1091
-        [[ -f "$HOME/.cargo/env" ]] && source "$HOME/.cargo/env"
+        # What ~/.cargo/env does, without sourcing a file outside the repository.
+        export PATH="$HOME/.cargo/bin:$PATH"
     fi
 fi
 
@@ -166,8 +181,7 @@ fi
 
 # Android and WebAssembly Rust targets
 if command -v rustup &>/dev/null; then
-    # wasm32-unknown-unknown is for rustySDK/crates/wasm (browser build)
-    ANDROID_TARGETS=(aarch64-linux-android armv7-linux-androideabi x86_64-linux-android wasm32-unknown-unknown)
+    ANDROID_TARGETS=(aarch64-linux-android armv7-linux-androideabi x86_64-linux-android)
     INSTALLED_TARGETS="$(rustup target list --installed 2>/dev/null || true)"
     for t in "${ANDROID_TARGETS[@]}"; do
         if grep -q "^$t$" <<<"$INSTALLED_TARGETS"; then
@@ -177,6 +191,16 @@ if command -v rustup &>/dev/null; then
             maybe_install "rust target $t" "rustup target add $t" || true
         fi
     done
+
+    # wasm32-unknown-unknown is for rustySDK/crates/wasm (browser build); optional unless --with-wasm
+    if grep -q "^wasm32-unknown-unknown$" <<<"$INSTALLED_TARGETS"; then
+        pass "rust target wasm32-unknown-unknown"
+    elif $WITH_WASM; then
+        fail "rust target wasm32-unknown-unknown missing"
+        maybe_install "rust target wasm32-unknown-unknown" "rustup target add wasm32-unknown-unknown" || true
+    else
+        optional "rust target wasm32-unknown-unknown missing (only the web demo needs it) — rustup target add wasm32-unknown-unknown" "rust target wasm32-unknown-unknown"
+    fi
 
     # iOS Rust targets — macOS only
     if $IS_MACOS; then
@@ -195,9 +219,11 @@ fi
 # wasm-pack packages rustySDK/crates/wasm. Capture first, then take the first line: a pipe into `head` can die of SIGPIPE under pipefail.
 if WASM_PACK_OUT="$(wasm-pack --version 2>/dev/null)"; then
     pass "wasm-pack $(awk 'NR == 1 {print $2}' <<<"$WASM_PACK_OUT")"
-else
+elif $WITH_WASM; then
     fail "wasm-pack missing"
     maybe_install "wasm-pack" "cargo install wasm-pack --locked --version 0.15.1" || true
+else
+    optional "wasm-pack missing (only the web demo needs it) — cargo install wasm-pack --locked --version 0.15.1" "wasm-pack"
 fi
 
 # rust-analyzer — rustup ships a proxy that fails until the component is added,
@@ -353,7 +379,7 @@ echo
 # Summary
 # ---------------------------------------------------------------------------
 echo "${BOLD}Summary${RESET}"
-echo "  ${GREEN}✓ ${#OK[@]}${RESET} ready · ${GREEN}↓ ${#INSTALLED[@]}${RESET} installed · ${YELLOW}- ${#SKIPPED[@]}${RESET} skipped · ${RED}✗ ${#MISSING[@]}${RESET} still missing"
+echo "  ${GREEN}✓ ${#OK[@]}${RESET} ready · ${GREEN}↓ ${#INSTALLED[@]}${RESET} installed · ${YELLOW}- ${#SKIPPED[@]}${RESET} skipped · ${RED}✗ ${#MISSING[@]}${RESET} still missing · ${YELLOW}! ${#OPTIONAL_MISSING[@]}${RESET} optional missing"
 echo
 
 if (( ${#MISSING[@]} > 0 )); then
@@ -364,7 +390,13 @@ if (( ${#MISSING[@]} > 0 )); then
     exit 1
 fi
 
-echo "${GREEN}${BOLD}All set.${RESET} Build with:"
+if (( ${#OPTIONAL_MISSING[@]} > 0 )); then
+    echo "${GREEN}${BOLD}Ready for Android and iOS.${RESET} ${YELLOW}${#OPTIONAL_MISSING[@]} optional tool(s) missing${RESET} (web demo only; --with-wasm requires them):"
+    for m in "${OPTIONAL_MISSING[@]}"; do echo "  - $m"; done
+else
+    echo "${GREEN}${BOLD}All set.${RESET}"
+fi
+echo "Build with:"
 echo "  ./gradlew :androidApp:assembleDebug                  # Android (Gradle builds Rust and the bindings)"
 if $IS_MACOS; then
     echo "  ./gradlew generateXcodeProject                   # iOS: then build iosApp/iosApp.xcodeproj in Xcode"

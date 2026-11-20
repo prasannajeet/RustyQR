@@ -1,4 +1,5 @@
 import ch.ubique.uniffi.plugin.model.RustHost
+import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -27,19 +28,26 @@ kotlin {
                 .get()
                 .toInt()
     }
+
+    // These tests call the native library through JNA / cinterop, so they run on the host JVM and on the iOS
+    // simulator. They are not in commonTest: that would also be an Android host test, which cannot load the host
+    // library (the Android JNA artifact has no desktop dispatcher), and AGP warns when commonTest exists without
+    // Android host tests. The Android packaging is checked by building :androidApp.
+    // Wired next to the targets that create the source sets, through accessors that fail if a source set is missing.
+    val ffiTestSources = layout.projectDirectory.dir("src/ffiTest/kotlin")
+    val addFfiTests: KotlinSourceSet.() -> Unit = {
+        kotlin.srcDir(ffiTestSources)
+        dependencies { implementation(libs.kotlin.test) }
+    }
     if (RustHost.Platform.MacOS.isCurrent) {
         iosArm64()
         iosSimulatorArm64()
+        sourceSets.iosTest { addFfiTests() }
     }
     if (!isReleaseBuild) {
         // Exists only so the host can run the bindings tests.
         jvm()
-    }
-
-    sourceSets {
-        commonTest.dependencies {
-            implementation(libs.kotlin.test)
-        }
+        sourceSets.jvmTest { addFfiTests() }
     }
 }
 
@@ -68,12 +76,12 @@ ktlint {
 }
 
 // Type resolution: detekt 1.x only wires a classpath for the JVM/Android targets, so detektJvmTest is the type-resolved
-// task. commonTest is added to it so the shared tests are type-checked against the JVM classpath.
-// The plugin registers its per-compilation tasks and sets their sources late, so add commonTest afterwards.
+// task. src/ffiTest is added to it so the shared tests are type-checked against the JVM classpath.
+// The plugin registers its per-compilation tasks and sets their sources late, so add the directory afterwards.
 afterEvaluate {
     if (!isReleaseBuild) {
         tasks.named<io.gitlab.arturbosch.detekt.Detekt>("detektJvmTest") {
-            source(file("src/commonTest/kotlin"))
+            source(file("src/ffiTest/kotlin"))
         }
     }
 }
