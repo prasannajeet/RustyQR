@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.kotlinMultiplatform) apply false
     alias(libs.plugins.androidKotlinMultiplatformLibrary) apply false
     alias(libs.plugins.uniffi) apply false
+    // Applied by :androidApp and :composeApp in development builds only (see the note in either build script).
+    alias(libs.plugins.hotswan) apply false
     id("rustyqr.kotlin-lint")
 }
 
