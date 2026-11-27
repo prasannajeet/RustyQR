@@ -4,6 +4,12 @@ plugins {
     id("rustyqr.kotlin-lint")
 }
 
+// Compose HotSwan hot reload, for development only. Builds that ship pass -PreleaseBuild=true (verifyReleaseRustProfile
+// enforces it), so they never carry the HotSwan compiler plugin or its runtime. :composeApp applies it the same way.
+if (providers.gradleProperty("releaseBuild").orNull != "true") {
+    pluginManager.apply(libs.plugins.hotswan.get().pluginId)
+}
+
 val appVersionName = gradle.extra["appVersionName"] as String
 val appBuildNumber = gradle.extra["appBuildNumber"] as Int
 

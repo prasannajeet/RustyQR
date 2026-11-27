@@ -11,6 +11,13 @@ plugins {
     id("rustyqr.kotlin-lint")
 }
 
+// Compose HotSwan hot reload, for development only. This module declares the iOS framework, so it is the module that
+// owns the iOS app; :androidApp owns the Android one. Xcode passes -PreleaseBuild=true for every configuration except
+// Debug, and shipped Android builds need it too, so release frameworks and APKs never carry the HotSwan runtime.
+if (providers.gradleProperty("releaseBuild").orNull != "true") {
+    pluginManager.apply(libs.plugins.hotswan.get().pluginId)
+}
+
 tasks.register<VerifyFontFiles>("verifyFontFiles") {
     group = "verification"
     description = "Fails if any file under composeResources/font is not a real font."

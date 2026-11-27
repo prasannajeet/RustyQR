@@ -199,6 +199,27 @@ loads the Rust library) live in the platform READMEs —
 [`iosApp/README.md`](iosApp/README.md) for iOS, and
 [`composeApp/README.md`](composeApp/README.md) for shared KMP conventions.
 
+### 6. Hot reload with Compose HotSwan (optional)
+
+[Compose HotSwan](https://hotswan.dev) pushes Kotlin edits in `composeApp` into the running app, on an
+Android device or emulator and on the iOS simulator, without a rebuild. The Gradle side is already
+wired: `:androidApp` and `:composeApp` apply it in development builds, and any build with
+`-PreleaseBuild=true` leaves it out entirely.
+
+1. In Android Studio, open Settings → Plugins → Marketplace, install **Compose HotSwan**, and
+   restart. Keep it on the same version as `hotswan` in `gradle/libs.versions.toml`.
+2. Open Settings → Tools → Compose HotSwan and set the Gradle module path to `:androidApp`. HotSwan
+   looks for `:app` by default.
+3. Run the app as usual: the Android debug build, or the `iosApp` Debug scheme on a simulator
+   (Apple silicon only; physical iOS devices are not supported).
+4. Open View → Tool Windows → HotSwan, select the device or simulator, and press **Start HotSwan**.
+5. Edit and save a Kotlin file in `composeApp`. One save reaches every selected target.
+
+Some changes still need a full build: anything in `rustySDK/` or the generated UniFFI bindings,
+new resources, `inline` functions, and the body of a named `suspend fun`. Changing a class's
+superclass or interfaces restarts the app. HotSwan tells you which declarations it skipped. The full
+list is in the [limitations](https://hotswan.dev/docs/limitations) docs.
+
 ### Web demo (WebAssembly, optional)
 
 `rustySDK/crates/wasm` compiles the same Rust core to WebAssembly with `wasm-bindgen`. It is not part
