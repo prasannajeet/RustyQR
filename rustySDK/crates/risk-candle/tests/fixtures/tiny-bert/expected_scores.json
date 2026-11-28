@@ -1,0 +1,27 @@
+[
+  {
+    "url": "https://example.com",
+    "tokens": 21,
+    "phishing_probability": 0.1213775712300245
+  },
+  {
+    "url": "http://paypa1-login.verify-account.xyz/secure?id=42",
+    "tokens": 53,
+    "phishing_probability": 0.11536830745420733
+  },
+  {
+    "url": "https://kotlinlang.org/docs/multiplatform.html",
+    "tokens": 48,
+    "phishing_probability": 0.11793056844286225
+  },
+  {
+    "url": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tokens": 128,
+    "phishing_probability": 0.06578729607493433
+  },
+  {
+    "url": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "tokens": 128,
+    "phishing_probability": 0.09407374721010342
+  }
+]
