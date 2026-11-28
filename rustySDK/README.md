@@ -178,8 +178,13 @@ graph TD
         FFI[lib.rs<br/>Thin wrappers + UniFFI annotations]
     end
 
+    subgraph "rusty-qr-risk-candle (library)"
+        RISK[lib.rs<br/>Candle adapter for the risk check]
+    end
+
     subgraph "rusty-qr-core (library)"
         CORE[lib.rs<br/>Pure Rust business logic]
+        RSK[risk/]
         ENC[encoder/]
         DEC[decoder.rs]
         TYP[types.rs]
@@ -193,11 +198,17 @@ graph TD
         RQRR[rqrr]
         IMG[image]
         THISERR[thiserror]
+        CANDLE[candle]
+        TOK[tokenizers]
     end
 
     FFI -->|"path dep: rusty-qr-core"| CORE
     FFI --> UNIFFI
     FFI --> THISERR
+    FFI -->|"path dep: rusty-qr-risk-candle"| RISK
+    RISK -->|"implements the risk port"| CORE
+    RISK --> CANDLE
+    RISK --> TOK
 
     CORE --> QRCODE
     CORE --> RQRR
@@ -209,6 +220,7 @@ graph TD
     CORE --> TYP
     CORE --> ERR
     CORE --> CMD
+    CORE --> RSK
 
     style FFI fill:#bbf,stroke:#333
     style CORE fill:#bfb,stroke:#333

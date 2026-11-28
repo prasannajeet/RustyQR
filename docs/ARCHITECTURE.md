@@ -42,8 +42,11 @@ chain: it runs Cargo, runs the UniFFI generator and hands the results to `compos
 graph TB
     subgraph "Rust workspace (rustySDK/)"
         CORE["rusty-qr-core<br/>pure Rust business logic"]
+        RISK["rusty-qr-risk-candle<br/>Candle adapter for the risk check"]
         FFI["rusty-qr-ffi<br/>UniFFI proc-macro exports"]
+        CORE --> RISK
         CORE --> FFI
+        RISK --> FFI
     end
 
     subgraph ":rustyqr-bindings (Gradle module, UniFFI plugin)"
