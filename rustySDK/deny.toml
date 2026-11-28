@@ -29,6 +29,11 @@ expression = "MIT"
 license-files = []
 
 [[licenses.clarify]]
+name = "rusty-qr-risk-candle"
+expression = "MIT"
+license-files = []
+
+[[licenses.clarify]]
 name = "rusty-qr-wasm"
 expression = "MIT"
 license-files = []

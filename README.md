@@ -221,6 +221,16 @@ Then open <http://localhost:8000/web/rust-demo/>. Serve the repo root over HTTP,
 `web/rust-demo/main.js` imports the module from `../../rustySDK/crates/wasm/pkg/`, and browsers refuse
 ES module imports from `file://` URLs.
 
+### Environment variables
+
+RustyQR needs no API keys to build, test or run, and the URL risk check runs on the device with no
+network call. Any key or setting a script reads comes from an environment variable, never from a file in the
+repo, and is listed here:
+
+| Variable | Needed for | Required |
+|---|---|---|
+| `RUSTYQR_RISK_MODEL_DIR` | `cargo bench -p rusty-qr-risk-candle` against a real risk model: a folder holding its `model.safetensors`, `tokenizer.json` and `config.json`. Without it the benchmarks use the tiny test fixture | No |
+
 ### Versioning
 
 `version.properties` at the repo root is the single source of truth for the app's `version_name`

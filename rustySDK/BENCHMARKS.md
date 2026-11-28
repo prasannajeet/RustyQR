@@ -31,3 +31,34 @@ cd rustySDK && cargo bench -p rusty-qr-core
 Results are stored in `target/criterion/` with HTML reports.
 
 [^cap]: Times the Rust call only. It does not include copying the 1 MB UTF-8 string across the FFI boundary.
+
+## URL risk check (`rusty-qr-risk-candle`)
+
+Measured on an x86_64 Linux host with `cargo bench -p rusty-qr-risk-candle --bench risk_benchmarks` (Criterion,
+1 s warm-up, 2 s measurement), against the tiny random-weight test fixture (2 layers, hidden size 16). These numbers
+show the overhead around the model (tokenizer, tensor set-up, Candle dispatch), not the cost of the real model.
+Phone timings with the real model are still to be measured.
+
+| Benchmark                      | Measured | Target          | Status                         |
+|--------------------------------|----------|-----------------|--------------------------------|
+| `assess` `https://example.com` | ~0.66 ms | < 50 ms (phone) | fixture only                   |
+| `assess` 53-token URL          | ~0.71 ms | < 50 ms (phone) | fixture only                   |
+| `load model` (fixture)         | ~0.13 ms | —               | fixture only                   |
+
+To measure the real model, point `RUSTYQR_RISK_MODEL_DIR` at the folder that holds its `model.safetensors`,
+`tokenizer.json` and `config.json`:
+
+```bash
+cd rustySDK && RUSTYQR_RISK_MODEL_DIR=/path/to/model cargo bench -p rusty-qr-risk-candle --bench risk_benchmarks
+```
+
+### Library size
+
+Candle and tokenizers make the FFI library larger. Stripped `librusty_qr_ffi.so` on x86_64 Linux, host build:
+
+| Build                                              | Before   | After    | Added    |
+|----------------------------------------------------|----------|----------|----------|
+| `--release`                                        | 1.29 MB  | 7.96 MB  | +6.67 MB |
+| `--release`, fat LTO, `codegen-units=1`, `opt-level="z"` | 0.96 MB  | 4.58 MB  | +3.62 MB |
+
+Both are above the 3 MB per architecture target. Android and iOS sizes are still to be measured.

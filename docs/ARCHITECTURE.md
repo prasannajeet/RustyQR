@@ -42,8 +42,11 @@ chain: it runs Cargo, runs the UniFFI generator and hands the results to `compos
 graph TB
     subgraph "Rust workspace (rustySDK/)"
         CORE["rusty-qr-core<br/>pure Rust business logic"]
+        RISK["rusty-qr-risk-candle<br/>Candle adapter for the risk check"]
         FFI["rusty-qr-ffi<br/>UniFFI proc-macro exports"]
+        CORE --> RISK
         CORE --> FFI
+        RISK --> FFI
     end
 
     subgraph ":rustyqr-bindings (Gradle module, UniFFI plugin)"
@@ -139,6 +142,7 @@ rustySDK/
 └── crates/
     ├── core/                  # pure Rust — no FFI, no UniFFI
     ├── ffi/                   # UniFFI exports + type wrappers (cdylib + staticlib)
+    ├── risk-candle/           # URL risk check adapter: Candle BERT + tokenizers, the only crate importing them
     └── wasm/                  # wasm-bindgen exports for the browser demo (cdylib + rlib)
 ```
 
@@ -172,6 +176,12 @@ and exports:
 | `generatePng(content, size)` | `encoder::generate_png`        | PNG bytes (`Uint8Array`)   |
 | `decodeImage(bytes)`         | `decoder::decode`              | the QR content (`string`)  |
 | `libraryVersion()`           | `encoder::get_library_version` | the core version (`string`) |
+| `new UrlRiskChecker(weights, tokenizer, config, threshold)` | `rusty_qr_risk_candle::UrlRiskChecker::new` | a loaded risk check |
+| `checker.assessUrl(url)`     | `rusty_qr_core::risk::assess`  | the score if suspicious, else `undefined` |
+
+The risk check lives in `core`'s `risk` module (the rules and the `UrlRiskModel` port) and in
+`risk-candle` (the model runtime behind that port). `ffi` and `wasm` reach it through
+`risk-candle`'s `UrlRiskChecker`, so they stay one-expression wrappers.
 
 Core errors become JavaScript `Error` objects carrying the core's message. The crate builds as
 `cdylib` (the wasm module) plus `rlib` so `tests/web.rs` can link it.

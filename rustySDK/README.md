@@ -88,6 +88,7 @@ Six stateless, pure functions. Same input → same output, no side effects, triv
 | `decode_qr_from_raw`   | grayscale pixels + dimensions  | decoded text   | Decode from a live camera frame (no image encoding overhead)    |
 | `get_library_version`  | —                              | version string | Runtime version check                                           |
 | `content_fits`         | text                           | bool           | Whether `generate_png` can encode the text (`false` = too long) |
+| `FfiUrlRiskChecker`    | model files + threshold, then a URL | `Suspicious { score }` or `NoWarning` | Warn before opening a URL that looks like phishing, on the device |
 
 **Text encoding.** ASCII-only content takes the shortest of the `qrcode` optimiser's per-class
 segmentations (numeric, alphanumeric and byte modes mixed) and one whole byte segment, in the smallest
@@ -177,8 +178,13 @@ graph TD
         FFI[lib.rs<br/>Thin wrappers + UniFFI annotations]
     end
 
+    subgraph "rusty-qr-risk-candle (library)"
+        RISK[lib.rs<br/>Candle adapter for the risk check]
+    end
+
     subgraph "rusty-qr-core (library)"
         CORE[lib.rs<br/>Pure Rust business logic]
+        RSK[risk/]
         ENC[encoder/]
         DEC[decoder.rs]
         TYP[types.rs]
@@ -192,11 +198,17 @@ graph TD
         RQRR[rqrr]
         IMG[image]
         THISERR[thiserror]
+        CANDLE[candle]
+        TOK[tokenizers]
     end
 
     FFI -->|"path dep: rusty-qr-core"| CORE
     FFI --> UNIFFI
     FFI --> THISERR
+    FFI -->|"path dep: rusty-qr-risk-candle"| RISK
+    RISK -->|"implements the risk port"| CORE
+    RISK --> CANDLE
+    RISK --> TOK
 
     CORE --> QRCODE
     CORE --> RQRR
@@ -208,6 +220,7 @@ graph TD
     CORE --> TYP
     CORE --> ERR
     CORE --> CMD
+    CORE --> RSK
 
     style FFI fill:#bbf,stroke:#333
     style CORE fill:#bfb,stroke:#333

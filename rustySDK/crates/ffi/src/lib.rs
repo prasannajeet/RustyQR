@@ -21,6 +21,13 @@
 //! | `decode_qr_from_raw`    | `rusty_qr_core::decoder::decode_from_raw` |
 //! | `get_library_version`   | `rusty_qr_core::encoder::get_library_version` |
 //! | `content_fits`          | `rusty_qr_core::encoder::content_fits` |
+//! | `FfiUrlRiskChecker`     | `rusty_qr_risk_candle::UrlRiskChecker` (the URL risk check) |
+//!
+//! The risk check has its own error type, [`FfiRiskError`], mirroring
+//! [`rusty_qr_core::risk::RiskError`]. It is a separate bounded context, so QR callers that handle
+//! every [`FfiQrError`] variant are not affected by it.
+
+use std::sync::Arc;
 
 uniffi::setup_scaffolding!();
 
@@ -106,6 +113,95 @@ pub enum FfiQrError {
     },
 }
 
+/// The outcome of a URL risk check, exposed to foreign callers.
+///
+/// Mirrors [`rusty_qr_core::risk::RiskVerdict`]. There is deliberately no `Safe` variant: below the
+/// threshold the check has nothing to say.
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Enum)]
+pub enum FfiRiskVerdict {
+    /// The score reached the model's threshold. The app shows a warning.
+    Suspicious {
+        /// The model's phishing score for the URL, in `0.0..=1.0`.
+        score: f32,
+    },
+    /// The score stayed below the threshold. The app shows nothing about risk.
+    NoWarning,
+}
+
+/// Errors from the URL risk check, exposed to foreign callers.
+///
+/// Mirrors [`rusty_qr_core::risk::RiskError`].
+#[derive(Debug, thiserror::Error, uniffi::Error)]
+#[uniffi(flat_error)]
+pub enum FfiRiskError {
+    /// The input could not be used: an empty URL, or model files that are not valid.
+    #[error("Invalid input: {reason}")]
+    InvalidInput {
+        /// What was wrong with the input.
+        reason: String,
+    },
+    /// A score or threshold was outside `0.0..=1.0`, or not a number.
+    #[error("Invalid score: {reason}")]
+    InvalidScore {
+        /// The value and why it was rejected.
+        reason: String,
+    },
+    /// The model failed to load or to score a URL.
+    ///
+    /// Declared last: flat errors cross FFI as their declaration index.
+    #[error("Model failed: {reason}")]
+    ModelFailed {
+        /// The model runtime's error message.
+        reason: String,
+    },
+}
+
+/// The URL risk check, with its model loaded, exposed to foreign callers.
+///
+/// Load it once, off the main thread (loading parses the whole model), and reuse it for every scan.
+/// It holds no mutable state, so one instance can serve concurrent calls.
+#[derive(uniffi::Object)]
+pub struct FfiUrlRiskChecker {
+    inner: rusty_qr_risk_candle::UrlRiskChecker,
+}
+
+#[uniffi::export]
+impl FfiUrlRiskChecker {
+    /// Loads the model from the bytes of its `model.safetensors`, `tokenizer.json` and `config.json`,
+    /// and flags scores at or above `threshold`, which comes from the model's evaluation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FfiRiskError::InvalidScore`] if `threshold` is not in `0.0..=1.0`,
+    /// [`FfiRiskError::InvalidInput`] if the config or tokenizer cannot be parsed or the config has no
+    /// `phishing` label, and [`FfiRiskError::ModelFailed`] if the weights do not match the config.
+    #[uniffi::constructor]
+    pub fn new(
+        weights: Vec<u8>,
+        tokenizer_json: &[u8],
+        config_json: &[u8],
+        threshold: f32,
+    ) -> Result<Arc<Self>, FfiRiskError> {
+        rusty_qr_risk_candle::UrlRiskChecker::new(weights, tokenizer_json, config_json, threshold)
+            .map(|inner| Arc::new(Self { inner }))
+            .map_err(FfiRiskError::from)
+    }
+
+    /// Assesses one scanned URL. Surrounding whitespace is ignored, and URLs longer than 2,048 bytes
+    /// are cut to that length before scoring. Blocking: call it off the main thread.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`FfiRiskError::InvalidInput`] if `url` is empty or only whitespace, and
+    /// [`FfiRiskError::ModelFailed`] or [`FfiRiskError::InvalidScore`] if the model cannot score it.
+    pub fn assess(&self, url: &str) -> Result<FfiRiskVerdict, FfiRiskError> {
+        self.inner
+            .assess(url)
+            .map(FfiRiskVerdict::from)
+            .map_err(FfiRiskError::from)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // From / Into conversions between FFI ↔ core types
 //
@@ -149,6 +245,25 @@ impl From<rusty_qr_core::QrError> for FfiQrError {
             rusty_qr_core::QrError::ContentTooLong { reason } => Self::ContentTooLong { reason },
             rusty_qr_core::QrError::DecodingFailed { reason } => Self::DecodingFailed { reason },
             rusty_qr_core::QrError::ImageError { reason } => Self::ImageError { reason },
+        }
+    }
+}
+
+impl From<rusty_qr_core::risk::RiskVerdict> for FfiRiskVerdict {
+    fn from(value: rusty_qr_core::risk::RiskVerdict) -> Self {
+        match value {
+            rusty_qr_core::risk::RiskVerdict::Suspicious { score } => Self::Suspicious { score: score.value() },
+            rusty_qr_core::risk::RiskVerdict::NoWarning => Self::NoWarning,
+        }
+    }
+}
+
+impl From<rusty_qr_core::risk::RiskError> for FfiRiskError {
+    fn from(value: rusty_qr_core::risk::RiskError) -> Self {
+        match value {
+            rusty_qr_core::risk::RiskError::InvalidInput { reason } => Self::InvalidInput { reason },
+            rusty_qr_core::risk::RiskError::InvalidScore { reason } => Self::InvalidScore { reason },
+            rusty_qr_core::risk::RiskError::ModelFailed { reason } => Self::ModelFailed { reason },
         }
     }
 }
@@ -400,5 +515,93 @@ mod tests {
             matches!(result, Err(FfiQrError::InvalidInput { .. })),
             "expected InvalidInput, got {result:?}"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. URL risk check
+    // -----------------------------------------------------------------------
+
+    const RISK_WEIGHTS: &[u8] = include_bytes!("../../risk-candle/tests/fixtures/tiny-bert/model.safetensors");
+    const RISK_TOKENIZER: &[u8] = include_bytes!("../../risk-candle/tests/fixtures/tiny-bert/tokenizer.json");
+    const RISK_CONFIG: &[u8] = include_bytes!("../../risk-candle/tests/fixtures/tiny-bert/config.json");
+    /// Between the fixture's scores for `https://example.com` (about 0.121) and 126 "a"s (about 0.066).
+    const RISK_THRESHOLD: f32 = 0.1;
+
+    #[test]
+    fn risk_checker_delegates_to_the_adapter() -> Result<(), Box<dyn std::error::Error>> {
+        let ffi = FfiUrlRiskChecker::new(RISK_WEIGHTS.to_vec(), RISK_TOKENIZER, RISK_CONFIG, RISK_THRESHOLD)?;
+        let core = rusty_qr_risk_candle::UrlRiskChecker::new(
+            RISK_WEIGHTS.to_vec(),
+            RISK_TOKENIZER,
+            RISK_CONFIG,
+            RISK_THRESHOLD,
+        )?;
+        for url in ["https://example.com", &"a".repeat(126)] {
+            assert_eq!(ffi.assess(url)?, FfiRiskVerdict::from(core.assess(url)?), "{url}");
+        }
+        assert!(matches!(
+            ffi.assess("https://example.com")?,
+            FfiRiskVerdict::Suspicious { .. }
+        ));
+        assert_eq!(ffi.assess(&"a".repeat(126))?, FfiRiskVerdict::NoWarning);
+        Ok(())
+    }
+
+    #[test]
+    fn risk_checker_errors_cross_as_risk_errors() {
+        let bad_threshold = FfiUrlRiskChecker::new(RISK_WEIGHTS.to_vec(), RISK_TOKENIZER, RISK_CONFIG, 1.5);
+        assert!(
+            matches!(bad_threshold, Err(FfiRiskError::InvalidScore { .. })),
+            "{:?}",
+            bad_threshold.err()
+        );
+        let bad_weights = FfiUrlRiskChecker::new(b"not weights".to_vec(), RISK_TOKENIZER, RISK_CONFIG, 0.5);
+        assert!(
+            matches!(bad_weights, Err(FfiRiskError::ModelFailed { .. })),
+            "{:?}",
+            bad_weights.err()
+        );
+    }
+
+    #[test]
+    fn risk_checker_rejects_an_empty_url() -> Result<(), Box<dyn std::error::Error>> {
+        let checker = FfiUrlRiskChecker::new(RISK_WEIGHTS.to_vec(), RISK_TOKENIZER, RISK_CONFIG, RISK_THRESHOLD)?;
+        let result = checker.assess("  ");
+        assert!(
+            matches!(result, Err(FfiRiskError::InvalidInput { .. })),
+            "got {result:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn core_risk_error_converts_to_the_same_ffi_variant_and_reason() {
+        use rusty_qr_core::risk::RiskError;
+        // Both enums share identical `#[error]` formats, so equal text means same variant and same reason.
+        let reason = || String::from("the reason");
+        let cases = [
+            RiskError::InvalidInput { reason: reason() },
+            RiskError::InvalidScore { reason: reason() },
+            RiskError::ModelFailed { reason: reason() },
+        ];
+        for core_err in cases {
+            let expected = core_err.to_string();
+            assert!(expected.ends_with("the reason"), "{expected}");
+            assert_eq!(FfiRiskError::from(core_err).to_string(), expected);
+        }
+    }
+
+    #[test]
+    fn core_risk_verdict_converts_with_its_score() -> Result<(), Box<dyn std::error::Error>> {
+        use rusty_qr_core::risk::{RiskScore, RiskVerdict};
+        let suspicious = RiskVerdict::Suspicious {
+            score: RiskScore::new(0.75)?,
+        };
+        assert_eq!(
+            FfiRiskVerdict::from(suspicious),
+            FfiRiskVerdict::Suspicious { score: 0.75 }
+        );
+        assert_eq!(FfiRiskVerdict::from(RiskVerdict::NoWarning), FfiRiskVerdict::NoWarning);
+        Ok(())
     }
 }
