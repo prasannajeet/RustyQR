@@ -16,6 +16,7 @@
 //! | [`command`] | Command/response dispatcher (mirrors mobile MVI pattern) |
 //! | [`types`]   | Shared value types (`QrConfig`, `QrErrorCorrection`, `ScanResult`) |
 //! | [`error`]   | `QrError` enum used by all fallible operations |
+//! | [`risk`]    | URL risk check: domain types, the model port and `assess` |
 //!
 //! # Quick start
 //!
@@ -35,6 +36,7 @@ pub mod command;
 pub mod decoder;
 pub mod encoder;
 pub mod error;
+pub mod risk;
 pub mod types;
 
 pub use command::{process, QrCommand, QrResponse};
