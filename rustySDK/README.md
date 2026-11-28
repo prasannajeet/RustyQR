@@ -88,6 +88,7 @@ Six stateless, pure functions. Same input → same output, no side effects, triv
 | `decode_qr_from_raw`   | grayscale pixels + dimensions  | decoded text   | Decode from a live camera frame (no image encoding overhead)    |
 | `get_library_version`  | —                              | version string | Runtime version check                                           |
 | `content_fits`         | text                           | bool           | Whether `generate_png` can encode the text (`false` = too long) |
+| `FfiUrlRiskChecker`    | model files + threshold, then a URL | `Suspicious { score }` or `NoWarning` | Warn before opening a URL that looks like phishing, on the device |
 
 **Text encoding.** ASCII-only content takes the shortest of the `qrcode` optimiser's per-class
 segmentations (numeric, alphanumeric and byte modes mixed) and one whole byte segment, in the smallest

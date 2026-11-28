@@ -13,6 +13,7 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 rusty-qr-core = { path = "../core" }
+rusty-qr-risk-candle = { path = "../risk-candle" }
 thiserror = "2"
 uniffi = { version = "=0.32.0", default-features = false }
 
